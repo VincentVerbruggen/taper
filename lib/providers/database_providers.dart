@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
+import 'package:taper/data/decay_model.dart';
+import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/utils/day_boundary.dart';
 import 'package:taper/utils/decay_calculator.dart';
 
-/// Tracks which substance is currently pinned to the notification.
+/// Tracks which trackable is currently pinned to the notification.
 ///
-/// null = no substance pinned. Only one at a time.
+/// null = no trackable pinned. Only one at a time.
 /// UI watches this to show pin/unpin icon state on cards and the log screen.
 ///
 /// Like a global $pinnedId variable in a Livewire component — any widget
@@ -17,27 +19,27 @@ import 'package:taper/utils/decay_calculator.dart';
 /// Riverpod 3.x removed StateProvider, so we use NotifierProvider instead.
 /// Notifier = a class that holds mutable state, like a Vuex store module.
 ///
-/// Reads:  ref.watch(pinnedSubstanceIdProvider) → int?
-/// Writes: ref.read(pinnedSubstanceIdProvider.notifier).state = 42
-final pinnedSubstanceIdProvider =
-    NotifierProvider<PinnedSubstanceIdNotifier, int?>(
-  PinnedSubstanceIdNotifier.new,
+/// Reads:  ref.watch(pinnedTrackableIdProvider) → int?
+/// Writes: ref.read(pinnedTrackableIdProvider.notifier).state = 42
+final pinnedTrackableIdProvider =
+    NotifierProvider<PinnedTrackableIdNotifier, int?>(
+  PinnedTrackableIdNotifier.new,
 );
 
-/// Simple notifier that holds a nullable int (the pinned substance's ID).
+/// Simple notifier that holds a nullable int (the pinned trackable's ID).
 /// build() returns the initial state (null = nothing pinned).
 ///
 /// In Riverpod 3.x, Notifier's .state setter is protected — can only be
 /// accessed from inside the notifier itself. So we expose a pin()/unpin()
 /// method for widgets to call. Like a Vuex mutation vs direct state access.
-class PinnedSubstanceIdNotifier extends Notifier<int?> {
+class PinnedTrackableIdNotifier extends Notifier<int?> {
   @override
   int? build() => null;
 
-  /// Pin a substance (set its ID as the active pinned substance).
-  void pin(int substanceId) => state = substanceId;
+  /// Pin a trackable (set its ID as the active pinned trackable).
+  void pin(int trackableId) => state = trackableId;
 
-  /// Unpin (clear the pinned substance).
+  /// Unpin (clear the pinned trackable).
   void unpin() => state = null;
 }
 
@@ -58,62 +60,135 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-/// substancesProvider = a reactive stream of all substances.
+/// trackablesProvider = a reactive stream of all trackables.
 ///
 /// Like a Livewire computed property backed by a DB query:
-///   public function getSubstancesProperty() {
-///       return Substance::orderBy('name')->get();
+///   public function getTrackablesProperty() {
+///       return Trackable::orderBy('name')->get();
 ///   }
 ///
-/// Except it's push-based, not polling. When you insert/update/delete a substance,
+/// Except it's push-based, not polling. When you insert/update/delete a trackable,
 /// Drift's .watch() automatically emits the fresh list, and every widget
 /// watching this provider re-renders instantly.
 ///
 /// The AsyncValue wrapper handles three states:
 ///   - AsyncLoading (spinner while DB query runs first time)
-///   - AsyncData (the substance list)
+///   - AsyncData (the trackable list)
 ///   - AsyncError (if something goes wrong)
-final substancesProvider = StreamProvider<List<Substance>>((ref) {
+final trackablesProvider = StreamProvider<List<Trackable>>((ref) {
   final db = ref.watch(databaseProvider);
-  return db.watchAllSubstances();
+  return db.watchAllTrackables();
 });
 
-/// visibleSubstancesProvider = reactive stream of visible-only substances.
+/// visibleTrackablesProvider = reactive stream of visible-only trackables.
 ///
-/// Used by the Log form dropdown — hidden substances don't appear.
-/// The Substances management screen uses substancesProvider instead (shows ALL).
+/// Used by the Log form dropdown — hidden trackables don't appear.
+/// The Trackables management screen uses trackablesProvider instead (shows ALL).
 ///
 /// Like a Livewire computed property with a scope:
-///   public function getVisibleSubstancesProperty() {
-///       return Substance::visible()->orderBy('name')->get();
+///   public function getVisibleTrackablesProperty() {
+///       return Trackable::visible()->orderBy('name')->get();
 ///   }
-final visibleSubstancesProvider = StreamProvider<List<Substance>>((ref) {
+final visibleTrackablesProvider = StreamProvider<List<Trackable>>((ref) {
   final db = ref.watch(databaseProvider);
-  return db.watchVisibleSubstances();
+  return db.watchVisibleTrackables();
 });
 
-/// doseLogsProvider = reactive stream of recent dose logs with substance names.
+/// doseLogsProvider = reactive stream of recent dose logs with trackable names.
 ///
-/// Like: DoseLog::with('substance')->latest()->limit(50)->get()
+/// Like: DoseLog::with('trackable')->latest()->limit(50)->get()
 /// ...but reactive. Used by the Log screen's recent doses list.
-final doseLogsProvider = StreamProvider<List<DoseLogWithSubstance>>((ref) {
+final doseLogsProvider = StreamProvider<List<DoseLogWithTrackable>>((ref) {
   final db = ref.watch(databaseProvider);
   return db.watchRecentDoseLogs();
 });
 
-/// Data class holding everything a substance card needs to display.
+/// Reactive stream of presets for a specific trackable, keyed by trackable ID.
+///
+/// StreamProvider.family creates a separate provider per trackable ID — each
+/// trackable's presets load independently.
+///
+/// Like a Livewire component with a mount($trackableId) parameter:
+///   Preset::where('trackable_id', $id)->orderBy('sort_order')->get()
+///
+/// Used by:
+///   - Edit trackable screen (manage presets list)
+///   - Add dose screen (show preset chips)
+final presetsProvider = StreamProvider.family<List<Preset>, int>((ref, trackableId) {
+  final db = ref.watch(databaseProvider);
+  return db.watchPresets(trackableId);
+});
+
+/// Provides the trackable ID from the most recent dose log (across all trackables).
+/// Used by the log form to auto-select the last-used trackable instead of
+/// the old isMain flag. Returns null if no doses have ever been logged.
+///
+/// FutureProvider (one-shot, not a stream) because we only need the value
+/// once when the log form opens, not reactively. Like:
+///   $lastTrackableId = DoseLog::latest('logged_at')->value('trackable_id')
+final lastLoggedTrackableIdProvider = FutureProvider<int?>((ref) async {
+  final db = ref.watch(databaseProvider);
+  final lastDose = await db.getLastDoseLogGlobal();
+  return lastDose?.trackableId;
+});
+
+/// Selected date for the dashboard view.
+///
+/// null = today (live, real-time updates).
+/// Non-null = viewing a specific past date (static snapshot at end of that day).
+///
+/// Like a URL parameter in a web dashboard: /dashboard?date=2026-02-19.
+/// When null, the dashboard shows live data; when set, it shows historical data.
+final selectedDateProvider =
+    NotifierProvider<SelectedDateNotifier, DateTime?>(
+  SelectedDateNotifier.new,
+);
+
+class SelectedDateNotifier extends Notifier<DateTime?> {
+  @override
+  DateTime? build() => null;
+
+  /// Set to a specific date to view that day's data.
+  void selectDate(DateTime date) => state = date;
+
+  /// Reset to live/today view.
+  void goToToday() => state = null;
+
+  /// Go to the previous day.
+  void previousDay() {
+    final boundaryHour = ref.read(dayBoundaryHourProvider);
+    final current = state ?? dayBoundary(DateTime.now(), boundaryHour: boundaryHour);
+    state = current.subtract(const Duration(days: 1));
+  }
+
+  /// Go to the next day. Snaps back to null (live) if reaching today.
+  void nextDay() {
+    if (state == null) return; // Already on today.
+    final boundaryHour = ref.read(dayBoundaryHourProvider);
+    final next = state!.add(const Duration(days: 1));
+    final todayBoundary = dayBoundary(DateTime.now(), boundaryHour: boundaryHour);
+    // If the next day would be today or later, go to live mode.
+    if (!next.isBefore(todayBoundary)) {
+      state = null;
+    } else {
+      state = next;
+    }
+  }
+}
+
+/// Data class holding everything a trackable card needs to display.
 ///
 /// Like a Laravel Resource/DTO that bundles the model with computed values:
-///   class SubstanceCardResource extends JsonResource {
+///   class TrackableCardResource extends JsonResource {
 ///       public function toArray() {
-///           return ['substance' => $this, 'activeAmount' => ..., 'curvePoints' => ...];
+///           return ['trackable' => $this, 'activeAmount' => ..., 'curvePoints' => ...];
 ///       }
 ///   }
-class SubstanceCardData {
-  final Substance substance;
+class TrackableCardData {
+  final Trackable trackable;
 
   /// Decayed amount at the moment of calculation (e.g., "42 mg active").
-  /// 0 for substances without a half-life (like Water).
+  /// 0 for trackables without a half-life (like Water).
   final double activeAmount;
 
   /// Raw sum of all doses since the day boundary (e.g., "180 mg today").
@@ -121,19 +196,19 @@ class SubstanceCardData {
   final double totalToday;
 
   /// Chart data: sampled every 5 minutes from day boundary to next boundary.
-  /// Empty for substances without a half-life.
+  /// Empty for trackables without a half-life.
   final List<({DateTime time, double amount})> curvePoints;
 
   /// The day boundary (5 AM) used to generate the curve.
   /// Passed to the chart so X-axis labels can show clock times.
   final DateTime dayBoundaryTime;
 
-  /// Most recent dose for this substance (for "Repeat Last" button).
+  /// Most recent dose for this trackable (for "Repeat Last" button).
   /// null if no doses ever logged.
   final DoseLog? lastDose;
 
-  SubstanceCardData({
-    required this.substance,
+  TrackableCardData({
+    required this.trackable,
     required this.activeAmount,
     required this.totalToday,
     required this.curvePoints,
@@ -142,50 +217,64 @@ class SubstanceCardData {
   });
 }
 
-/// Per-substance card data provider, keyed by substance ID.
+/// Per-trackable card data provider, keyed by trackable ID.
 ///
-/// StreamProvider.family creates a separate provider instance for each substance,
+/// StreamProvider.family creates a separate provider instance for each trackable,
 /// so cards load independently (staggered). Each watches its own dose stream.
 ///
-/// Like a Livewire component with a mount($substanceId) parameter — each card
+/// Like a Livewire component with a mount($trackableId) parameter — each card
 /// is its own reactive unit with its own DB query.
 ///
 /// The provider combines two streams (doses + lastDose) using Rx.combineLatest
 /// pattern via StreamZip, then runs the decay calculator on each emission.
-final substanceCardDataProvider =
-    StreamProvider.family<SubstanceCardData, int>((ref, substanceId) {
+final trackableCardDataProvider =
+    StreamProvider.family<TrackableCardData, int>((ref, trackableId) {
   final db = ref.watch(databaseProvider);
+  // Watch the day boundary hour setting so cards recalculate when it changes.
+  final boundaryHour = ref.watch(dayBoundaryHourProvider);
+  // Watch the selected date for historical views.
+  // null = today/live; non-null = viewing a past day.
+  final selectedDate = ref.watch(selectedDateProvider);
   final now = DateTime.now();
-  final boundary = dayBoundary(now);
-  final nextBoundary = nextDayBoundary(now);
 
-  // First, get the substance itself. We need its halfLifeHours to calculate
+  // When viewing a past date, use that date's boundary; otherwise use today.
+  final boundary = selectedDate ?? dayBoundary(now, boundaryHour: boundaryHour);
+  final nextBoundary = selectedDate != null
+      ? DateTime(boundary.year, boundary.month, boundary.day + 1, boundaryHour)
+      : nextDayBoundary(now, boundaryHour: boundaryHour);
+  // For past dates, calculate active amount at the end of that day.
+  // For today (live), use the current time.
+  final queryTime = selectedDate != null ? nextBoundary : now;
+
+  // First, get the trackable itself. We need its halfLifeHours to calculate
   // the decay window. Watch it reactively in case it gets edited.
-  final substancesAsync = ref.watch(substancesProvider);
+  final trackablesAsync = ref.watch(trackablesProvider);
 
-  return substancesAsync.when(
+  return trackablesAsync.when(
     loading: () => const Stream.empty(),
     error: (e, s) => Stream.error(e, s),
-    data: (substances) {
-      final substance = substances.where((s) => s.id == substanceId).firstOrNull;
-      if (substance == null) return Stream.error('Substance not found');
+    data: (trackables) {
+      final trackable = trackables.where((t) => t.id == trackableId).firstOrNull;
+      if (trackable == null) return Stream.error('Trackable not found');
 
-      // Calculate the dose query window:
-      // For substances WITH a half-life, we look back further than the day
-      // boundary to capture doses that are still decaying. A dose from yesterday
-      // might still contribute active amount today.
-      // "10 × halfLife" hours back = the point where < 0.1% remains.
-      // Using 10 (not 5) avoids visual artifacts where the curve abruptly drops.
-      // For substances WITHOUT a half-life, just use the day boundary.
-      final dosesSince = substance.halfLifeHours != null
-          ? boundary.subtract(
-              Duration(hours: (substance.halfLifeHours! * 10).ceil()),
-            )
-          : boundary;
+      // Determine the decay model for this trackable.
+      final model = DecayModel.fromString(trackable.decayModel);
+
+      // Calculate the dose query window based on decay model:
+      //   - exponential: look back 10 × halfLife hours (< 0.1% remains after that)
+      //   - linear: look back 24h (conservative; doses deplete faster for small amounts)
+      //   - none: just the day boundary (no decay, only count today's totals)
+      final dosesSince = switch (model) {
+        DecayModel.exponential => boundary.subtract(
+            Duration(hours: (trackable.halfLifeHours! * 10).ceil()),
+          ),
+        DecayModel.linear => boundary.subtract(const Duration(hours: 24)),
+        DecayModel.none => boundary,
+      };
 
       // Watch two streams: all relevant doses + the most recent dose (for Repeat Last).
-      final dosesStream = db.watchDosesSince(substanceId, dosesSince);
-      final lastDoseStream = db.watchLastDose(substanceId);
+      final dosesStream = db.watchDosesSince(trackableId, dosesSince);
+      final lastDoseStream = db.watchLastDose(trackableId);
 
       // Combine both streams. When either emits, recalculate the card data.
       // Like Livewire's computed properties that depend on multiple queries —
@@ -198,40 +287,47 @@ final substanceCardDataProvider =
         final todayDoses =
             allDoses.where((d) => !d.loggedAt.isBefore(boundary)).toList();
 
-        if (substance.halfLifeHours != null) {
-          // Substance WITH half-life: calculate active amount + curve.
-          final halfLife = substance.halfLifeHours!;
-          final activeAmount = DecayCalculator.totalActiveAt(
-            doses: allDoses,
-            halfLifeHours: halfLife,
-            queryTime: now,
-          );
-          final curvePoints = DecayCalculator.generateCurve(
-            doses: allDoses,
-            halfLifeHours: halfLife,
-            startTime: boundary,
-            endTime: nextBoundary,
-          );
+        // 3-way switch on decay model — each branch calculates active amount
+        // and curve points using its own formula.
+        final (double activeAmount, List<({DateTime time, double amount})> curvePoints) =
+            switch (model) {
+          DecayModel.exponential => (
+            DecayCalculator.totalActiveAt(
+              doses: allDoses,
+              halfLifeHours: trackable.halfLifeHours!,
+              queryTime: queryTime,
+            ),
+            DecayCalculator.generateCurve(
+              doses: allDoses,
+              halfLifeHours: trackable.halfLifeHours!,
+              startTime: boundary,
+              endTime: nextBoundary,
+            ),
+          ),
+          DecayModel.linear => (
+            DecayCalculator.totalActiveLinearAt(
+              doses: allDoses,
+              eliminationRate: trackable.eliminationRate!,
+              queryTime: queryTime,
+            ),
+            DecayCalculator.generateLinearCurve(
+              doses: allDoses,
+              eliminationRate: trackable.eliminationRate!,
+              startTime: boundary,
+              endTime: nextBoundary,
+            ),
+          ),
+          DecayModel.none => (0.0, <({DateTime time, double amount})>[]),
+        };
 
-          return SubstanceCardData(
-            substance: substance,
-            activeAmount: activeAmount,
-            totalToday: DecayCalculator.totalRawAmount(todayDoses),
-            curvePoints: curvePoints,
-            dayBoundaryTime: boundary,
-            lastDose: lastDose,
-          );
-        } else {
-          // Substance WITHOUT half-life (e.g., Water): no decay, just totals.
-          return SubstanceCardData(
-            substance: substance,
-            activeAmount: 0,
-            totalToday: DecayCalculator.totalRawAmount(todayDoses),
-            curvePoints: [],
-            dayBoundaryTime: boundary,
-            lastDose: lastDose,
-          );
-        }
+        return TrackableCardData(
+          trackable: trackable,
+          activeAmount: activeAmount,
+          totalToday: DecayCalculator.totalRawAmount(todayDoses),
+          curvePoints: curvePoints,
+          dayBoundaryTime: boundary,
+          lastDose: lastDose,
+        );
       });
     },
   );

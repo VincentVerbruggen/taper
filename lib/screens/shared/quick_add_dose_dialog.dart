@@ -4,24 +4,27 @@ import 'package:flutter/services.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/screens/log/widgets/time_picker.dart';
 
-/// Shows a quick-add dialog for logging a dose of a specific substance.
+/// Shows a quick-add dialog for logging a dose of a specific trackable.
 ///
 /// A lightweight popup with amount field + time picker. Used from:
-///   - Dashboard card "Add Dose" button (substance known from card)
-///   - Substance log screen FAB (substance known from screen)
+///   - Dashboard card "Add Dose" button (trackable known from card)
+///   - Trackable log screen FAB (trackable known from screen)
 ///
 /// Like a quick-add modal in a web app — enter a number, pick a time, done.
 /// Returns the entered amount if logged, null if cancelled.
 ///
 /// [context] — BuildContext for showing the dialog.
-/// [substance] — The substance to log a dose for (provides name + unit).
+/// [trackable] — The trackable to log a dose for (provides name + unit).
 /// [db] — Database instance for inserting the dose.
+/// [presets] — Optional list of preset chips to show above the amount field.
+///   When a chip is tapped, it fills the amount field with the preset's value.
 /// [scaffoldContext] — Optional separate context for showing SnackBar
 ///   (needed when the calling widget's context differs from the Scaffold).
 Future<double?> showQuickAddDoseDialog({
   required BuildContext context,
-  required Substance substance,
+  required Trackable trackable,
   required AppDatabase db,
+  List<Preset> presets = const [],
   BuildContext? scaffoldContext,
 }) async {
   final amountController = TextEditingController();
@@ -40,12 +43,39 @@ Future<double?> showQuickAddDoseDialog({
       return StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: Text('Log ${substance.name}'),
+            title: Text('Log ${trackable.name}'),
             // Column so we can stack amount + time picker vertically.
             // IntrinsicWidth keeps the dialog from being too wide.
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // --- Preset chips ---
+                // Tapping a chip fills the amount field with that preset's value.
+                // Like quick-fill buttons in a web calculator form.
+                if (presets.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: presets.map((preset) {
+                      return ActionChip(
+                        label: Text('${preset.name} (${preset.amount.toStringAsFixed(0)})'),
+                        onPressed: () {
+                          // Fill the amount field with the preset value.
+                          amountController.text = preset.amount.toStringAsFixed(
+                            // Use integer format if the amount is a whole number,
+                            // otherwise show one decimal place.
+                            preset.amount == preset.amount.roundToDouble() ? 0 : 1,
+                          );
+                          // Move cursor to end so user can edit if needed.
+                          amountController.selection = TextSelection.fromPosition(
+                            TextPosition(offset: amountController.text.length),
+                          );
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextField(
                   controller: amountController,
                   autofocus: true,
@@ -57,7 +87,7 @@ Future<double?> showQuickAddDoseDialog({
                   ],
                   decoration: InputDecoration(
                     labelText: 'Amount',
-                    suffixText: substance.unit,
+                    suffixText: trackable.unit,
                     border: const OutlineInputBorder(),
                   ),
                   // Submit on keyboard "done" — same as tapping Log.
@@ -128,7 +158,7 @@ Future<double?> showQuickAddDoseDialog({
       selectedTime.hour,
       selectedTime.minute,
     );
-    await db.insertDoseLog(substance.id, amount, loggedAt);
+    await db.insertDoseLog(trackable.id, amount, loggedAt);
 
     // Show SnackBar using the scaffold context (falls back to the provided context).
     final snackContext = scaffoldContext ?? context;
@@ -136,7 +166,7 @@ Future<double?> showQuickAddDoseDialog({
       ScaffoldMessenger.of(snackContext).showSnackBar(
         SnackBar(
           content: Text(
-            'Logged ${amount.toStringAsFixed(0)} ${substance.unit} ${substance.name}',
+            'Logged ${amount.toStringAsFixed(0)} ${trackable.unit} ${trackable.name}',
           ),
         ),
       );

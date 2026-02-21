@@ -1,7 +1,7 @@
 # Taper - Flutter App
 
 ## Project Overview
-A cross-platform app (Flutter, migrated from native Android/Kotlin) that tracks substances (like caffeine), logs doses, and shows a **pharmacokinetic decay curve** of how much is still active in your system throughout the day.
+A cross-platform app (Flutter, migrated from native Android/Kotlin) that tracks trackables (like caffeine), logs doses, and shows a **pharmacokinetic decay curve** of how much is still active in your system throughout the day.
 
 The developer is a PHP/web developer (8 YOE) learning Flutter/Dart — always include explanatory comments in code changes explaining how/why things work.
 
@@ -21,21 +21,21 @@ The developer is a PHP/web developer (8 YOE) learning Flutter/Dart — always in
 Migrated from native Android (Kotlin/Jetpack Compose) to Flutter. Old project at `/Volumes/Workspace/taper_old`.
 
 **What was completed in the old project (Milestone 1):**
-- Substance CRUD (create, read, update, delete) with Room SQLite
+- Trackable CRUD (create, read, update, delete) with Room SQLite
 - MVVM architecture with Repository pattern + manual DI
-- Navigation scaffold with 3 tabs (Dashboard, Log, Substances)
+- Navigation scaffold with 4 tabs (Dashboard, Log, Trackables, Settings)
 - Database seeder (inserts "Caffeine" on first run)
 - Material 3 theming (dark mode)
 
 **Milestone progress:**
-- Milestone 1 (Substance CRUD, persistence, navigation) — DONE
+- Milestone 1 (Trackable CRUD, persistence, navigation) — DONE
 - Milestone 2 (Dose Logging — log form, edit, recent logs) — DONE
-- Milestone 3 (Per-substance fields — half-life, unit, color) — DONE
-- Milestone 4 (Dashboard — substance cards, decay curves, repeat last, substance log) — DONE
-- Remaining: swipe-to-delete, date picker improvements, additional polish
+- Milestone 3 (Per-trackable fields — half-life, unit, color) — DONE
+- Milestone 4 (Dashboard — trackable cards, decay curves, repeat last, trackable log) — DONE
+- Milestone 5 (Polish & Settings — swipe-to-delete, color picker, settings tab, date nav) — DONE
 
 ## Current State
-Fully functional app with substance management, dose logging, and dashboard with decay curves.
+Fully functional app with trackable management, dose logging, dashboard with decay curves, settings, and date navigation.
 
 ## Project Structure
 ```
@@ -43,39 +43,48 @@ lib/
 ├── main.dart                                    # App entry point, Material 3 theming
 ├── data/
 │   ├── database.dart                            # Drift DB: tables, migrations, queries
-│   └── database.g.dart                          # Generated Drift code
+│   ├── database.g.dart                          # Generated Drift code
+│   └── decay_model.dart                         # DecayModel enum (none/exponential/linear)
 ├── providers/
-│   └── database_providers.dart                  # Riverpod providers (DB, substances, doses, card data)
+│   ├── database_providers.dart                  # Riverpod providers (DB, trackables, doses, card data)
+│   └── settings_providers.dart                  # SharedPreferences + day boundary hour provider
 ├── utils/
 │   ├── day_boundary.dart                        # 5 AM day boundary utilities
 │   └── decay_calculator.dart                    # Pharmacokinetic decay math (pure static)
 └── screens/
-    ├── home_screen.dart                         # Bottom nav with 3 tabs
-    ├── dashboard_screen.dart                    # Dashboard tab — substance cards list
+    ├── home_screen.dart                         # Bottom nav with 4 tabs
+    ├── dashboard_screen.dart                    # Dashboard tab — trackable cards + date nav
     ├── dashboard/
-    │   ├── substance_log_screen.dart            # Per-substance dose history (infinite scroll)
+    │   ├── trackable_log_screen.dart            # Per-trackable dose history (infinite scroll)
     │   └── widgets/
-    │       ├── substance_card.dart              # Card: stats + chart + toolbar
+    │       ├── trackable_card.dart              # Card: stats + chart + toolbar
     │       └── decay_curve_chart.dart           # Mini fl_chart LineChart
     ├── log/
-    │   ├── log_dose_screen.dart                 # Log dose form
+    │   ├── log_dose_screen.dart                 # Log tab — recent doses list
+    │   ├── add_dose_screen.dart                 # Add new dose form
     │   ├── edit_dose_screen.dart                # Edit existing dose
     │   └── widgets/
     │       └── time_picker.dart                 # Date + time picker
-    └── substances/
-        ├── substances_screen.dart               # Substance list management
+    ├── settings/
+    │   └── settings_screen.dart                 # Settings tab — day boundary config
+    └── trackables/
+        ├── trackables_screen.dart               # Trackable list management
+        ├── edit_trackable_screen.dart            # Edit trackable form + color picker
+        ├── add_trackable_screen.dart             # Add new trackable form
         └── widgets/
-            └── substance_form_card.dart         # Add/edit substance form
+            └── color_palette_selector.dart       # 10-color palette picker widget
 test/
 ├── helpers/
 │   └── test_database.dart                       # In-memory test DB factory
 ├── utils/
 │   ├── day_boundary_test.dart                   # Day boundary unit tests
 │   └── decay_calculator_test.dart               # Decay math unit tests
-├── dashboard_screen_test.dart                   # Dashboard widget tests
-├── substance_log_screen_test.dart               # Substance log widget tests
+├── dashboard_screen_test.dart                   # Dashboard + date nav widget tests
+├── trackable_log_screen_test.dart               # Trackable log widget tests
 ├── log_dose_screen_test.dart                    # Log dose widget tests
-└── substances_screen_test.dart                  # Substances widget tests
+├── trackables_screen_test.dart                  # Trackables widget tests
+├── edit_trackable_screen_test.dart              # Edit trackable + color picker tests
+└── settings_screen_test.dart                    # Settings screen tests
 plans/
 └── caffeine-tracker.md                          # Full roadmap
 ```
@@ -92,19 +101,19 @@ plans/
 
 ## Data Models (schema v4)
 
-### Substance
+### Trackable
 - `id: int` (auto-increment PK)
 - `name: String` (e.g., "Caffeine")
 - `isMain: bool` (default false — is this the default in the Log form?)
 - `isVisible: bool` (default true — does it appear in the Log form dropdown?)
 - `halfLifeHours: double?` (nullable — null = no decay tracking, e.g., Water)
 - `unit: String` (default "mg" — free text, displayed as amount suffix)
-- `color: int` (ARGB int — auto-assigned from `substanceColorPalette`)
+- `color: int` (ARGB int — auto-assigned from `trackableColorPalette`)
 
 ### DoseLog
 - `id: int` (auto-increment PK)
-- `substanceId: int` (FK → substances)
-- `amount: double` (e.g., 90.0 — unit comes from substance)
+- `trackableId: int` (FK → trackables)
+- `amount: double` (e.g., 90.0 — unit comes from trackable)
 - `loggedAt: DateTime` (when the dose was consumed)
 
 ## Decay Curve Formula
@@ -134,5 +143,5 @@ But over the last few changes we ran into a lot of tests that ran for minutes on
 - Code gen: `dart run build_runner build --delete-conflicting-outputs`
 
 ## Dependencies
-**Runtime:** flutter_riverpod, riverpod_annotation, drift, sqlite3_flutter_libs, path_provider, path, fl_chart
+**Runtime:** flutter_riverpod, riverpod_annotation, drift, sqlite3_flutter_libs, path_provider, path, fl_chart, shared_preferences
 **Dev:** drift_dev, build_runner

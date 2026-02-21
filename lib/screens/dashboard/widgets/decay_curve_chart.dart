@@ -1,11 +1,11 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
-/// Mini decay curve chart displayed inside each substance card.
+/// Mini decay curve chart displayed inside each trackable card.
 ///
-/// Shows the rise and fall of active substance throughout the day.
+/// Shows the rise and fall of active amount throughout the day.
 /// Uses fl_chart's LineChart (similar to Chart.js in the web world):
-///   - Single curved line in the substance's color
+///   - Single curved line in the trackable's color
 ///   - Translucent fill below the line
 ///   - Dashed vertical line at "now" position
 ///   - Bottom axis with clock time labels (5a, 9a, 1p, ...)
@@ -15,12 +15,16 @@ class DecayCurveChart extends StatelessWidget {
   /// The decay curve data points from DecayCalculator.generateCurve().
   final List<({DateTime time, double amount})> curvePoints;
 
-  /// The substance's color (ARGB int from the palette).
+  /// The trackable's color (ARGB int from the palette).
   final Color color;
 
   /// The start time of the chart (day boundary), used for X-axis time labels.
   /// If not provided, falls back to the first curve point's time.
   final DateTime? startTime;
+
+  /// Whether the chart is showing live (today) data.
+  /// When false (viewing a past date), the "now" vertical indicator is hidden.
+  final bool isLive;
 
   /// Fixed height for the chart. Slightly taller than before to fit axis labels.
   final double height;
@@ -30,6 +34,7 @@ class DecayCurveChart extends StatelessWidget {
     required this.curvePoints,
     required this.color,
     this.startTime,
+    this.isLive = true,
     this.height = 120,
   });
 
@@ -43,7 +48,7 @@ class DecayCurveChart extends StatelessWidget {
 
     // Convert curve points to FlSpot(x, y) for fl_chart.
     // X axis = hours from the start of the curve (day boundary).
-    // Y axis = active amount in the substance's unit.
+    // Y axis = active amount in the trackable's unit.
     final spots = curvePoints.map((p) {
       final hoursFromStart =
           p.time.difference(chartStartTime).inMinutes / 60.0;
@@ -55,11 +60,18 @@ class DecayCurveChart extends StatelessWidget {
     final maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
     final adjustedMaxY = maxY > 0 ? maxY * 1.1 : 1.0;
 
-    // Calculate "now" position on the X axis for the vertical indicator line.
-    final now = DateTime.now();
-    final nowHours = now.difference(chartStartTime).inMinutes / 60.0;
     final maxX = spots.last.x;
-    final clampedNowHours = nowHours.clamp(0.0, maxX);
+
+    // Calculate "now" position on the X axis for the vertical indicator line.
+    // Only used when showing live data (today).
+    final double? clampedNowHours;
+    if (isLive) {
+      final now = DateTime.now();
+      final nowHours = now.difference(chartStartTime).inMinutes / 60.0;
+      clampedNowHours = nowHours.clamp(0.0, maxX);
+    } else {
+      clampedNowHours = null;
+    }
 
     // Theme colors for axis labels and grid.
     final axisColor = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -92,15 +104,17 @@ class DecayCurveChart extends StatelessWidget {
             ),
           ],
 
-          // --- Dashed vertical "now" line ---
+          // --- Dashed vertical "now" line (only in live mode) ---
+          // Hidden when viewing past dates since "now" isn't on the chart.
           extraLinesData: ExtraLinesData(
             verticalLines: [
-              VerticalLine(
-                x: clampedNowHours,
-                color: axisColor.withAlpha(100),
-                strokeWidth: 1,
-                dashArray: [4, 4],
-              ),
+              if (clampedNowHours != null)
+                VerticalLine(
+                  x: clampedNowHours,
+                  color: axisColor.withAlpha(100),
+                  strokeWidth: 1,
+                  dashArray: [4, 4],
+                ),
             ],
           ),
 

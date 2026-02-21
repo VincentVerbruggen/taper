@@ -18,9 +18,9 @@ import 'package:taper/screens/log/widgets/time_picker.dart';
 ///   - Save calls updateDoseLog() instead of insertDoseLog()
 ///   - Navigator.pop() after saving returns to the log list
 class EditDoseScreen extends ConsumerStatefulWidget {
-  /// The dose log entry to edit — includes both the DoseLog and its Substance.
-  /// Like passing $doseLog->load('substance') to the view.
-  final DoseLogWithSubstance entry;
+  /// The dose log entry to edit — includes both the DoseLog and its Trackable.
+  /// Like passing $doseLog->load('trackable') to the view.
+  final DoseLogWithTrackable entry;
 
   const EditDoseScreen({super.key, required this.entry});
 
@@ -29,8 +29,8 @@ class EditDoseScreen extends ConsumerStatefulWidget {
 }
 
 class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
-  // Currently selected substance — pre-filled from the existing entry.
-  Substance? _selectedSubstance;
+  // Currently selected trackable — pre-filled from the existing entry.
+  Trackable? _selectedTrackable;
 
   // Controller for the amount text field — pre-filled with existing amount.
   final _amountController = TextEditingController();
@@ -45,7 +45,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
 
     // Pre-fill all form fields from the existing entry.
     // Like old() in Laravel Blade — populates inputs with previous values.
-    _selectedSubstance = widget.entry.substance;
+    _selectedTrackable = widget.entry.trackable;
     _amountController.text = widget.entry.doseLog.amount.toStringAsFixed(0);
 
     final loggedAt = widget.entry.doseLog.loggedAt;
@@ -61,9 +61,9 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch the substances list so the dropdown stays in sync if substances
+    // Watch the trackables list so the dropdown stays in sync if trackables
     // change while the edit screen is open (unlikely but defensive).
-    final substancesAsync = ref.watch(substancesProvider);
+    final trackablesAsync = ref.watch(trackablesProvider);
 
     return Scaffold(
       // AppBar gives us the back button for free — like having a <a href="{{ url()->previous() }}">
@@ -71,41 +71,41 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
       appBar: AppBar(
         title: const Text('Edit Dose'),
       ),
-      body: substancesAsync.when(
+      body: trackablesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stack) => Center(child: Text('Error: $error')),
-        data: (substances) => _buildForm(substances),
+        data: (trackables) => _buildForm(trackables),
       ),
     );
   }
 
-  Widget _buildForm(List<Substance> substances) {
+  Widget _buildForm(List<Trackable> trackables) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // --- Substance picker ---
+          // --- Trackable picker ---
           // Same dropdown as the create form, but with initialValue set
-          // to the existing substance. Like <select> with selected="...".
-          DropdownButtonFormField<Substance>(
-            // Pre-select the substance that matches the existing entry's substance ID.
-            // We find by ID (not reference) because the Substance objects from the
-            // provider stream are different instances than widget.entry.substance.
-            // Like: <option> with @selected($s->id === $doseLog->substance_id)
-            initialValue: substances.where((s) => s.id == _selectedSubstance?.id).firstOrNull,
+          // to the existing trackable. Like <select> with selected="...".
+          DropdownButtonFormField<Trackable>(
+            // Pre-select the trackable that matches the existing entry's trackable ID.
+            // We find by ID (not reference) because the Trackable objects from the
+            // provider stream are different instances than widget.entry.trackable.
+            // Like: <option> with @selected($t->id === $doseLog->trackable_id)
+            initialValue: trackables.where((t) => t.id == _selectedTrackable?.id).firstOrNull,
             decoration: const InputDecoration(
-              labelText: 'Substance',
+              labelText: 'Trackable',
               border: OutlineInputBorder(),
             ),
-            items: substances.map((s) {
-              return DropdownMenuItem<Substance>(
-                value: s,
-                child: Text(s.name),
+            items: trackables.map((t) {
+              return DropdownMenuItem<Trackable>(
+                value: t,
+                child: Text(t.name),
               );
             }).toList(),
-            onChanged: (substance) {
-              setState(() => _selectedSubstance = substance);
+            onChanged: (trackable) {
+              setState(() => _selectedTrackable = trackable);
             },
           ),
 
@@ -113,12 +113,12 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
 
           // --- Amount input ---
           // Pre-filled with the existing amount.
-          // suffixText shows the substance's unit dynamically.
+          // suffixText shows the trackable's unit dynamically.
           TextField(
             controller: _amountController,
             decoration: InputDecoration(
               labelText: 'Amount',
-              suffixText: _selectedSubstance?.unit ?? 'mg',
+              suffixText: _selectedTrackable?.unit ?? 'mg',
               border: const OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -160,7 +160,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
 
   /// Validates the form — same logic as LogDoseScreen._canSave().
   bool _canSave() {
-    if (_selectedSubstance == null) return false;
+    if (_selectedTrackable == null) return false;
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) return false;
     final amount = double.tryParse(amountText);
@@ -181,7 +181,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
     if (_saving) return;
     _saving = true;
 
-    final substance = _selectedSubstance!;
+    final trackable = _selectedTrackable!;
     final amount = double.parse(_amountController.text.trim());
 
     // Combine date + time into a single DateTime (same as LogDoseScreen).
@@ -196,7 +196,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
     // Call updateDoseLog() instead of insertDoseLog().
     await ref.read(databaseProvider).updateDoseLog(
       widget.entry.doseLog.id,
-      substance.id,
+      trackable.id,
       amount,
       loggedAt,
     );

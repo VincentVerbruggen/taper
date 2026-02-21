@@ -1,22 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
-import 'package:taper/screens/dashboard/substance_log_screen.dart';
+import 'package:taper/providers/settings_providers.dart';
+import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 
 import 'helpers/test_database.dart';
 
 void main() {
   late AppDatabase db;
-  late Substance caffeine;
+  late Trackable caffeine;
+  late SharedPreferences prefs;
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
     db = createTestDatabase();
-    final substances = await db.select(db.substances).get();
-    caffeine = substances.firstWhere((s) => s.name == 'Caffeine');
+    final trackables = await db.select(db.trackables).get();
+    caffeine = trackables.firstWhere((s) => s.name == 'Caffeine');
   });
 
   tearDown(() async {
@@ -27,9 +32,12 @@ void main() {
 
   Widget buildTestWidget() {
     return ProviderScope(
-      overrides: [databaseProvider.overrideWithValue(db)],
+      overrides: [
+        databaseProvider.overrideWithValue(db),
+        sharedPreferencesProvider.overrideWithValue(prefs),
+      ],
       child: MaterialApp(
-        home: SubstanceLogScreen(substance: caffeine),
+        home: TrackableLogScreen(trackable: caffeine),
       ),
     );
   }
@@ -54,7 +62,7 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('shows substance name in AppBar', (tester) async {
+  testWidgets('shows trackable name in AppBar', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
@@ -99,7 +107,39 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('delete removes dose from list', (tester) async {
+  testWidgets('swipe-to-delete removes dose and shows undo SnackBar', (tester) async {
+    await db.insertDoseLog(caffeine.id, 100, DateTime.now());
+
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // 100 mg appears twice: once in the dose entry, once in the day total header.
+    expect(find.text('100 mg'), findsNWidgets(2));
+
+    // Fling the Dismissible widget (there's exactly one since we have one dose).
+    // Can't use find.text('100 mg').first because the first match is the
+    // day total header (not inside a Dismissible).
+    await tester.fling(find.byType(Dismissible), const Offset(-500, 0), 1000);
+    // Pump repeatedly to let dismiss animation finish, async DB delete complete,
+    // and the StreamBuilder emit the updated empty list.
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('100 mg'), findsNothing);
+    expect(find.text('No doses logged yet.'), findsOneWidget);
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs, isEmpty);
+
+    // SnackBar with undo action.
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('undo re-inserts deleted dose', (tester) async {
     await db.insertDoseLog(caffeine.id, 100, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
@@ -107,15 +147,25 @@ void main() {
 
     expect(find.text('100 mg'), findsNWidgets(2));
 
-    await tester.tap(find.byIcon(Icons.delete_outline));
+    // Swipe to delete.
+    await tester.fling(find.byType(Dismissible), const Offset(-500, 0), 1000);
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('100 mg'), findsNothing);
+
+    // Tap "Undo" to re-insert.
+    await tester.tap(find.text('Undo'));
     await tester.pump();
     await pumpAndWait(tester);
 
-    expect(find.text('100 mg'), findsNothing);
-    expect(find.text('No doses logged yet.'), findsOneWidget);
+    // Dose should be back — appears in entry + day total again.
+    expect(find.text('100 mg'), findsNWidgets(2));
 
     final logs = await db.select(db.doseLogs).get();
-    expect(logs, isEmpty);
+    expect(logs.length, 1);
+    expect(logs.first.amount, 100.0);
 
     await cleanUp(tester);
   });
@@ -188,7 +238,7 @@ void main() {
     final logs = await db.select(db.doseLogs).get();
     expect(logs.length, 1);
     expect(logs.first.amount, 200.0);
-    expect(logs.first.substanceId, caffeine.id);
+    expect(logs.first.trackableId, caffeine.id);
 
     await cleanUp(tester);
   });

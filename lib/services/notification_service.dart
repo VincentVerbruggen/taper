@@ -3,15 +3,17 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:taper/data/database.dart';
+import 'package:taper/data/decay_model.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
 import 'package:taper/utils/day_boundary.dart';
 import 'package:taper/utils/decay_calculator.dart';
 
 /// Manages a persistent "party mode" notification for rapid dose logging.
 ///
-/// Pin a substance → an ongoing notification shows current stats (active / total)
+/// Pin a trackable → an ongoing notification shows current stats (active / total)
 /// with "Repeat Last" and "Add Dose" action buttons. Updated every 60 seconds.
 ///
 /// This is a singleton — one notification at a time, managed globally.
@@ -37,8 +39,8 @@ class NotificationService {
   /// Like a setInterval() in JavaScript.
   Timer? _updateTimer;
 
-  /// The currently pinned substance. null = not tracking.
-  Substance? _pinnedSubstance;
+  /// The currently pinned trackable. null = not tracking.
+  Trackable? _pinnedTrackable;
 
   /// Database reference for querying doses. Stored on startTracking().
   AppDatabase? _db;
@@ -67,11 +69,11 @@ class NotificationService {
   static const _actionRepeatLast = 'repeat_last';
   static const _actionAddDose = 'add_dose';
 
-  /// Whether a substance is currently pinned and being tracked.
-  bool get isTracking => _pinnedSubstance != null;
+  /// Whether a trackable is currently pinned and being tracked.
+  bool get isTracking => _pinnedTrackable != null;
 
-  /// The ID of the currently pinned substance (for UI state).
-  int? get pinnedSubstanceId => _pinnedSubstance?.id;
+  /// The ID of the currently pinned trackable (for UI state).
+  int? get pinnedTrackableId => _pinnedTrackable?.id;
 
   /// Initialize the notification plugin and register the action handler.
   ///
@@ -127,21 +129,21 @@ class NotificationService {
     return granted ?? false;
   }
 
-  /// Pin a substance and show the persistent tracking notification.
+  /// Pin a trackable and show the persistent tracking notification.
   ///
   /// Steps:
   ///   1. Stop any existing tracking (only one at a time)
-  ///   2. Store the substance + DB reference
+  ///   2. Store the trackable + DB reference
   ///   3. Show the notification immediately with current stats
   ///   4. Start a 60-second timer to keep stats fresh
   ///
-  /// [substance] = the substance to track (need its name, halfLife, unit).
+  /// [trackable] = the trackable to track (need its name, halfLife, unit).
   /// [db] = database for querying doses.
-  Future<void> startTracking(Substance substance, AppDatabase db) async {
+  Future<void> startTracking(Trackable trackable, AppDatabase db) async {
     // Stop previous tracking if any — like clearing old state before setting new.
     await stopTracking();
 
-    _pinnedSubstance = substance;
+    _pinnedTrackable = trackable;
     _db = db;
 
     // Show the notification immediately (don't wait 60s for the first update).
@@ -168,7 +170,7 @@ class NotificationService {
   Future<void> stopTracking() async {
     _updateTimer?.cancel();
     _updateTimer = null;
-    _pinnedSubstance = null;
+    _pinnedTrackable = null;
     _db = null;
 
     // cancel() removes the notification by its ID.
@@ -186,43 +188,58 @@ class NotificationService {
   ///   - Every 60 seconds by the timer
   ///   - After a "Repeat Last" action (so the new dose shows instantly)
   Future<void> _update() async {
-    final substance = _pinnedSubstance;
+    final trackable = _pinnedTrackable;
     final db = _db;
-    if (substance == null || db == null) return;
+    if (trackable == null || db == null) return;
 
     final now = DateTime.now();
-    final boundary = dayBoundary(now);
+    // Read the day boundary hour directly from SharedPreferences.
+    // The notification service is a singleton outside the Riverpod tree,
+    // so it can't use ref.watch(). SharedPreferences is already loaded.
+    final prefs = await SharedPreferences.getInstance();
+    final boundaryHour = prefs.getInt('dayBoundaryHour') ?? 5;
+    final boundary = dayBoundary(now, boundaryHour: boundaryHour);
+    final model = DecayModel.fromString(trackable.decayModel);
 
-    // Calculate the dose query window — same logic as substanceCardDataProvider.
-    // For substances with a half-life, look back further to capture still-decaying
-    // doses from before the day boundary.
-    final dosesSince = substance.halfLifeHours != null
-        ? boundary.subtract(
-            Duration(hours: (substance.halfLifeHours! * 10).ceil()),
-          )
-        : boundary;
+    // Calculate the dose query window — same logic as trackableCardDataProvider.
+    // Each decay model needs a different lookback window.
+    final dosesSince = switch (model) {
+      DecayModel.exponential => boundary.subtract(
+          Duration(hours: (trackable.halfLifeHours! * 10).ceil()),
+        ),
+      DecayModel.linear => boundary.subtract(const Duration(hours: 24)),
+      DecayModel.none => boundary,
+    };
 
     // One-shot queries (not streams) — we just need the current values.
-    final allDoses = await db.getDosesSince(substance.id, dosesSince);
-    final lastDose = await db.getLastDose(substance.id);
+    final allDoses = await db.getDosesSince(trackable.id, dosesSince);
+    final lastDose = await db.getLastDose(trackable.id);
 
     // Filter to just today's doses for the raw total.
     final todayDoses = allDoses.where((d) => !d.loggedAt.isBefore(boundary)).toList();
     final totalToday = DecayCalculator.totalRawAmount(todayDoses);
 
-    // Build the notification body text.
+    // Build the notification body text based on decay model.
+    // 3-way switch: exponential shows active/total, linear shows active/total,
+    // none shows just the total.
     String body;
-    if (substance.halfLifeHours != null) {
-      // With half-life: "42 / 180 mg · Last: 22:47"
-      final active = DecayCalculator.totalActiveAt(
-        doses: allDoses,
-        halfLifeHours: substance.halfLifeHours!,
-        queryTime: now,
-      );
-      body = '${active.toStringAsFixed(0)} / ${totalToday.toStringAsFixed(0)} ${substance.unit}';
-    } else {
-      // Without half-life: "500 ml"
-      body = '${totalToday.toStringAsFixed(0)} ${substance.unit}';
+    switch (model) {
+      case DecayModel.exponential:
+        final active = DecayCalculator.totalActiveAt(
+          doses: allDoses,
+          halfLifeHours: trackable.halfLifeHours!,
+          queryTime: now,
+        );
+        body = '${active.toStringAsFixed(0)} / ${totalToday.toStringAsFixed(0)} ${trackable.unit}';
+      case DecayModel.linear:
+        final active = DecayCalculator.totalActiveLinearAt(
+          doses: allDoses,
+          eliminationRate: trackable.eliminationRate!,
+          queryTime: now,
+        );
+        body = '${active.toStringAsFixed(0)} / ${totalToday.toStringAsFixed(0)} ${trackable.unit}';
+      case DecayModel.none:
+        body = '${totalToday.toStringAsFixed(0)} ${trackable.unit}';
     }
 
     // Append "· Last: HH:mm" if there's a recent dose.
@@ -234,7 +251,7 @@ class NotificationService {
 
     // Show/update the notification with action buttons.
     await _showNotification(
-      title: substance.name,
+      title: trackable.name,
       body: body,
     );
   }
@@ -256,8 +273,8 @@ class NotificationService {
   }) async {
     final androidDetails = AndroidNotificationDetails(
       _channelId,
-      'Substance Tracking',
-      channelDescription: 'Persistent notification for tracking a pinned substance',
+      'Trackable Tracking',
+      channelDescription: 'Persistent notification for tracking a pinned trackable',
       // Importance.low = notification sits in the shade, never pops up as a
       // heads-up banner. This is what we want for a tracking ticker that
       // refreshes every 15 seconds — it should be quiet and unobtrusive.
@@ -272,7 +289,7 @@ class NotificationService {
       onlyAlertOnce: true,
       // Action buttons shown below the notification body.
       // showsUserInterface=true is CRITICAL: it routes the action through the
-      // main isolate where our singleton state (_db, _pinnedSubstance) lives.
+      // main isolate where our singleton state (_db, _pinnedTrackable) lives.
       // With showsUserInterface=false, Android uses a background isolate that
       // has no access to our in-memory state → actions silently fail.
       // The trade-off: the app briefly opens, but the action actually works.
@@ -318,21 +335,21 @@ class NotificationService {
 
   /// Handle the "Repeat Last" notification action.
   ///
-  /// Gets the most recent dose for the pinned substance, inserts a new dose
+  /// Gets the most recent dose for the pinned trackable, inserts a new dose
   /// with the same amount at the current time, then refreshes the notification.
   ///
   /// Like: $lastDose = DoseLog::latest()->first(); DoseLog::create([...same amount...])
   Future<void> _handleRepeatLast() async {
-    final substance = _pinnedSubstance;
+    final trackable = _pinnedTrackable;
     final db = _db;
-    if (substance == null || db == null) return;
+    if (trackable == null || db == null) return;
 
-    final lastDose = await db.getLastDose(substance.id);
+    final lastDose = await db.getLastDose(trackable.id);
     if (lastDose == null) return;
 
     // Insert a new dose with the same amount, timestamped now.
     await db.insertDoseLog(
-      substance.id,
+      trackable.id,
       lastDose.amount,
       DateTime.now(),
     );
@@ -350,16 +367,16 @@ class NotificationService {
   /// Like opening a modal from a global event handler:
   ///   app('router')->pushRoute('/doses/quick-add')
   void _handleAddDose() {
-    final substance = _pinnedSubstance;
+    final trackable = _pinnedTrackable;
     final db = _db;
     final navContext = navigatorKey?.currentContext;
-    if (substance == null || db == null || navContext == null) return;
+    if (trackable == null || db == null || navContext == null) return;
 
     // Show the shared quick-add dialog. When the user logs a dose,
     // it inserts via the DB and we refresh the notification.
     showQuickAddDoseDialog(
       context: navContext,
-      substance: substance,
+      trackable: trackable,
       db: db,
     ).then((_) {
       // Refresh notification after dialog closes (whether a dose was added or not).

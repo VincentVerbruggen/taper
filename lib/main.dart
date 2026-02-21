@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/home_screen.dart';
 import 'package:taper/services/notification_service.dart';
 
@@ -23,14 +25,28 @@ void main() async {
   // Initialize the notification plugin (channels, action handler).
   // This just sets up the plumbing — no notification is shown yet.
   // Like registering a service provider in boot().
+  // Initialize the notification plugin (channels, action handler).
+  // This just sets up the plumbing — no notification is shown yet.
+  // Like registering a service provider in boot().
   await NotificationService.instance.init();
 
   // Give the notification service the navigator key so it can open dialogs
   // (e.g., "Add Dose" quick-add dialog) from notification action callbacks.
   NotificationService.instance.navigatorKey = navigatorKey;
 
+  // Load SharedPreferences before runApp so it's available synchronously
+  // in all providers. Like loading config before booting the app container.
+  final prefs = await SharedPreferences.getInstance();
+
   runApp(
-    const ProviderScope(child: TaperApp()),
+    ProviderScope(
+      overrides: [
+        // Inject the pre-loaded SharedPreferences instance so providers can
+        // read settings synchronously (no FutureProvider needed).
+        sharedPreferencesProvider.overrideWithValue(prefs),
+      ],
+      child: const TaperApp(),
+    ),
   );
 }
 

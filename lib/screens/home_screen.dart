@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:taper/screens/dashboard_screen.dart';
 import 'package:taper/screens/log/log_dose_screen.dart';
-import 'package:taper/screens/substances/substances_screen.dart';
+import 'package:taper/screens/settings/settings_screen.dart';
+import 'package:taper/screens/trackables/trackables_screen.dart';
 
 /// HomeScreen = the app's main navigation shell.
 ///
@@ -33,7 +34,8 @@ class _HomeScreenState extends State<HomeScreen> {
         children: const [
           DashboardScreen(),
           LogDoseScreen(),
-          SubstancesScreen(),
+          TrackablesScreen(),
+          SettingsScreen(),
         ],
       ),
 
@@ -57,7 +59,12 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(
             icon: Icon(Icons.science_outlined),
             selectedIcon: Icon(Icons.science),
-            label: 'Substances',
+            label: 'Trackables',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),

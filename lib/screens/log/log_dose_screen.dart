@@ -1,19 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/log/add_dose_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
-import 'package:taper/screens/log/widgets/time_picker.dart';
 
 /// LogDoseScreen = the "Log" tab showing recent doses with a FAB to add new ones.
 ///
-/// The form for logging a dose is now behind the FAB (bottom sheet), so the
-/// main screen is just the recent logs list with a "Log" heading.
+/// The FAB navigates to a dedicated AddDoseScreen for the full form.
+/// The quick-add dialog (from dashboard cards) still exists for rapid logging.
 ///
 /// Like a Laravel index page (doses/index.blade.php) with a "Create" button
-/// that opens a modal instead of navigating to a separate create page.
+/// that navigates to a separate create page.
 ///
 /// ConsumerStatefulWidget because we need both:
 ///   - Riverpod providers (ref.watch for recent logs, ref.read for DB writes)
@@ -31,14 +30,13 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     final logsAsync = ref.watch(doseLogsProvider);
 
     return Scaffold(
-      // FAB opens the log dose bottom sheet — the full form with substance
-      // picker, amount, and time.
+      // FAB navigates to the add dose screen.
       // heroTag must be unique across all visible FABs to avoid hero animation
       // conflicts. Multiple tabs can be in the widget tree at once, so each
       // FAB needs its own tag (like unique element IDs in HTML).
       floatingActionButton: FloatingActionButton(
         heroTag: 'logDoseFab',
-        onPressed: () => _showLogDoseSheet(context),
+        onPressed: () => _addDose(),
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
@@ -52,7 +50,7 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     );
   }
 
-  Widget _buildLogsList(List<DoseLogWithSubstance> logs) {
+  Widget _buildLogsList(List<DoseLogWithTrackable> logs) {
     if (logs.isEmpty) {
       return ListView(
         padding: const EdgeInsets.all(16),
@@ -94,30 +92,55 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     );
   }
 
-  /// Builds a single log entry card.
-  Widget _buildLogTile(DoseLogWithSubstance entry) {
+  /// Builds a single log entry card wrapped in Dismissible for swipe-to-delete.
+  ///
+  /// Dismissible = Flutter's swipe-to-dismiss widget, like a swipe handler in
+  /// a mobile list. Swiping left reveals a red background with a trash icon,
+  /// then deletes the dose and shows an "Undo" SnackBar.
+  Widget _buildLogTile(DoseLogWithTrackable entry) {
+    final theme = Theme.of(context);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Card.outlined(
-        child: ListTile(
-          // "Caffeine — 90 mg" or "Water — 500 ml".
-          title: Text(
-            '${entry.substance.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.substance.unit}',
+      padding: const EdgeInsets.only(bottom: 2.0),
+      child: Dismissible(
+        key: ValueKey(entry.doseLog.id),
+        direction: DismissDirection.endToStart,
+        background: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            color: theme.colorScheme.errorContainer,
+            child: Icon(
+              Icons.delete_outline,
+              color: theme.colorScheme.onErrorContainer,
+            ),
           ),
-          subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
-          trailing: IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => _deleteDoseLog(entry.doseLog.id),
-            tooltip: 'Delete',
+        ),
+        onDismissed: (_) => _deleteDoseLogWithUndo(entry),
+        child: Card(
+          shape: shape,
+          clipBehavior: Clip.antiAlias, // clips ink to rounded corners
+          child: InkWell(
+            customBorder: shape,
+            onTap: () => _editDoseLog(entry),
+            child: ListTile(
+              title: Text(
+                '${entry.trackable.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
+              ),
+              subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
+            ),
           ),
-          onTap: () => _editDoseLog(entry),
         ),
       ),
     );
   }
 
   /// Navigate to the edit screen for this dose log entry.
-  void _editDoseLog(DoseLogWithSubstance entry) {
+  void _editDoseLog(DoseLogWithTrackable entry) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -126,8 +149,48 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     );
   }
 
-  void _deleteDoseLog(int id) async {
-    await ref.read(databaseProvider).deleteDoseLog(id);
+  /// Delete a dose and show an "Undo" SnackBar that can re-insert it.
+  ///
+  /// Stores the dose details before deleting so we can re-insert on undo.
+  /// Like a soft-delete with immediate restore — the SnackBar acts as a
+  /// brief "trash" window before the delete becomes permanent.
+  void _deleteDoseLogWithUndo(DoseLogWithTrackable entry) async {
+    final dose = entry.doseLog;
+    final db = ref.read(databaseProvider);
+
+    // Delete the dose from the database.
+    await db.deleteDoseLog(dose.id);
+
+    // Guard against the widget being disposed (e.g., user navigated away)
+    // before the SnackBar can be shown. Like checking $this->component in Livewire.
+    if (!mounted) return;
+
+    // Show SnackBar with "Undo" action. ScaffoldMessenger is the global SnackBar
+    // controller — like a toast notification manager.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Deleted ${entry.trackable.name} — ${dose.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
+        ),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            // Re-insert with the same trackable, amount, and timestamp.
+            // This creates a new row (new ID) but with identical data.
+            db.insertDoseLog(dose.trackableId, dose.amount, dose.loggedAt);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Navigate to the add dose screen.
+  /// Like clicking "Create" in a Laravel resource → GET /doses/create.
+  void _addDose() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddDoseScreen()),
+    );
   }
 
   /// Format a log's timestamp for display in the recent logs list.
@@ -156,217 +219,5 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final dateStr = '${days[loggedAt.weekday - 1]}, ${months[loggedAt.month - 1]} ${loggedAt.day}';
     return '$dateStr — $time';
-  }
-
-  /// Opens a bottom sheet with the full log dose form: substance picker,
-  /// amount, time, and a save button. Like a modal create form.
-  void _showLogDoseSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      // useSafeArea prevents the sheet from going under the status bar.
-      useSafeArea: true,
-      builder: (sheetContext) {
-        // The bottom sheet is a ConsumerStatefulWidget, so it has its own
-        // ref and can watch providers directly. Riverpod scopes flow through
-        // the widget tree, so the sheet inherits the same ProviderScope.
-        return const _LogDoseBottomSheet();
-      },
-    );
-  }
-}
-
-/// The log dose form shown in a bottom sheet.
-///
-/// Contains the full form: substance picker, amount, time, save button.
-/// Like the old inline form, but in a modal that slides up from the bottom.
-///
-/// ConsumerStatefulWidget because it needs to:
-///   - Watch providers (visibleSubstancesProvider) to load substances
-///   - Read providers (databaseProvider) to save doses
-///   - Manage local form state (controllers, selected time)
-///
-/// IMPORTANT: Must be a ConsumerStatefulWidget (not plain StatefulWidget
-/// with parentRef) so `ref.watch()` properly triggers rebuilds when async
-/// data arrives. A plain StatefulWidget calling parentRef.watch() won't
-/// rebuild itself — only the parent Consumer rebuilds.
-class _LogDoseBottomSheet extends ConsumerStatefulWidget {
-  const _LogDoseBottomSheet();
-
-  @override
-  ConsumerState<_LogDoseBottomSheet> createState() => _LogDoseBottomSheetState();
-}
-
-class _LogDoseBottomSheetState extends ConsumerState<_LogDoseBottomSheet> {
-  Substance? _selectedSubstance;
-  final _amountController = TextEditingController();
-  late DateTime _selectedDate;
-  late TimeOfDay _selectedTime;
-
-  @override
-  void initState() {
-    super.initState();
-    _resetTime();
-  }
-
-  void _resetTime() {
-    final now = DateTime.now();
-    _selectedDate = now;
-    _selectedTime = TimeOfDay.fromDateTime(now);
-  }
-
-  @override
-  void dispose() {
-    _amountController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Watch visible substances — triggers rebuild when data arrives.
-    final substancesAsync = ref.watch(visibleSubstancesProvider);
-
-    return substancesAsync.when(
-      loading: () => const SizedBox(
-        height: 200,
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (e, s) => SizedBox(height: 200, child: Center(child: Text('Error: $e'))),
-      data: (substances) => _buildForm(substances),
-    );
-  }
-
-  Widget _buildForm(List<Substance> substances) {
-    if (substances.isEmpty) {
-      return const SizedBox(
-        height: 200,
-        child: Center(child: Text('No substances. Add one first.')),
-      );
-    }
-
-    // Auto-select the main substance on first load.
-    _selectedSubstance ??= substances.where((s) => s.isMain).firstOrNull;
-
-    // Look up the selected substance from the current stream data.
-    final currentSelected = _selectedSubstance != null
-        ? substances.where((s) => s.id == _selectedSubstance!.id).firstOrNull
-        : null;
-
-    // Padding.fromViewPadding adds space for the keyboard so fields stay visible.
-    // Like adding padding-bottom for a virtual keyboard in CSS.
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Log Dose',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 20),
-
-          // --- Substance picker ---
-          DropdownButtonFormField<Substance>(
-            initialValue: currentSelected,
-            decoration: const InputDecoration(
-              labelText: 'Substance',
-              border: OutlineInputBorder(),
-            ),
-            items: substances.map((s) {
-              return DropdownMenuItem<Substance>(
-                value: s,
-                child: Text(s.name),
-              );
-            }).toList(),
-            onChanged: (substance) {
-              setState(() => _selectedSubstance = substance);
-            },
-          ),
-
-          const SizedBox(height: 16),
-
-          // --- Amount input ---
-          TextField(
-            controller: _amountController,
-            autofocus: true,
-            decoration: InputDecoration(
-              labelText: 'Amount',
-              suffixText: _selectedSubstance?.unit ?? 'mg',
-              border: const OutlineInputBorder(),
-            ),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // --- Time picker ---
-          TimePicker(
-            date: _selectedDate,
-            time: _selectedTime,
-            onDateChanged: (date) => setState(() => _selectedDate = date),
-            onTimeChanged: (time) => setState(() => _selectedTime = time),
-          ),
-
-          const SizedBox(height: 20),
-
-          // --- Save button ---
-          ListenableBuilder(
-            listenable: _amountController,
-            builder: (context, child) {
-              return FilledButton.icon(
-                onPressed: _canSave() ? _saveDose : null,
-                icon: const Icon(Icons.check),
-                label: const Text('Log Dose'),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  bool _canSave() {
-    if (_selectedSubstance == null) return false;
-    final amountText = _amountController.text.trim();
-    if (amountText.isEmpty) return false;
-    final amount = double.tryParse(amountText);
-    return amount != null && amount > 0;
-  }
-
-  bool _saving = false;
-
-  void _saveDose() async {
-    if (_saving) return;
-    _saving = true;
-
-    final substance = _selectedSubstance!;
-    final amount = double.parse(_amountController.text.trim());
-    final loggedAt = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-      _selectedTime.hour,
-      _selectedTime.minute,
-    );
-
-    await ref.read(databaseProvider).insertDoseLog(
-      substance.id,
-      amount,
-      loggedAt,
-    );
-
-    _saving = false;
-    if (mounted) {
-      Navigator.pop(context);
-    }
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/log/add_dose_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/screens/log/log_dose_screen.dart';
 
@@ -84,7 +85,7 @@ void main() {
 
   // --- Recent logs list tests ---
 
-  testWidgets('recent log entry shows substance unit', (tester) async {
+  testWidgets('recent log entry shows trackable unit', (tester) async {
     // Insert a Water dose (id=2, unit="ml") directly in the DB.
     await db.insertDoseLog(2, 500, DateTime.now());
 
@@ -130,7 +131,7 @@ void main() {
     await cleanUp(tester, hasNavigated: true);
   });
 
-  testWidgets('delete removes dose from list and database', (tester) async {
+  testWidgets('swipe-to-delete removes dose and shows undo SnackBar', (tester) async {
     await db.insertDoseLog(1, 200, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
@@ -138,61 +139,97 @@ void main() {
 
     expect(find.text('Caffeine — 200 mg'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pump();
-    await pumpAndWait(tester);
+    // Fling (fast swipe) the dose entry from right to left to trigger dismiss.
+    // fling() is like a fast drag gesture — the Offset is the direction vector.
+    await tester.fling(find.text('Caffeine — 200 mg'), const Offset(-500, 0), 1000);
+    // Pump repeatedly to let the dismiss animation finish, the async DB delete
+    // complete, and the Riverpod stream emit the updated list.
+    // onDismissed fires a void callback that starts an async delete — we need
+    // multiple pump cycles to let the Future resolve and the stream propagate.
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
+    // Dose should be gone from the list AND the database.
     expect(find.text('Caffeine — 200 mg'), findsNothing);
-    expect(find.textContaining('No doses logged yet'), findsOneWidget);
 
     final logs = await db.select(db.doseLogs).get();
     expect(logs, isEmpty);
 
+    // SnackBar should show with "Undo" action.
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+
     await cleanUp(tester);
   });
 
-  // --- Bottom sheet log form tests ---
+  testWidgets('undo re-inserts deleted dose', (tester) async {
+    await db.insertDoseLog(1, 300, DateTime.now());
 
-  testWidgets('FAB opens log dose bottom sheet', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Tap the FAB to open the bottom sheet.
+    expect(find.text('Caffeine — 300 mg'), findsOneWidget);
+
+    // Swipe to delete.
+    await tester.fling(find.text('Caffeine — 300 mg'), const Offset(-500, 0), 1000);
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // Dose should be gone.
+    expect(find.text('Caffeine — 300 mg'), findsNothing);
+
+    // Tap "Undo" to re-insert.
+    await tester.tap(find.text('Undo'));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // Dose should be back in the list and database.
+    expect(find.text('Caffeine — 300 mg'), findsOneWidget);
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs.length, 1);
+    expect(logs.first.amount, 300.0);
+
+    await cleanUp(tester);
+  });
+
+  // --- Add dose screen tests ---
+
+  testWidgets('FAB navigates to AddDoseScreen', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Tap the FAB to navigate to the add dose screen.
     await tester.tap(find.byType(FloatingActionButton));
-    // Bottom sheet has a slide-up animation (~250ms) AND the inner widget
-    // watches visibleSubstancesProvider (async), so we need multiple pump
-    // cycles: first for the animation, then for the provider to deliver data.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await pumpAndWait(tester);
-    await pumpAndWait(tester);
 
-    // "Log Dose" appears as the heading AND as the FilledButton label.
+    // Should be on the AddDoseScreen with the form fields.
+    expect(find.byType(AddDoseScreen), findsOneWidget);
+    // "Log Dose" in the AppBar title AND as the FilledButton label.
     expect(find.text('Log Dose'), findsNWidgets(2));
-    // And the substance dropdown + amount field.
-    expect(find.text('Substance'), findsOneWidget);
+    // Trackable dropdown + amount field.
+    expect(find.text('Trackable'), findsOneWidget);
     expect(find.text('Amount'), findsOneWidget);
 
-    // Close the bottom sheet by tapping the heading area.
-    await tester.tap(find.text('Log Dose').first);
-    await tester.pump(const Duration(milliseconds: 500));
-
-    await cleanUp(tester);
+    await cleanUp(tester, hasNavigated: true);
   });
 
-  testWidgets('save works with auto-selected main substance', (tester) async {
+  testWidgets('save works with auto-selected trackable (first visible)', (tester) async {
+    // No doses logged yet, so it falls back to first visible trackable (Caffeine).
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Open the bottom sheet.
+    // Navigate to the add dose screen.
     await tester.tap(find.byType(FloatingActionButton));
-    // Extra pump time for animation + async provider loading.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await pumpAndWait(tester);
-    await pumpAndWait(tester);
 
-    // Caffeine is auto-selected. Enter amount and save.
+    // Caffeine is auto-selected (first visible trackable). Enter amount and save.
     await tester.enterText(find.byType(TextField).first, '100');
     await tester.pump();
 
@@ -202,10 +239,10 @@ void main() {
     await tester.pump();
     await pumpAndWait(tester);
 
-    // Verify the dose was saved.
+    // Verify the dose was saved for Caffeine (id=1).
     final logs = await db.select(db.doseLogs).get();
     expect(logs.length, 1);
-    expect(logs.first.substanceId, 1);
+    expect(logs.first.trackableId, 1);
     expect(logs.first.amount, 100.0);
 
     await cleanUp(tester);

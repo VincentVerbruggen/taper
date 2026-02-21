@@ -4,9 +4,9 @@ import 'package:taper/utils/decay_calculator.dart';
 
 void main() {
   // Helper to create a DoseLog with just the fields we need for decay math.
-  // The id and substanceId don't matter for pure math tests.
+  // The id and trackableId don't matter for pure math tests.
   DoseLog makeDose(double amount, DateTime loggedAt) {
-    return DoseLog(id: 1, substanceId: 1, amount: amount, loggedAt: loggedAt);
+    return DoseLog(id: 1, trackableId: 1, amount: amount, loggedAt: loggedAt);
   }
 
   group('activeDoseAt', () {
@@ -224,6 +224,162 @@ void main() {
 
     test('empty list returns 0', () {
       expect(DecayCalculator.totalRawAmount([]), 0.0);
+    });
+  });
+
+  // --- Linear (constant-rate) decay tests ---
+  // These test the zero-order elimination model used by alcohol.
+
+  group('activeLinearDoseAt', () {
+    test('at t=0, active equals original amount', () {
+      final loggedAt = DateTime(2026, 2, 21, 20, 0);
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0, // 9 ml/hr
+        queryTime: loggedAt,
+      );
+
+      expect(result, 36.0);
+    });
+
+    test('after 1 hour, eliminates rate amount', () {
+      // 36 ml at 9 ml/hr → after 1h, 36 - 9 = 27 ml remaining.
+      final loggedAt = DateTime(2026, 2, 21, 20, 0);
+      final queryTime = loggedAt.add(const Duration(hours: 1));
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0,
+        queryTime: queryTime,
+      );
+
+      expect(result, closeTo(27.0, 0.01));
+    });
+
+    test('fully eliminated after amount/rate hours', () {
+      // 36 ml at 9 ml/hr → fully gone after 4 hours.
+      final loggedAt = DateTime(2026, 2, 21, 20, 0);
+      final queryTime = loggedAt.add(const Duration(hours: 4));
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0,
+        queryTime: queryTime,
+      );
+
+      expect(result, 0.0);
+    });
+
+    test('past full elimination still returns 0 (not negative)', () {
+      // 36 ml at 9 ml/hr → 6 hours later, well past elimination.
+      final loggedAt = DateTime(2026, 2, 21, 20, 0);
+      final queryTime = loggedAt.add(const Duration(hours: 6));
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0,
+        queryTime: queryTime,
+      );
+
+      // max(0, ...) ensures no negative values.
+      expect(result, 0.0);
+    });
+
+    test('dose in the future returns 0', () {
+      final loggedAt = DateTime(2026, 2, 21, 22, 0);
+      final queryTime = DateTime(2026, 2, 21, 20, 0); // 2h before dose
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0,
+        queryTime: queryTime,
+      );
+
+      expect(result, 0.0);
+    });
+  });
+
+  group('totalActiveLinearAt', () {
+    test('sums active amounts from multiple doses', () {
+      // Two doses: 36ml at t=0 and 18ml at t=-2h
+      final now = DateTime(2026, 2, 21, 22, 0);
+      final doses = [
+        makeDose(36, now), // Just taken: 36ml active
+        makeDose(18, now.subtract(const Duration(hours: 2))), // 2h ago: 18 - 18 = 0ml
+      ];
+
+      final result = DecayCalculator.totalActiveLinearAt(
+        doses: doses,
+        eliminationRate: 9.0,
+        queryTime: now,
+      );
+
+      // 36 + 0 = 36
+      expect(result, closeTo(36.0, 0.01));
+    });
+
+    test('empty dose list returns 0', () {
+      final result = DecayCalculator.totalActiveLinearAt(
+        doses: [],
+        eliminationRate: 9.0,
+        queryTime: DateTime.now(),
+      );
+
+      expect(result, 0.0);
+    });
+  });
+
+  group('generateLinearCurve', () {
+    test('produces correct number of points', () {
+      final start = DateTime(2026, 2, 21, 20, 0);
+      final end = DateTime(2026, 2, 21, 21, 0); // 1 hour
+
+      final points = DecayCalculator.generateLinearCurve(
+        doses: [makeDose(36, start)],
+        eliminationRate: 9.0,
+        startTime: start,
+        endTime: end,
+      );
+
+      // 1 hour with 5-min intervals = 13 points.
+      expect(points.length, 13);
+    });
+
+    test('values decrease linearly (straight line)', () {
+      final start = DateTime(2026, 2, 21, 20, 0);
+      final end = DateTime(2026, 2, 21, 22, 0); // 2 hours
+
+      final points = DecayCalculator.generateLinearCurve(
+        doses: [makeDose(36, start)],
+        eliminationRate: 9.0,
+        startTime: start,
+        endTime: end,
+      );
+
+      // At t=0: 36ml, at t=1h: 27ml, at t=2h: 18ml.
+      expect(points.first.amount, closeTo(36.0, 0.01));
+      expect(points.last.amount, closeTo(18.0, 0.01));
+    });
+
+    test('curve hits zero and stays there', () {
+      final start = DateTime(2026, 2, 21, 20, 0);
+      final end = DateTime(2026, 2, 22, 2, 0); // 6 hours
+
+      final points = DecayCalculator.generateLinearCurve(
+        doses: [makeDose(36, start)],
+        eliminationRate: 9.0,
+        startTime: start,
+        endTime: end,
+      );
+
+      // After 4 hours (36/9=4), all points should be 0.
+      final fourHoursIn = start.add(const Duration(hours: 4));
+      final pointsAfterDepletion =
+          points.where((p) => !p.time.isBefore(fourHoursIn));
+      for (final point in pointsAfterDepletion) {
+        expect(point.amount, 0.0);
+      }
     });
   });
 }
