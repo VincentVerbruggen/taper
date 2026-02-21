@@ -147,12 +147,14 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
 
           // --- Amount input ---
           // number keyboard + decimal support. Like <input type="number" step="0.1">.
+          // suffixText shows the substance's unit dynamically (e.g., "mg", "ml").
+          // Removed `const` from InputDecoration since suffixText is now dynamic.
           TextField(
             controller: _amountController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Amount',
-              suffixText: 'mg',
-              border: OutlineInputBorder(),
+              suffixText: _selectedSubstance?.unit ?? 'mg',
+              border: const OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             // Only allow digits and one decimal point.
@@ -265,9 +267,9 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Card.outlined(
         child: ListTile(
-          // "Caffeine — 90 mg"
+          // "Caffeine — 90 mg" or "Water — 500 ml" (uses substance's unit).
           title: Text(
-            '${entry.substance.name} — ${entry.doseLog.amountMg.toStringAsFixed(0)} mg',
+            '${entry.substance.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.substance.unit}',
           ),
           // Formatted time with optional date context (see _formatLogTime below).
           subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),

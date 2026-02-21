@@ -130,7 +130,7 @@ void main() {
     //    Query the DB directly — like assertDatabaseHas() in Laravel.
     final logs = await db.select(db.doseLogs).get();
     expect(logs.length, 1);
-    expect(logs.first.amountMg, 90.0);
+    expect(logs.first.amount, 90.0);
     expect(logs.first.substanceId, 1); // Caffeine's auto-increment ID from onCreate seed
 
     // 5. Verify the form reset — amount field should be empty.
@@ -301,7 +301,7 @@ void main() {
     // Verify the database was updated — like assertDatabaseHas().
     final logs = await db.select(db.doseLogs).get();
     expect(logs.length, 1);
-    expect(logs.first.amountMg, 200.0);
+    expect(logs.first.amount, 200.0);
 
     await cleanUp(tester);
   });
@@ -384,7 +384,56 @@ void main() {
     final logs = await db.select(db.doseLogs).get();
     expect(logs.length, 1);
     expect(logs.first.substanceId, 1);
-    expect(logs.first.amountMg, 100.0);
+    expect(logs.first.amount, 100.0);
+
+    await cleanUp(tester);
+  });
+
+  // --- Milestone 3: Dynamic unit suffix tests ---
+
+  testWidgets('amount field shows substance unit as suffix', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Caffeine is auto-selected — its unit is "mg".
+    // The amount TextField's suffixText should show "mg".
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    final decoration = textField.decoration!;
+    expect(decoration.suffixText, 'mg');
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('unit suffix changes when selecting different substance', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Caffeine is auto-selected (unit = "mg"). Switch to Water (unit = "ml").
+    // Open the dropdown.
+    await tester.tap(find.byType(DropdownButtonFormField<Substance>));
+    await pumpAndWait(tester);
+
+    // Tap "Water" in the dropdown menu.
+    await tester.tap(find.text('Water').last);
+    await pumpAndWait(tester);
+
+    // Now the amount field should show "ml" as the suffix.
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    final decoration = textField.decoration!;
+    expect(decoration.suffixText, 'ml');
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('recent log entry shows substance unit', (tester) async {
+    // Insert a Water dose (id=2, unit="ml") directly in the DB.
+    await db.insertDoseLog(2, 500, DateTime.now());
+
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // The log tile should show "Water — 500 ml" (not "500 mg").
+    expect(find.text('Water — 500 ml'), findsOneWidget);
 
     await cleanUp(tester);
   });

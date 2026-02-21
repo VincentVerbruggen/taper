@@ -4,6 +4,23 @@ import 'package:drift_flutter/drift_flutter.dart';
 // Code generator output — run: dart run build_runner build --delete-conflicting-outputs
 part 'database.g.dart';
 
+/// 10 distinct colors for auto-assigning to substances, stored as ARGB ints.
+/// These will be used for chart lines in the decay curve (Milestone 4).
+/// Colors are spread across the hue wheel for maximum contrast.
+/// Like a Tailwind color palette: ['red-500', 'blue-500', 'green-500', ...].
+const substanceColorPalette = [
+  0xFF4CAF50, // Green (Caffeine default)
+  0xFF2196F3, // Blue
+  0xFFF44336, // Red
+  0xFFFF9800, // Orange
+  0xFF9C27B0, // Purple
+  0xFF00BCD4, // Cyan
+  0xFFFFEB3B, // Yellow
+  0xFFE91E63, // Pink
+  0xFF795548, // Brown
+  0xFF607D8B, // Blue Grey
+];
+
 /// Substances table.
 /// Laravel equivalent: Schema::create('substances', ...) + Eloquent model.
 class Substances extends Table {
@@ -22,6 +39,24 @@ class Substances extends Table {
   // Defaults to true so new substances are visible immediately.
   // Laravel equivalent: $table->boolean('is_visible')->default(true)
   BoolColumn get isVisible => boolean().withDefault(const Constant(true))();
+
+  // Biological half-life in hours (e.g., 5.0 for caffeine).
+  // Nullable: null means no decay tracking (e.g., Water has no half-life).
+  // Used by the decay curve chart to calculate how much is still active.
+  // Laravel equivalent: $table->double('half_life_hours')->nullable()
+  RealColumn get halfLifeHours => real().nullable()();
+
+  // Unit of measurement for doses (e.g., "mg", "ml", "IU").
+  // Free text, defaults to "mg". Displayed in the Log form suffix and
+  // recent logs list. Stored on the substance, not the dose log.
+  // Laravel equivalent: $table->string('unit')->default('mg')
+  TextColumn get unit => text().withDefault(const Constant('mg'))();
+
+  // Auto-assigned color from substanceColorPalette (ARGB int).
+  // Used for chart lines in the decay curve. No user-facing picker yet.
+  // Non-nullable — always explicitly set during insert.
+  // Laravel equivalent: $table->unsignedInteger('color')
+  IntColumn get color => integer()();
 }
 
 /// Dose logs table — records each time a user takes a substance.
@@ -42,8 +77,10 @@ class DoseLogs extends Table {
   // FK to substances table. references() = $table->foreignId()->constrained().
   IntColumn get substanceId => integer().references(Substances, #id)();
 
-  // real() = REAL column in SQLite, stores doubles. Like $table->double('amount_mg').
-  RealColumn get amountMg => real()();
+  // real() = REAL column in SQLite, stores doubles.
+  // Renamed from amountMg — the unit now comes from the substance table.
+  // Like $table->double('amount').
+  RealColumn get amount => real()();
 
   // dateTime() stores as integer (epoch seconds) in SQLite.
   // Like $table->dateTime('logged_at').
@@ -62,7 +99,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -72,18 +109,34 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
 
       // Caffeine: main + visible — the default substance in the Log form.
+      // halfLifeHours=5.0 = caffeine's biological half-life (used for decay curve).
       await into(substances).insert(
-        SubstancesCompanion.insert(name: 'Caffeine', isMain: const Value(true)),
+        SubstancesCompanion.insert(
+          name: 'Caffeine',
+          isMain: const Value(true),
+          halfLifeHours: const Value(5.0),
+          unit: const Value('mg'),
+          color: substanceColorPalette[0],
+        ),
       );
-      // Water: visible but not main — a second option in the dropdown.
+      // Water: visible but not main — no half-life (no decay tracking).
       await into(substances).insert(
-        SubstancesCompanion.insert(name: 'Water'),
+        SubstancesCompanion.insert(
+          name: 'Water',
+          halfLifeHours: const Value(null),
+          unit: const Value('ml'),
+          color: substanceColorPalette[1],
+        ),
       );
       // Alcohol: hidden — won't appear in Log dropdown, but data preserved.
+      // halfLifeHours=4.0 = alcohol's approximate biological half-life.
       await into(substances).insert(
         SubstancesCompanion.insert(
           name: 'Alcohol',
           isVisible: const Value(false),
+          halfLifeHours: const Value(4.0),
+          unit: const Value('ml'),
+          color: substanceColorPalette[2],
         ),
       );
     },
@@ -105,13 +158,50 @@ class AppDatabase extends _$AppDatabase {
         // Seed Water and Alcohol for existing installs too, so they have
         // something to see the visibility difference with.
         await into(substances).insert(
-          SubstancesCompanion.insert(name: 'Water'),
+          SubstancesCompanion.insert(name: 'Water', color: 0),
         );
         await into(substances).insert(
           SubstancesCompanion.insert(
             name: 'Alcohol',
             isVisible: const Value(false),
+            color: 0,
           ),
+        );
+      }
+      if (from < 4) {
+        // v3 → v4: Add halfLifeHours, unit, and color to substances;
+        // rename amount_mg → amount in dose_logs.
+
+        // Nullable column — existing rows get NULL (no decay tracking yet).
+        await m.addColumn(substances, substances.halfLifeHours);
+
+        // Has a default value — existing rows get "mg" automatically.
+        await m.addColumn(substances, substances.unit);
+
+        // Non-nullable without a default can't use m.addColumn on a table
+        // with existing rows, so we use raw SQL with a temporary default.
+        // After this, we immediately update each row with its real palette color.
+        await customStatement(
+          'ALTER TABLE substances ADD COLUMN color INTEGER NOT NULL DEFAULT 0',
+        );
+
+        // Assign colors from the palette based on creation order (by id).
+        // Like: Substance::orderBy('id')->get()->each(fn($s, $i) => ...)
+        final existing = await (select(substances)
+              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+            .get();
+        for (var i = 0; i < existing.length; i++) {
+          await (update(substances)
+                ..where((t) => t.id.equals(existing[i].id)))
+              .write(SubstancesCompanion(
+            color: Value(substanceColorPalette[i % substanceColorPalette.length]),
+          ));
+        }
+
+        // Rename amount_mg → amount. SQLite 3.25+ supports RENAME COLUMN.
+        // sqlite3_flutter_libs bundles a modern SQLite, so this is safe.
+        await customStatement(
+          'ALTER TABLE dose_logs RENAME COLUMN amount_mg TO amount',
         );
       }
     },
@@ -179,15 +269,49 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<int> insertSubstance(String name) {
+  /// Insert a new substance with auto-assigned color from the palette.
+  /// Color is assigned using the current substance count % palette length,
+  /// so colors cycle through the palette as substances are added.
+  /// Like: $color = $palette[Substance::count() % count($palette)]
+  Future<int> insertSubstance(
+    String name, {
+    String unit = 'mg',
+    double? halfLifeHours,
+  }) async {
+    // Count existing substances to pick the next color in the palette.
+    final count = await (selectOnly(substances)..addColumns([substances.id]))
+        .get()
+        .then((rows) => rows.length);
+
     return into(substances).insert(
-      SubstancesCompanion.insert(name: name),
+      SubstancesCompanion.insert(
+        name: name,
+        unit: Value(unit),
+        halfLifeHours: Value(halfLifeHours),
+        color: substanceColorPalette[count % substanceColorPalette.length],
+      ),
     );
   }
 
-  Future<int> updateSubstance(int id, String newName) {
+  /// Update a substance's name, unit, and/or half-life.
+  /// Uses named params with `Value<T>` wrappers so callers can distinguish
+  /// "set halfLifeHours to null" from "don't change halfLifeHours".
+  /// Like Laravel's fill() — only update fields that are explicitly passed.
+  Future<int> updateSubstance(
+    int id, {
+    String? name,
+    String? unit,
+    // Value.absent() = don't change; Value(null) = set to null; Value(5.0) = set to 5.0.
+    // This three-state pattern lets the caller explicitly clear a nullable field.
+    Value<double?> halfLifeHours = const Value.absent(),
+  }) {
+    final companion = SubstancesCompanion(
+      name: name != null ? Value(name) : const Value.absent(),
+      unit: unit != null ? Value(unit) : const Value.absent(),
+      halfLifeHours: halfLifeHours,
+    );
     return (update(substances)..where((t) => t.id.equals(id)))
-        .write(SubstancesCompanion(name: Value(newName)));
+        .write(companion);
   }
 
   Future<int> deleteSubstance(int id) {
@@ -197,12 +321,12 @@ class AppDatabase extends _$AppDatabase {
   // --- Dose log queries ---
 
   /// Insert a new dose log.
-  /// Like: DoseLog::create(['substance_id' => $id, 'amount_mg' => 90, 'logged_at' => now()])
-  Future<int> insertDoseLog(int substanceId, double amountMg, DateTime loggedAt) {
+  /// Like: DoseLog::create(['substance_id' => $id, 'amount' => 90, 'logged_at' => now()])
+  Future<int> insertDoseLog(int substanceId, double amount, DateTime loggedAt) {
     return into(doseLogs).insert(
       DoseLogsCompanion.insert(
         substanceId: substanceId,
-        amountMg: amountMg,
+        amount: amount,
         loggedAt: loggedAt,
       ),
     );
@@ -217,11 +341,11 @@ class AppDatabase extends _$AppDatabase {
   /// Like: DoseLog::find($id)->update([...])
   /// Same pattern as updateSubstance() above — build an update query with
   /// a where clause, then .write() the new values wrapped in a Companion.
-  Future<int> updateDoseLog(int id, int substanceId, double amountMg, DateTime loggedAt) {
+  Future<int> updateDoseLog(int id, int substanceId, double amount, DateTime loggedAt) {
     return (update(doseLogs)..where((t) => t.id.equals(id)))
         .write(DoseLogsCompanion(
           substanceId: Value(substanceId),
-          amountMg: Value(amountMg),
+          amount: Value(amount),
           loggedAt: Value(loggedAt),
         ));
   }

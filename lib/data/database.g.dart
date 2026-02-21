@@ -59,8 +59,46 @@ class $SubstancesTable extends Substances
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _halfLifeHoursMeta = const VerificationMeta(
+    'halfLifeHours',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, isMain, isVisible];
+  late final GeneratedColumn<double> halfLifeHours = GeneratedColumn<double>(
+    'half_life_hours',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+    'unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('mg'),
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<int> color = GeneratedColumn<int>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    isMain,
+    isVisible,
+    halfLifeHours,
+    unit,
+    color,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -96,6 +134,29 @@ class $SubstancesTable extends Substances
         isVisible.isAcceptableOrUnknown(data['is_visible']!, _isVisibleMeta),
       );
     }
+    if (data.containsKey('half_life_hours')) {
+      context.handle(
+        _halfLifeHoursMeta,
+        halfLifeHours.isAcceptableOrUnknown(
+          data['half_life_hours']!,
+          _halfLifeHoursMeta,
+        ),
+      );
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+        _unitMeta,
+        unit.isAcceptableOrUnknown(data['unit']!, _unitMeta),
+      );
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_colorMeta);
+    }
     return context;
   }
 
@@ -121,6 +182,18 @@ class $SubstancesTable extends Substances
         DriftSqlType.bool,
         data['${effectivePrefix}is_visible'],
       )!,
+      halfLifeHours: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}half_life_hours'],
+      ),
+      unit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color'],
+      )!,
     );
   }
 
@@ -135,11 +208,17 @@ class Substance extends DataClass implements Insertable<Substance> {
   final String name;
   final bool isMain;
   final bool isVisible;
+  final double? halfLifeHours;
+  final String unit;
+  final int color;
   const Substance({
     required this.id,
     required this.name,
     required this.isMain,
     required this.isVisible,
+    this.halfLifeHours,
+    required this.unit,
+    required this.color,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -148,6 +227,11 @@ class Substance extends DataClass implements Insertable<Substance> {
     map['name'] = Variable<String>(name);
     map['is_main'] = Variable<bool>(isMain);
     map['is_visible'] = Variable<bool>(isVisible);
+    if (!nullToAbsent || halfLifeHours != null) {
+      map['half_life_hours'] = Variable<double>(halfLifeHours);
+    }
+    map['unit'] = Variable<String>(unit);
+    map['color'] = Variable<int>(color);
     return map;
   }
 
@@ -157,6 +241,11 @@ class Substance extends DataClass implements Insertable<Substance> {
       name: Value(name),
       isMain: Value(isMain),
       isVisible: Value(isVisible),
+      halfLifeHours: halfLifeHours == null && nullToAbsent
+          ? const Value.absent()
+          : Value(halfLifeHours),
+      unit: Value(unit),
+      color: Value(color),
     );
   }
 
@@ -170,6 +259,9 @@ class Substance extends DataClass implements Insertable<Substance> {
       name: serializer.fromJson<String>(json['name']),
       isMain: serializer.fromJson<bool>(json['isMain']),
       isVisible: serializer.fromJson<bool>(json['isVisible']),
+      halfLifeHours: serializer.fromJson<double?>(json['halfLifeHours']),
+      unit: serializer.fromJson<String>(json['unit']),
+      color: serializer.fromJson<int>(json['color']),
     );
   }
   @override
@@ -180,22 +272,42 @@ class Substance extends DataClass implements Insertable<Substance> {
       'name': serializer.toJson<String>(name),
       'isMain': serializer.toJson<bool>(isMain),
       'isVisible': serializer.toJson<bool>(isVisible),
+      'halfLifeHours': serializer.toJson<double?>(halfLifeHours),
+      'unit': serializer.toJson<String>(unit),
+      'color': serializer.toJson<int>(color),
     };
   }
 
-  Substance copyWith({int? id, String? name, bool? isMain, bool? isVisible}) =>
-      Substance(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        isMain: isMain ?? this.isMain,
-        isVisible: isVisible ?? this.isVisible,
-      );
+  Substance copyWith({
+    int? id,
+    String? name,
+    bool? isMain,
+    bool? isVisible,
+    Value<double?> halfLifeHours = const Value.absent(),
+    String? unit,
+    int? color,
+  }) => Substance(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    isMain: isMain ?? this.isMain,
+    isVisible: isVisible ?? this.isVisible,
+    halfLifeHours: halfLifeHours.present
+        ? halfLifeHours.value
+        : this.halfLifeHours,
+    unit: unit ?? this.unit,
+    color: color ?? this.color,
+  );
   Substance copyWithCompanion(SubstancesCompanion data) {
     return Substance(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       isMain: data.isMain.present ? data.isMain.value : this.isMain,
       isVisible: data.isVisible.present ? data.isVisible.value : this.isVisible,
+      halfLifeHours: data.halfLifeHours.present
+          ? data.halfLifeHours.value
+          : this.halfLifeHours,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      color: data.color.present ? data.color.value : this.color,
     );
   }
 
@@ -205,13 +317,17 @@ class Substance extends DataClass implements Insertable<Substance> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('isMain: $isMain, ')
-          ..write('isVisible: $isVisible')
+          ..write('isVisible: $isVisible, ')
+          ..write('halfLifeHours: $halfLifeHours, ')
+          ..write('unit: $unit, ')
+          ..write('color: $color')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, isMain, isVisible);
+  int get hashCode =>
+      Object.hash(id, name, isMain, isVisible, halfLifeHours, unit, color);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -219,7 +335,10 @@ class Substance extends DataClass implements Insertable<Substance> {
           other.id == this.id &&
           other.name == this.name &&
           other.isMain == this.isMain &&
-          other.isVisible == this.isVisible);
+          other.isVisible == this.isVisible &&
+          other.halfLifeHours == this.halfLifeHours &&
+          other.unit == this.unit &&
+          other.color == this.color);
 }
 
 class SubstancesCompanion extends UpdateCompanion<Substance> {
@@ -227,29 +346,45 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
   final Value<String> name;
   final Value<bool> isMain;
   final Value<bool> isVisible;
+  final Value<double?> halfLifeHours;
+  final Value<String> unit;
+  final Value<int> color;
   const SubstancesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.isMain = const Value.absent(),
     this.isVisible = const Value.absent(),
+    this.halfLifeHours = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.color = const Value.absent(),
   });
   SubstancesCompanion.insert({
     this.id = const Value.absent(),
     required String name,
     this.isMain = const Value.absent(),
     this.isVisible = const Value.absent(),
-  }) : name = Value(name);
+    this.halfLifeHours = const Value.absent(),
+    this.unit = const Value.absent(),
+    required int color,
+  }) : name = Value(name),
+       color = Value(color);
   static Insertable<Substance> custom({
     Expression<int>? id,
     Expression<String>? name,
     Expression<bool>? isMain,
     Expression<bool>? isVisible,
+    Expression<double>? halfLifeHours,
+    Expression<String>? unit,
+    Expression<int>? color,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (isMain != null) 'is_main': isMain,
       if (isVisible != null) 'is_visible': isVisible,
+      if (halfLifeHours != null) 'half_life_hours': halfLifeHours,
+      if (unit != null) 'unit': unit,
+      if (color != null) 'color': color,
     });
   }
 
@@ -258,12 +393,18 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     Value<String>? name,
     Value<bool>? isMain,
     Value<bool>? isVisible,
+    Value<double?>? halfLifeHours,
+    Value<String>? unit,
+    Value<int>? color,
   }) {
     return SubstancesCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       isMain: isMain ?? this.isMain,
       isVisible: isVisible ?? this.isVisible,
+      halfLifeHours: halfLifeHours ?? this.halfLifeHours,
+      unit: unit ?? this.unit,
+      color: color ?? this.color,
     );
   }
 
@@ -282,6 +423,15 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     if (isVisible.present) {
       map['is_visible'] = Variable<bool>(isVisible.value);
     }
+    if (halfLifeHours.present) {
+      map['half_life_hours'] = Variable<double>(halfLifeHours.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<int>(color.value);
+    }
     return map;
   }
 
@@ -291,7 +441,10 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('isMain: $isMain, ')
-          ..write('isVisible: $isVisible')
+          ..write('isVisible: $isVisible, ')
+          ..write('halfLifeHours: $halfLifeHours, ')
+          ..write('unit: $unit, ')
+          ..write('color: $color')
           ..write(')'))
         .toString();
   }
@@ -329,12 +482,10 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
       'REFERENCES substances (id)',
     ),
   );
-  static const VerificationMeta _amountMgMeta = const VerificationMeta(
-    'amountMg',
-  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
   @override
-  late final GeneratedColumn<double> amountMg = GeneratedColumn<double>(
-    'amount_mg',
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
     aliasedName,
     false,
     type: DriftSqlType.double,
@@ -352,7 +503,7 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, substanceId, amountMg, loggedAt];
+  List<GeneratedColumn> get $columns => [id, substanceId, amount, loggedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -379,13 +530,13 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
     } else if (isInserting) {
       context.missing(_substanceIdMeta);
     }
-    if (data.containsKey('amount_mg')) {
+    if (data.containsKey('amount')) {
       context.handle(
-        _amountMgMeta,
-        amountMg.isAcceptableOrUnknown(data['amount_mg']!, _amountMgMeta),
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
       );
     } else if (isInserting) {
-      context.missing(_amountMgMeta);
+      context.missing(_amountMeta);
     }
     if (data.containsKey('logged_at')) {
       context.handle(
@@ -412,9 +563,9 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
         DriftSqlType.int,
         data['${effectivePrefix}substance_id'],
       )!,
-      amountMg: attachedDatabase.typeMapping.read(
+      amount: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
-        data['${effectivePrefix}amount_mg'],
+        data['${effectivePrefix}amount'],
       )!,
       loggedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
@@ -432,12 +583,12 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
 class DoseLog extends DataClass implements Insertable<DoseLog> {
   final int id;
   final int substanceId;
-  final double amountMg;
+  final double amount;
   final DateTime loggedAt;
   const DoseLog({
     required this.id,
     required this.substanceId,
-    required this.amountMg,
+    required this.amount,
     required this.loggedAt,
   });
   @override
@@ -445,7 +596,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['substance_id'] = Variable<int>(substanceId);
-    map['amount_mg'] = Variable<double>(amountMg);
+    map['amount'] = Variable<double>(amount);
     map['logged_at'] = Variable<DateTime>(loggedAt);
     return map;
   }
@@ -454,7 +605,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     return DoseLogsCompanion(
       id: Value(id),
       substanceId: Value(substanceId),
-      amountMg: Value(amountMg),
+      amount: Value(amount),
       loggedAt: Value(loggedAt),
     );
   }
@@ -467,7 +618,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     return DoseLog(
       id: serializer.fromJson<int>(json['id']),
       substanceId: serializer.fromJson<int>(json['substanceId']),
-      amountMg: serializer.fromJson<double>(json['amountMg']),
+      amount: serializer.fromJson<double>(json['amount']),
       loggedAt: serializer.fromJson<DateTime>(json['loggedAt']),
     );
   }
@@ -477,7 +628,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'substanceId': serializer.toJson<int>(substanceId),
-      'amountMg': serializer.toJson<double>(amountMg),
+      'amount': serializer.toJson<double>(amount),
       'loggedAt': serializer.toJson<DateTime>(loggedAt),
     };
   }
@@ -485,12 +636,12 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
   DoseLog copyWith({
     int? id,
     int? substanceId,
-    double? amountMg,
+    double? amount,
     DateTime? loggedAt,
   }) => DoseLog(
     id: id ?? this.id,
     substanceId: substanceId ?? this.substanceId,
-    amountMg: amountMg ?? this.amountMg,
+    amount: amount ?? this.amount,
     loggedAt: loggedAt ?? this.loggedAt,
   );
   DoseLog copyWithCompanion(DoseLogsCompanion data) {
@@ -499,7 +650,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       substanceId: data.substanceId.present
           ? data.substanceId.value
           : this.substanceId,
-      amountMg: data.amountMg.present ? data.amountMg.value : this.amountMg,
+      amount: data.amount.present ? data.amount.value : this.amount,
       loggedAt: data.loggedAt.present ? data.loggedAt.value : this.loggedAt,
     );
   }
@@ -509,53 +660,53 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     return (StringBuffer('DoseLog(')
           ..write('id: $id, ')
           ..write('substanceId: $substanceId, ')
-          ..write('amountMg: $amountMg, ')
+          ..write('amount: $amount, ')
           ..write('loggedAt: $loggedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, substanceId, amountMg, loggedAt);
+  int get hashCode => Object.hash(id, substanceId, amount, loggedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is DoseLog &&
           other.id == this.id &&
           other.substanceId == this.substanceId &&
-          other.amountMg == this.amountMg &&
+          other.amount == this.amount &&
           other.loggedAt == this.loggedAt);
 }
 
 class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
   final Value<int> id;
   final Value<int> substanceId;
-  final Value<double> amountMg;
+  final Value<double> amount;
   final Value<DateTime> loggedAt;
   const DoseLogsCompanion({
     this.id = const Value.absent(),
     this.substanceId = const Value.absent(),
-    this.amountMg = const Value.absent(),
+    this.amount = const Value.absent(),
     this.loggedAt = const Value.absent(),
   });
   DoseLogsCompanion.insert({
     this.id = const Value.absent(),
     required int substanceId,
-    required double amountMg,
+    required double amount,
     required DateTime loggedAt,
   }) : substanceId = Value(substanceId),
-       amountMg = Value(amountMg),
+       amount = Value(amount),
        loggedAt = Value(loggedAt);
   static Insertable<DoseLog> custom({
     Expression<int>? id,
     Expression<int>? substanceId,
-    Expression<double>? amountMg,
+    Expression<double>? amount,
     Expression<DateTime>? loggedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (substanceId != null) 'substance_id': substanceId,
-      if (amountMg != null) 'amount_mg': amountMg,
+      if (amount != null) 'amount': amount,
       if (loggedAt != null) 'logged_at': loggedAt,
     });
   }
@@ -563,13 +714,13 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
   DoseLogsCompanion copyWith({
     Value<int>? id,
     Value<int>? substanceId,
-    Value<double>? amountMg,
+    Value<double>? amount,
     Value<DateTime>? loggedAt,
   }) {
     return DoseLogsCompanion(
       id: id ?? this.id,
       substanceId: substanceId ?? this.substanceId,
-      amountMg: amountMg ?? this.amountMg,
+      amount: amount ?? this.amount,
       loggedAt: loggedAt ?? this.loggedAt,
     );
   }
@@ -583,8 +734,8 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     if (substanceId.present) {
       map['substance_id'] = Variable<int>(substanceId.value);
     }
-    if (amountMg.present) {
-      map['amount_mg'] = Variable<double>(amountMg.value);
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
     }
     if (loggedAt.present) {
       map['logged_at'] = Variable<DateTime>(loggedAt.value);
@@ -597,7 +748,7 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     return (StringBuffer('DoseLogsCompanion(')
           ..write('id: $id, ')
           ..write('substanceId: $substanceId, ')
-          ..write('amountMg: $amountMg, ')
+          ..write('amount: $amount, ')
           ..write('loggedAt: $loggedAt')
           ..write(')'))
         .toString();
@@ -622,6 +773,9 @@ typedef $$SubstancesTableCreateCompanionBuilder =
       required String name,
       Value<bool> isMain,
       Value<bool> isVisible,
+      Value<double?> halfLifeHours,
+      Value<String> unit,
+      required int color,
     });
 typedef $$SubstancesTableUpdateCompanionBuilder =
     SubstancesCompanion Function({
@@ -629,6 +783,9 @@ typedef $$SubstancesTableUpdateCompanionBuilder =
       Value<String> name,
       Value<bool> isMain,
       Value<bool> isVisible,
+      Value<double?> halfLifeHours,
+      Value<String> unit,
+      Value<int> color,
     });
 
 final class $$SubstancesTableReferences
@@ -681,6 +838,21 @@ class $$SubstancesTableFilterComposer
 
   ColumnFilters<bool> get isVisible => $composableBuilder(
     column: $table.isVisible,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get halfLifeHours => $composableBuilder(
+    column: $table.halfLifeHours,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get color => $composableBuilder(
+    column: $table.color,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -738,6 +910,21 @@ class $$SubstancesTableOrderingComposer
     column: $table.isVisible,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get halfLifeHours => $composableBuilder(
+    column: $table.halfLifeHours,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SubstancesTableAnnotationComposer
@@ -760,6 +947,17 @@ class $$SubstancesTableAnnotationComposer
 
   GeneratedColumn<bool> get isVisible =>
       $composableBuilder(column: $table.isVisible, builder: (column) => column);
+
+  GeneratedColumn<double> get halfLifeHours => $composableBuilder(
+    column: $table.halfLifeHours,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<int> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
 
   Expression<T> doseLogsRefs<T extends Object>(
     Expression<T> Function($$DoseLogsTableAnnotationComposer a) f,
@@ -819,11 +1017,17 @@ class $$SubstancesTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<bool> isMain = const Value.absent(),
                 Value<bool> isVisible = const Value.absent(),
+                Value<double?> halfLifeHours = const Value.absent(),
+                Value<String> unit = const Value.absent(),
+                Value<int> color = const Value.absent(),
               }) => SubstancesCompanion(
                 id: id,
                 name: name,
                 isMain: isMain,
                 isVisible: isVisible,
+                halfLifeHours: halfLifeHours,
+                unit: unit,
+                color: color,
               ),
           createCompanionCallback:
               ({
@@ -831,11 +1035,17 @@ class $$SubstancesTableTableManager
                 required String name,
                 Value<bool> isMain = const Value.absent(),
                 Value<bool> isVisible = const Value.absent(),
+                Value<double?> halfLifeHours = const Value.absent(),
+                Value<String> unit = const Value.absent(),
+                required int color,
               }) => SubstancesCompanion.insert(
                 id: id,
                 name: name,
                 isMain: isMain,
                 isVisible: isVisible,
+                halfLifeHours: halfLifeHours,
+                unit: unit,
+                color: color,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -899,14 +1109,14 @@ typedef $$DoseLogsTableCreateCompanionBuilder =
     DoseLogsCompanion Function({
       Value<int> id,
       required int substanceId,
-      required double amountMg,
+      required double amount,
       required DateTime loggedAt,
     });
 typedef $$DoseLogsTableUpdateCompanionBuilder =
     DoseLogsCompanion Function({
       Value<int> id,
       Value<int> substanceId,
-      Value<double> amountMg,
+      Value<double> amount,
       Value<DateTime> loggedAt,
     });
 
@@ -948,8 +1158,8 @@ class $$DoseLogsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<double> get amountMg => $composableBuilder(
-    column: $table.amountMg,
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -996,8 +1206,8 @@ class $$DoseLogsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<double> get amountMg => $composableBuilder(
-    column: $table.amountMg,
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -1042,8 +1252,8 @@ class $$DoseLogsTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<double> get amountMg =>
-      $composableBuilder(column: $table.amountMg, builder: (column) => column);
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
 
   GeneratedColumn<DateTime> get loggedAt =>
       $composableBuilder(column: $table.loggedAt, builder: (column) => column);
@@ -1102,24 +1312,24 @@ class $$DoseLogsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<int> substanceId = const Value.absent(),
-                Value<double> amountMg = const Value.absent(),
+                Value<double> amount = const Value.absent(),
                 Value<DateTime> loggedAt = const Value.absent(),
               }) => DoseLogsCompanion(
                 id: id,
                 substanceId: substanceId,
-                amountMg: amountMg,
+                amount: amount,
                 loggedAt: loggedAt,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required int substanceId,
-                required double amountMg,
+                required double amount,
                 required DateTime loggedAt,
               }) => DoseLogsCompanion.insert(
                 id: id,
                 substanceId: substanceId,
-                amountMg: amountMg,
+                amount: amount,
                 loggedAt: loggedAt,
               ),
           withReferenceMapper: (p0) => p0

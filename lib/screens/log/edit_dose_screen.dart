@@ -46,7 +46,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
     // Pre-fill all form fields from the existing entry.
     // Like old() in Laravel Blade — populates inputs with previous values.
     _selectedSubstance = widget.entry.substance;
-    _amountController.text = widget.entry.doseLog.amountMg.toStringAsFixed(0);
+    _amountController.text = widget.entry.doseLog.amount.toStringAsFixed(0);
 
     final loggedAt = widget.entry.doseLog.loggedAt;
     _selectedDate = loggedAt;
@@ -113,12 +113,13 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
 
           // --- Amount input ---
           // Pre-filled with the existing amount.
+          // suffixText shows the substance's unit dynamically.
           TextField(
             controller: _amountController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Amount',
-              suffixText: 'mg',
-              border: OutlineInputBorder(),
+              suffixText: _selectedSubstance?.unit ?? 'mg',
+              border: const OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
