@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/substances/edit_substance_screen.dart';
+import 'package:taper/services/notification_service.dart';
 
 /// SubstancesScreen = the full CRUD screen for managing substances.
 ///
@@ -95,6 +96,7 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
                   substance.id,
                   substance.isVisible,
                 ),
+                onTogglePin: () => _togglePin(substance),
                 onMoveUp: () => _onReorder(substances, index, index - 1),
                 onMoveDown: () => _onReorder(substances, index, index + 2),
               );
@@ -140,6 +142,36 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
 
   void _deleteSubstance(int id) async {
     await ref.read(databaseProvider).deleteSubstance(id);
+  }
+
+  /// Toggle pin: pin this substance to a persistent notification, or unpin it.
+  ///
+  /// When pinning, requests notification permission first (Android 13+ requires it).
+  /// Only one substance can be pinned at a time — pinning a new one stops the old.
+  void _togglePin(Substance substance) async {
+    final notificationService = NotificationService.instance;
+    final pinnedId = ref.read(pinnedSubstanceIdProvider);
+
+    if (pinnedId == substance.id) {
+      // Already pinned → unpin.
+      await notificationService.stopTracking();
+      ref.read(pinnedSubstanceIdProvider.notifier).unpin();
+    } else {
+      // Not pinned → request permission and pin.
+      final granted = await notificationService.requestPermission();
+      if (!granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Notification permission required to pin')),
+          );
+        }
+        return;
+      }
+
+      final db = ref.read(databaseProvider);
+      await notificationService.startTracking(substance, db);
+      ref.read(pinnedSubstanceIdProvider.notifier).pin(substance.id);
+    }
   }
 
   /// Shows a bottom sheet dialog for adding a new substance.
@@ -298,9 +330,12 @@ class _AddSubstanceBottomSheetState extends State<_AddSubstanceBottomSheet> {
 // ---------------------------------------------------------------------------
 
 /// A single substance in the list.
-/// Shows star (main), name, reorder arrows, eye (visibility), and delete icons.
+/// Shows star (main), name, reorder arrows, pin, eye (visibility), and delete icons.
 /// Tap name to edit.
-class _SubstanceListItem extends StatelessWidget {
+///
+/// ConsumerWidget (not StatelessWidget) so it can watch pinnedSubstanceIdProvider
+/// to show the correct pin icon state without rebuilding the whole list.
+class _SubstanceListItem extends ConsumerWidget {
   final Substance substance;
   final bool isFirst;
   final bool isLast;
@@ -308,6 +343,7 @@ class _SubstanceListItem extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onToggleMain;
   final VoidCallback onToggleVisibility;
+  final VoidCallback onTogglePin;
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
 
@@ -320,13 +356,17 @@ class _SubstanceListItem extends StatelessWidget {
     required this.onDelete,
     required this.onToggleMain,
     required this.onToggleVisibility,
+    required this.onTogglePin,
     required this.onMoveUp,
     required this.onMoveDown,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isHidden = !substance.isVisible;
+    // Watch pinned state to show filled/outlined pin icon for this substance.
+    final pinnedId = ref.watch(pinnedSubstanceIdProvider);
+    final isPinned = pinnedId == substance.id;
 
     return Column(
       children: [
@@ -381,7 +421,7 @@ class _SubstanceListItem extends StatelessWidget {
             ),
           ),
           trailing: SizedBox(
-            width: 192,
+            width: 240,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -397,6 +437,20 @@ class _SubstanceListItem extends StatelessWidget {
                   icon: const Icon(Icons.arrow_downward, size: 20),
                   onPressed: isLast ? null : onMoveDown,
                   tooltip: 'Move down',
+                  visualDensity: VisualDensity.compact,
+                ),
+                // Pin/Unpin — pins this substance to a persistent notification
+                // for rapid dose logging (party mode). Filled = pinned.
+                IconButton(
+                  icon: Icon(
+                    isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    size: 20,
+                    color: isPinned
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  onPressed: onTogglePin,
+                  tooltip: isPinned ? 'Unpin from notification' : 'Pin to notification',
                   visualDensity: VisualDensity.compact,
                 ),
                 IconButton(

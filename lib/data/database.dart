@@ -368,6 +368,37 @@ class AppDatabase extends _$AppDatabase {
 
   // --- Dose log queries ---
 
+  /// Get a single substance by ID (one-shot, not reactive).
+  /// Used by the notification service which doesn't need stream reactivity.
+  /// Like: Substance::find($id)
+  Future<Substance?> getSubstance(int id) {
+    return (select(substances)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+  }
+
+  /// Get doses for a substance from [since] onward (one-shot, not reactive).
+  /// Used by the notification service to calculate current active amount.
+  /// Like: DoseLog::where('substance_id', $id)->where('logged_at', '>=', $since)->get()
+  Future<List<DoseLog>> getDosesSince(int substanceId, DateTime since) {
+    return (select(doseLogs)
+          ..where((t) =>
+              t.substanceId.equals(substanceId) &
+              t.loggedAt.isBiggerOrEqualValue(since))
+          ..orderBy([(t) => OrderingTerm.asc(t.loggedAt)]))
+        .get();
+  }
+
+  /// Get the most recent dose for a substance (one-shot, not reactive).
+  /// Used by the notification service for "Repeat Last" action.
+  /// Like: DoseLog::where('substance_id', $id)->latest('logged_at')->first()
+  Future<DoseLog?> getLastDose(int substanceId) {
+    return (select(doseLogs)
+          ..where((t) => t.substanceId.equals(substanceId))
+          ..orderBy([(t) => OrderingTerm.desc(t.loggedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   /// Watch doses for a single substance from [since] onward.
   ///
   /// Used by the dashboard card provider — loads doses within the decay window

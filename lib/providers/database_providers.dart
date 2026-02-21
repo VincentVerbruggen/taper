@@ -6,6 +6,41 @@ import 'package:taper/data/database.dart';
 import 'package:taper/utils/day_boundary.dart';
 import 'package:taper/utils/decay_calculator.dart';
 
+/// Tracks which substance is currently pinned to the notification.
+///
+/// null = no substance pinned. Only one at a time.
+/// UI watches this to show pin/unpin icon state on cards and the log screen.
+///
+/// Like a global $pinnedId variable in a Livewire component — any widget
+/// can read it to decide whether to show a "pinned" or "unpinned" icon.
+///
+/// Riverpod 3.x removed StateProvider, so we use NotifierProvider instead.
+/// Notifier = a class that holds mutable state, like a Vuex store module.
+///
+/// Reads:  ref.watch(pinnedSubstanceIdProvider) → int?
+/// Writes: ref.read(pinnedSubstanceIdProvider.notifier).state = 42
+final pinnedSubstanceIdProvider =
+    NotifierProvider<PinnedSubstanceIdNotifier, int?>(
+  PinnedSubstanceIdNotifier.new,
+);
+
+/// Simple notifier that holds a nullable int (the pinned substance's ID).
+/// build() returns the initial state (null = nothing pinned).
+///
+/// In Riverpod 3.x, Notifier's .state setter is protected — can only be
+/// accessed from inside the notifier itself. So we expose a pin()/unpin()
+/// method for widgets to call. Like a Vuex mutation vs direct state access.
+class PinnedSubstanceIdNotifier extends Notifier<int?> {
+  @override
+  int? build() => null;
+
+  /// Pin a substance (set its ID as the active pinned substance).
+  void pin(int substanceId) => state = substanceId;
+
+  /// Unpin (clear the pinned substance).
+  void unpin() => state = null;
+}
+
 /// databaseProvider = the app's database singleton.
 ///
 /// Like Laravel's `$app->singleton()`:

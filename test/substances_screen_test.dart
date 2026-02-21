@@ -299,4 +299,37 @@ void main() {
 
     await cleanUp(tester);
   });
+
+  // --- Pin button tests ---
+
+  testWidgets('each substance shows a pin button', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // All 3 substances should have an outlined pin icon (none pinned).
+    expect(find.byIcon(Icons.push_pin_outlined), findsNWidgets(3));
+    // No filled pin icons.
+    expect(find.byIcon(Icons.push_pin), findsNothing);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('pin icon shows filled when substance is pinned', (tester) async {
+    // Build widget, then manually pin substance 1 via the provider.
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Pin substance 1 (Caffeine) directly through the provider.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SubstancesScreen)),
+    );
+    container.read(pinnedSubstanceIdProvider.notifier).pin(1);
+    await tester.pump();
+
+    // One filled pin icon (Caffeine) + two outlined (Water, Alcohol).
+    expect(find.byIcon(Icons.push_pin), findsOneWidget);
+    expect(find.byIcon(Icons.push_pin_outlined), findsNWidgets(2));
+
+    await cleanUp(tester);
+  });
 }

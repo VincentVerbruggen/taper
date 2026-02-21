@@ -2,13 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/screens/home_screen.dart';
+import 'package:taper/services/notification_service.dart';
+
+/// Global navigator key — gives the notification service access to the
+/// navigator for opening dialogs (like "Add Dose") from outside the widget tree.
+/// Like Laravel's `app('router')` — a global handle to the navigation system.
+final navigatorKey = GlobalKey<NavigatorState>();
 
 /// App entry point.
 ///
 /// ProviderScope = the DI container (like AppServiceProvider in Laravel).
 /// It wraps the entire widget tree so every widget can access Riverpod
 /// providers via ref.watch() / ref.read() — like app()->make() in Laravel.
-void main() {
+void main() async {
+  // ensureInitialized() must be called before any async work pre-runApp().
+  // Flutter needs the binding set up before plugins (like notifications) can init.
+  // Like calling `app()->boot()` before the service providers run.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize the notification plugin (channels, action handler).
+  // This just sets up the plumbing — no notification is shown yet.
+  // Like registering a service provider in boot().
+  await NotificationService.instance.init();
+
+  // Give the notification service the navigator key so it can open dialogs
+  // (e.g., "Add Dose" quick-add dialog) from notification action callbacks.
+  NotificationService.instance.navigatorKey = navigatorKey;
+
   runApp(
     const ProviderScope(child: TaperApp()),
   );
@@ -22,6 +42,11 @@ class TaperApp extends StatelessWidget {
     return MaterialApp(
       title: 'Taper',
       debugShowCheckedModeBanner: false,
+
+      // navigatorKey connects MaterialApp's navigator to the notification service,
+      // so notification actions can push routes/dialogs onto the navigation stack.
+      // Like binding a global router instance in a SPA framework.
+      navigatorKey: navigatorKey,
 
       // ColorScheme.fromSeed() generates a full color palette from one seed color —
       // like a CSS framework's theme generator. Pick one color, it derives all

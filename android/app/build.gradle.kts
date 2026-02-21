@@ -11,6 +11,10 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Enable core library desugaring — required by flutter_local_notifications.
+        // This is like a polyfill: it backports newer Java APIs (java.time, etc.)
+        // to older Android versions that don't have them natively.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -47,6 +51,14 @@ android {
             resValue("string", "app_name", "Taper")
         }
     }
+}
+
+// The desugar_jdk_libs dependency provides the actual polyfill implementations
+// that isCoreLibraryDesugaringEnabled references. Without this, the build knows
+// it SHOULD desugar but doesn't have the library to do it with.
+// Like adding a Composer package that a plugin declared as a requirement.
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

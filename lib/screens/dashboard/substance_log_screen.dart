@@ -232,5 +232,4 @@ class _SubstanceLogScreenState extends ConsumerState<SubstanceLogScreen> {
       ),
     );
   }
-
 }
