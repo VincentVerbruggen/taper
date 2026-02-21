@@ -7,17 +7,17 @@ import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/screens/log/widgets/time_picker.dart';
 
-/// LogDoseScreen = the form for recording a substance dose.
+/// LogDoseScreen = the "Log" tab showing recent doses with a FAB to add new ones.
 ///
-/// Like a Laravel create form (doses/create.blade.php) with:
-///   - A <select> for substance (populated from DB)
-///   - An <input type="number"> for amount in mg
-///   - A time picker defaulting to "now"
-///   - A submit button
+/// The form for logging a dose is now behind the FAB (bottom sheet), so the
+/// main screen is just the recent logs list with a "Log" heading.
+///
+/// Like a Laravel index page (doses/index.blade.php) with a "Create" button
+/// that opens a modal instead of navigating to a separate create page.
 ///
 /// ConsumerStatefulWidget because we need both:
-///   - Riverpod providers (ref.watch for substances list, ref.read for DB writes)
-///   - Local state (selected substance, amount controller, chosen time)
+///   - Riverpod providers (ref.watch for recent logs, ref.read for DB writes)
+///   - Local state (none currently, but ConsumerStateful for FAB callbacks)
 class LogDoseScreen extends ConsumerStatefulWidget {
   const LogDoseScreen({super.key});
 
@@ -26,16 +26,176 @@ class LogDoseScreen extends ConsumerStatefulWidget {
 }
 
 class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
-  // Currently selected substance from the dropdown.
-  // null = nothing selected yet. Like: public ?int $substanceId = null;
+  @override
+  Widget build(BuildContext context) {
+    final logsAsync = ref.watch(doseLogsProvider);
+
+    return Scaffold(
+      // FAB opens the log dose bottom sheet — the full form with substance
+      // picker, amount, and time.
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showLogDoseSheet(context),
+        child: const Icon(Icons.add),
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: logsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => Center(child: Text('Error: $error')),
+          data: (logs) => _buildLogsList(logs),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogsList(List<DoseLogWithSubstance> logs) {
+    if (logs.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'Log',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 48),
+          Text(
+            'No doses logged yet.\nTap + to log your first dose.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      );
+    }
+
+    // +1 for the header.
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: logs.length + 1,
+      itemBuilder: (context, index) {
+        // First item = "Log" heading.
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+              'Log',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+          );
+        }
+
+        return _buildLogTile(logs[index - 1]);
+      },
+    );
+  }
+
+  /// Builds a single log entry card.
+  Widget _buildLogTile(DoseLogWithSubstance entry) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Card.outlined(
+        child: ListTile(
+          // "Caffeine — 90 mg" or "Water — 500 ml".
+          title: Text(
+            '${entry.substance.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.substance.unit}',
+          ),
+          subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _deleteDoseLog(entry.doseLog.id),
+            tooltip: 'Delete',
+          ),
+          onTap: () => _editDoseLog(entry),
+        ),
+      ),
+    );
+  }
+
+  /// Navigate to the edit screen for this dose log entry.
+  void _editDoseLog(DoseLogWithSubstance entry) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditDoseScreen(entry: entry),
+      ),
+    );
+  }
+
+  void _deleteDoseLog(int id) async {
+    await ref.read(databaseProvider).deleteDoseLog(id);
+  }
+
+  /// Format a log's timestamp for display in the recent logs list.
+  /// Uses 24h NATO format.
+  String _formatLogTime(DateTime loggedAt) {
+    final now = DateTime.now();
+    final h = loggedAt.hour.toString().padLeft(2, '0');
+    final m = loggedAt.minute.toString().padLeft(2, '0');
+    final time = '$h:$m';
+
+    final isToday = loggedAt.year == now.year &&
+        loggedAt.month == now.month &&
+        loggedAt.day == now.day;
+    if (isToday) return time;
+
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final isYesterday = loggedAt.year == yesterday.year &&
+        loggedAt.month == yesterday.month &&
+        loggedAt.day == yesterday.day;
+    if (isYesterday) return 'Yesterday, $time';
+
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dateStr = '${days[loggedAt.weekday - 1]}, ${months[loggedAt.month - 1]} ${loggedAt.day}';
+    return '$dateStr — $time';
+  }
+
+  /// Opens a bottom sheet with the full log dose form: substance picker,
+  /// amount, time, and a save button. Like a modal create form.
+  void _showLogDoseSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      // useSafeArea prevents the sheet from going under the status bar.
+      useSafeArea: true,
+      builder: (sheetContext) {
+        // The bottom sheet is a ConsumerStatefulWidget, so it has its own
+        // ref and can watch providers directly. Riverpod scopes flow through
+        // the widget tree, so the sheet inherits the same ProviderScope.
+        return const _LogDoseBottomSheet();
+      },
+    );
+  }
+}
+
+/// The log dose form shown in a bottom sheet.
+///
+/// Contains the full form: substance picker, amount, time, save button.
+/// Like the old inline form, but in a modal that slides up from the bottom.
+///
+/// ConsumerStatefulWidget because it needs to:
+///   - Watch providers (visibleSubstancesProvider) to load substances
+///   - Read providers (databaseProvider) to save doses
+///   - Manage local form state (controllers, selected time)
+///
+/// IMPORTANT: Must be a ConsumerStatefulWidget (not plain StatefulWidget
+/// with parentRef) so `ref.watch()` properly triggers rebuilds when async
+/// data arrives. A plain StatefulWidget calling parentRef.watch() won't
+/// rebuild itself — only the parent Consumer rebuilds.
+class _LogDoseBottomSheet extends ConsumerStatefulWidget {
+  const _LogDoseBottomSheet();
+
+  @override
+  ConsumerState<_LogDoseBottomSheet> createState() => _LogDoseBottomSheetState();
+}
+
+class _LogDoseBottomSheetState extends ConsumerState<_LogDoseBottomSheet> {
   Substance? _selectedSubstance;
-
-  // Controller for the amount text field.
   final _amountController = TextEditingController();
-
-  // The chosen time for the dose. Defaults to now, tappable to change.
-  // We store both date and time of day separately because Flutter's
-  // pickers work with TimeOfDay (just hours/minutes) not full DateTime.
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
 
@@ -45,7 +205,6 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     _resetTime();
   }
 
-  /// Reset the time fields to "right now".
   void _resetTime() {
     final now = DateTime.now();
     _selectedDate = now;
@@ -60,78 +219,61 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch visible substances only — hidden ones don't appear in the dropdown.
-    // The Substances management screen uses substancesProvider (all) instead.
+    // Watch visible substances — triggers rebuild when data arrives.
     final substancesAsync = ref.watch(visibleSubstancesProvider);
 
-    return Scaffold(
-      body: substancesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Error: $error')),
-        data: (substances) => _buildForm(substances),
+    return substancesAsync.when(
+      loading: () => const SizedBox(
+        height: 200,
+        child: Center(child: CircularProgressIndicator()),
       ),
+      error: (e, s) => SizedBox(height: 200, child: Center(child: Text('Error: $e'))),
+      data: (substances) => _buildForm(substances),
     );
   }
 
   Widget _buildForm(List<Substance> substances) {
-    // If there are no substances, show a hint to create one first.
     if (substances.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32.0),
-          child: Text(
-            'No substances yet.\nGo to the Substances tab to add one first.',
-            textAlign: TextAlign.center,
-          ),
-        ),
+      return const SizedBox(
+        height: 200,
+        child: Center(child: Text('No substances. Add one first.')),
       );
     }
 
-    // Auto-select the main substance on first load (when nothing is selected yet).
-    // ??= is Dart's null-aware assignment — same as PHP's ??= operator.
-    // We set it directly (no setState) because we use it immediately below in
-    // the same build pass. The dropdown picks it up via currentSelected.
-    // Like setting a default in a Blade form: $selected ??= $substances->firstWhere(...)
+    // Auto-select the main substance on first load.
     _selectedSubstance ??= substances.where((s) => s.isMain).firstOrNull;
 
-    // Look up the selected substance by ID from the current stream data.
-    // Drift's stream emits NEW Substance instances each time, so the old
-    // _selectedSubstance object won't match by reference (Dart's == compares
-    // all fields). We need the matching instance from the current list for
-    // the dropdown's `value` to work correctly.
-    // Like: $selected = $substances->firstWhere(fn($s) => $s->id === $selectedId)
+    // Look up the selected substance from the current stream data.
     final currentSelected = _selectedSubstance != null
         ? substances.where((s) => s.id == _selectedSubstance!.id).firstOrNull
         : null;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24.0),
+    // Padding.fromViewPadding adds space for the keyboard so fields stay visible.
+    // Like adding padding-bottom for a virtual keyboard in CSS.
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Extra top padding to push content below status bar area.
-          const SizedBox(height: 40),
-
           Text(
             'Log Dose',
-            style: Theme.of(context).textTheme.headlineMedium,
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
-
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
           // --- Substance picker ---
-          // DropdownButtonFormField = <select> in HTML.
-          // Populates from the visible substances list (reactive via provider).
-          // initialValue sets the dropdown's state on first creation. Since we
-          // auto-select _selectedSubstance above (before this widget builds),
-          // currentSelected is already set on the first render.
           DropdownButtonFormField<Substance>(
             initialValue: currentSelected,
             decoration: const InputDecoration(
               labelText: 'Substance',
               border: OutlineInputBorder(),
             ),
-            // Build one <option> per visible substance.
             items: substances.map((s) {
               return DropdownMenuItem<Substance>(
                 value: s,
@@ -146,18 +288,15 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
           const SizedBox(height: 16),
 
           // --- Amount input ---
-          // number keyboard + decimal support. Like <input type="number" step="0.1">.
-          // suffixText shows the substance's unit dynamically (e.g., "mg", "ml").
-          // Removed `const` from InputDecoration since suffixText is now dynamic.
           TextField(
             controller: _amountController,
+            autofocus: true,
             decoration: InputDecoration(
               labelText: 'Amount',
               suffixText: _selectedSubstance?.unit ?? 'mg',
               border: const OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            // Only allow digits and one decimal point.
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
             ],
@@ -166,9 +305,6 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
           const SizedBox(height: 16),
 
           // --- Time picker ---
-          // Tappable row that shows the current date + time.
-          // Tapping opens Flutter's built-in date/time picker dialogs.
-          // Uses the shared TimePicker widget (like a Blade component: <x-time-picker />).
           TimePicker(
             date: _selectedDate,
             time: _selectedTime,
@@ -176,13 +312,9 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
             onTimeChanged: (time) => setState(() => _selectedTime = time),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
           // --- Save button ---
-          // ListenableBuilder rebuilds only this button when the amount text changes.
-          // Without this, typing in the amount field wouldn't enable/disable the button
-          // because TextField changes don't trigger setState on the parent.
-          // Same pattern as the SubstanceFormCard's Save button.
           ListenableBuilder(
             listenable: _amountController,
             builder: (context, child) {
@@ -193,117 +325,11 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
               );
             },
           ),
-
-          const SizedBox(height: 32),
-
-          // --- Recent doses list ---
-          // Like showing the last 50 rows from DoseLog::with('substance')->latest()->get()
-          // right below the create form — similar to a Livewire table that auto-refreshes.
-          //
-          // We use ref.watch() so the list reactively updates when doses are
-          // added/deleted. The stream provider emits a new list automatically.
-          _buildRecentLogs(),
         ],
       ),
     );
   }
 
-  /// Builds the "Recent Doses" section that watches the dose logs stream.
-  ///
-  /// Uses AsyncValue.when() to handle loading/error/data states — same pattern
-  /// as substancesAsync.when() at the top of build().
-  ///
-  /// Returns widgets directly (not a ListView) because we're already inside a
-  /// SingleChildScrollView → Column. Nesting a ListView inside a scroll view
-  /// causes layout errors. Instead we .map() the list into ListTiles — like
-  /// using @foreach in Blade instead of a separate scrollable <div>.
-  Widget _buildRecentLogs() {
-    final logsAsync = ref.watch(doseLogsProvider);
-
-    return logsAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Text('Error loading logs: $error'),
-      data: (logs) {
-        if (logs.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24.0),
-            child: Text(
-              'No doses logged yet.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recent Doses',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-
-            // .map() each log into a ListTile — like @foreach($logs as $log) in Blade.
-            // We spread (...) the mapped iterable into the Column's children list.
-            ...logs.map((entry) => _buildLogTile(entry)),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Builds a single log entry card.
-  ///
-  /// Card.outlined = Material 3's outlined variant — adds a visible border
-  /// around each entry. Like wrapping a Blade row in:
-  ///   <div class="border rounded-lg p-4">
-  ///
-  /// onTap navigates to the edit screen — like <a href="/doses/{{ $log->id }}/edit">.
-  Widget _buildLogTile(DoseLogWithSubstance entry) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Card.outlined(
-        child: ListTile(
-          // "Caffeine — 90 mg" or "Water — 500 ml" (uses substance's unit).
-          title: Text(
-            '${entry.substance.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.substance.unit}',
-          ),
-          // Formatted time with optional date context (see _formatLogTime below).
-          subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
-          // Delete button — same no-confirmation pattern as _deleteSubstance()
-          // in substances_screen.dart. Quick corrections for a personal app.
-          trailing: IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => _deleteDoseLog(entry.doseLog.id),
-            tooltip: 'Delete',
-          ),
-          // Tap the card to navigate to the edit screen.
-          // Like clicking a table row in a Livewire component: wire:click="edit({{ $log->id }})".
-          onTap: () => _editDoseLog(entry),
-        ),
-      ),
-    );
-  }
-
-  /// Navigate to the edit screen for this dose log entry.
-  ///
-  /// Navigator.push() = like a traditional page navigation (href="/doses/1/edit").
-  /// MaterialPageRoute slides the new screen in from the right.
-  /// The bottom nav stays underneath, but the edit screen covers it.
-  void _editDoseLog(DoseLogWithSubstance entry) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EditDoseScreen(entry: entry),
-      ),
-    );
-  }
-
-  /// Validates that the form is ready to submit.
-  /// Like Laravel's $request->validate() check.
   bool _canSave() {
     if (_selectedSubstance == null) return false;
     final amountText = _amountController.text.trim();
@@ -312,20 +338,14 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     return amount != null && amount > 0;
   }
 
-  // Guard against double taps while the async save is in progress.
   bool _saving = false;
 
-  /// Save the dose to the database and reset the form.
   void _saveDose() async {
     if (_saving) return;
     _saving = true;
 
     final substance = _selectedSubstance!;
     final amount = double.parse(_amountController.text.trim());
-
-    // Combine the separate date and time into a single DateTime.
-    // Flutter's time picker gives TimeOfDay (hours+minutes only),
-    // so we merge it with the selected date.
     final loggedAt = DateTime(
       _selectedDate.year,
       _selectedDate.month,
@@ -340,53 +360,9 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
       loggedAt,
     );
 
-    // Reset form: keep substance selected (convenient for repeat logging),
-    // clear amount, reset time to now.
-    _amountController.clear();
-    _resetTime();
     _saving = false;
-    setState(() {});
-  }
-
-  /// Delete a dose log by ID. No confirmation — matches the quick-delete
-  /// pattern from _deleteSubstance() in substances_screen.dart.
-  /// The stream provider automatically re-emits the updated list.
-  void _deleteDoseLog(int id) async {
-    await ref.read(databaseProvider).deleteDoseLog(id);
-  }
-
-  /// Format a log's timestamp for display in the recent logs list.
-  ///
-  /// Shows just the time for today's entries (e.g., "2:45 PM"),
-  /// and adds date context for older ones (e.g., "Fri, Feb 20 — 2:45 PM").
-  /// Like Carbon's diffForHumans() but with a fixed format.
-  String _formatLogTime(DateTime loggedAt) {
-    final now = DateTime.now();
-    final time = TimeOfDay.fromDateTime(loggedAt).format(context);
-
-    // Same calendar day? Just show the time.
-    final isToday = loggedAt.year == now.year &&
-        loggedAt.month == now.month &&
-        loggedAt.day == now.day;
-
-    if (isToday) return time;
-
-    // Yesterday check — compare calendar days, not 24h windows.
-    final yesterday = DateTime(now.year, now.month, now.day - 1);
-    final isYesterday = loggedAt.year == yesterday.year &&
-        loggedAt.month == yesterday.month &&
-        loggedAt.day == yesterday.day;
-
-    if (isYesterday) return 'Yesterday, $time';
-
-    // Older: show short date + time using the same format as _TimePicker._formatDate().
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final dateStr = '${days[loggedAt.weekday - 1]}, ${months[loggedAt.month - 1]} ${loggedAt.day}';
-    return '$dateStr — $time';
+    if (mounted) {
+      Navigator.pop(context);
+    }
   }
 }
-

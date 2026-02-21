@@ -57,6 +57,12 @@ class Substances extends Table {
   // Non-nullable — always explicitly set during insert.
   // Laravel equivalent: $table->unsignedInteger('color')
   IntColumn get color => integer()();
+
+  // User-controlled display order. Lower values appear first.
+  // Default 0 so existing rows get a value; on insert we auto-assign max+1.
+  // Used by the dashboard card list and the substances management screen.
+  // Laravel equivalent: $table->unsignedInteger('sort_order')->default(0)
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 }
 
 /// Dose logs table — records each time a user takes a substance.
@@ -99,7 +105,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -117,6 +123,7 @@ class AppDatabase extends _$AppDatabase {
           halfLifeHours: const Value(5.0),
           unit: const Value('mg'),
           color: substanceColorPalette[0],
+          sortOrder: const Value(1),
         ),
       );
       // Water: visible but not main — no half-life (no decay tracking).
@@ -126,6 +133,7 @@ class AppDatabase extends _$AppDatabase {
           halfLifeHours: const Value(null),
           unit: const Value('ml'),
           color: substanceColorPalette[1],
+          sortOrder: const Value(2),
         ),
       );
       // Alcohol: hidden — won't appear in Log dropdown, but data preserved.
@@ -137,6 +145,7 @@ class AppDatabase extends _$AppDatabase {
           halfLifeHours: const Value(4.0),
           unit: const Value('ml'),
           color: substanceColorPalette[2],
+          sortOrder: const Value(3),
         ),
       );
     },
@@ -204,24 +213,42 @@ class AppDatabase extends _$AppDatabase {
           'ALTER TABLE dose_logs RENAME COLUMN amount_mg TO amount',
         );
       }
+      if (from < 5) {
+        // v4 → v5: Add sortOrder column to substances for user-controlled ordering.
+        // Default is 0, then we immediately set each row's sortOrder = its id
+        // so existing substances keep their insertion order.
+        await m.addColumn(substances, substances.sortOrder);
+
+        // Set sortOrder = id for all existing rows (preserves insertion order).
+        // Like: Substance::orderBy('id')->get()->each(fn($s, $i) => $s->update(['sort_order' => $i + 1]))
+        final existing = await (select(substances)
+              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+            .get();
+        for (var i = 0; i < existing.length; i++) {
+          await (update(substances)
+                ..where((t) => t.id.equals(existing[i].id)))
+              .write(SubstancesCompanion(sortOrder: Value(i + 1)));
+        }
+      }
     },
   );
 
   // --- Substance queries ---
 
-  /// Watch all substances sorted by name (reactive stream).
+  /// Watch all substances sorted by user-controlled sortOrder (reactive stream).
+  /// Like: Substance::orderBy('sort_order')->get()
   Stream<List<Substance>> watchAllSubstances() {
-    return (select(substances)..orderBy([(t) => OrderingTerm.asc(t.name)]))
+    return (select(substances)..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
         .watch();
   }
 
-  /// Watch only visible substances, sorted by name.
-  /// Used by the Log form dropdown — hidden substances don't appear.
-  /// Like: Substance::where('is_visible', true)->orderBy('name')->get()
+  /// Watch only visible substances, sorted by sortOrder.
+  /// Used by the dashboard cards and Log form dropdown.
+  /// Like: Substance::where('is_visible', true)->orderBy('sort_order')->get()
   Stream<List<Substance>> watchVisibleSubstances() {
     return (select(substances)
           ..where((t) => t.isVisible.equals(true))
-          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
         .watch();
   }
 
@@ -269,9 +296,8 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  /// Insert a new substance with auto-assigned color from the palette.
-  /// Color is assigned using the current substance count % palette length,
-  /// so colors cycle through the palette as substances are added.
+  /// Insert a new substance with auto-assigned color and sort order.
+  /// Color cycles through the palette; sortOrder = max existing + 1.
   /// Like: $color = $palette[Substance::count() % count($palette)]
   Future<int> insertSubstance(
     String name, {
@@ -279,9 +305,16 @@ class AppDatabase extends _$AppDatabase {
     double? halfLifeHours,
   }) async {
     // Count existing substances to pick the next color in the palette.
+    final existing = await (select(substances)
+          ..orderBy([(t) => OrderingTerm.desc(t.sortOrder)])
+          ..limit(1))
+        .getSingleOrNull();
+
+    // Color = count-based cycling, sortOrder = max + 1 (new items go last).
     final count = await (selectOnly(substances)..addColumns([substances.id]))
         .get()
         .then((rows) => rows.length);
+    final nextSortOrder = (existing?.sortOrder ?? 0) + 1;
 
     return into(substances).insert(
       SubstancesCompanion.insert(
@@ -289,6 +322,7 @@ class AppDatabase extends _$AppDatabase {
         unit: Value(unit),
         halfLifeHours: Value(halfLifeHours),
         color: substanceColorPalette[count % substanceColorPalette.length],
+        sortOrder: Value(nextSortOrder),
       ),
     );
   }
@@ -318,7 +352,68 @@ class AppDatabase extends _$AppDatabase {
     return (delete(substances)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Reorder substances by writing sortOrder = index for each ID.
+  /// Called after drag-to-reorder in the substances screen.
+  /// Uses a transaction so the reorder is atomic (all or nothing).
+  /// Like: DB::transaction(fn() => collect($ids)->each(fn($id, $i) => ...))
+  Future<void> reorderSubstances(List<int> orderedIds) {
+    return transaction(() async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await (update(substances)
+              ..where((t) => t.id.equals(orderedIds[i])))
+            .write(SubstancesCompanion(sortOrder: Value(i + 1)));
+      }
+    });
+  }
+
   // --- Dose log queries ---
+
+  /// Watch doses for a single substance from [since] onward.
+  ///
+  /// Used by the dashboard card provider — loads doses within the decay window
+  /// (day boundary minus 5 half-lives) so still-decaying old doses are included.
+  /// Like: DoseLog::where('substance_id', $id)->where('logged_at', '>=', $since)->get()
+  Stream<List<DoseLog>> watchDosesSince(int substanceId, DateTime since) {
+    return (select(doseLogs)
+          ..where((t) =>
+              t.substanceId.equals(substanceId) &
+              t.loggedAt.isBiggerOrEqualValue(since))
+          ..orderBy([(t) => OrderingTerm.asc(t.loggedAt)]))
+        .watch();
+  }
+
+  /// Watch the most recent dose for a substance (for "Repeat Last" button).
+  ///
+  /// Returns a stream of the single most recent DoseLog, or null if none exist.
+  /// The stream updates whenever doses change, so the Repeat Last button
+  /// appears/disappears reactively.
+  /// Like: DoseLog::where('substance_id', $id)->latest('logged_at')->first()
+  Stream<DoseLog?> watchLastDose(int substanceId) {
+    return (select(doseLogs)
+          ..where((t) => t.substanceId.equals(substanceId))
+          ..orderBy([(t) => OrderingTerm.desc(t.loggedAt)])
+          ..limit(1))
+        .watchSingleOrNull();
+  }
+
+  /// Watch doses for a substance between two dates (for substance log screen).
+  ///
+  /// Used for the paginated history view — loads doses within a date range
+  /// that expands as the user scrolls down.
+  /// Like: DoseLog::where('substance_id', $id)->whereBetween('logged_at', [$from, $to])->get()
+  Stream<List<DoseLog>> watchDosesBetween(
+    int substanceId,
+    DateTime from,
+    DateTime to,
+  ) {
+    return (select(doseLogs)
+          ..where((t) =>
+              t.substanceId.equals(substanceId) &
+              t.loggedAt.isBiggerOrEqualValue(from) &
+              t.loggedAt.isSmallerThanValue(to))
+          ..orderBy([(t) => OrderingTerm.desc(t.loggedAt)]))
+        .watch();
+  }
 
   /// Insert a new dose log.
   /// Like: DoseLog::create(['substance_id' => $id, 'amount' => 90, 'logged_at' => now()])

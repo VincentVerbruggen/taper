@@ -5,6 +5,8 @@ A cross-platform app (Flutter, migrated from native Android/Kotlin) that tracks 
 
 The developer is a PHP/web developer (8 YOE) learning Flutter/Dart — always include explanatory comments in code changes explaining how/why things work.
 
+**Note:** The developer uses speech-to-text to give instructions, so expect typos, homophones, and odd word choices. Interpret intent over literal wording.
+
 ## Tech Stack
 - **Framework:** Flutter 3.41.2 (Dart 3.11.0)
 - **UI:** Material 3 (Material Design)
@@ -25,25 +27,57 @@ Migrated from native Android (Kotlin/Jetpack Compose) to Flutter. Old project at
 - Database seeder (inserts "Caffeine" on first run)
 - Material 3 theming (dark mode)
 
-**What still needs to be rebuilt in Flutter + remaining milestones:**
-- Everything from Milestone 1 (Substance CRUD, persistence, navigation)
-- Milestone 2: Dose Logging (DoseLog model, log form with substance picker)
-- Milestone 3: Decay Curve Chart (pharmacokinetic math + charting)
-- Milestone 4: Polish (half-life field, multi-substance chart, date picker, swipe-to-delete)
+**Milestone progress:**
+- Milestone 1 (Substance CRUD, persistence, navigation) — DONE
+- Milestone 2 (Dose Logging — log form, edit, recent logs) — DONE
+- Milestone 3 (Per-substance fields — half-life, unit, color) — DONE
+- Milestone 4 (Dashboard — substance cards, decay curves, repeat last, substance log) — DONE
+- Remaining: swipe-to-delete, date picker improvements, additional polish
 
 ## Current State
-Fresh Flutter scaffold (default counter app). No app code written yet.
+Fully functional app with substance management, dose logging, and dashboard with decay curves.
 
 ## Project Structure
 ```
 lib/
-└── main.dart              # Default counter app (to be replaced)
-plans/
-└── caffeine-tracker.md    # Full roadmap with milestones and architecture
-android/                   # Flutter Android platform files
+├── main.dart                                    # App entry point, Material 3 theming
+├── data/
+│   ├── database.dart                            # Drift DB: tables, migrations, queries
+│   └── database.g.dart                          # Generated Drift code
+├── providers/
+│   └── database_providers.dart                  # Riverpod providers (DB, substances, doses, card data)
+├── utils/
+│   ├── day_boundary.dart                        # 5 AM day boundary utilities
+│   └── decay_calculator.dart                    # Pharmacokinetic decay math (pure static)
+└── screens/
+    ├── home_screen.dart                         # Bottom nav with 3 tabs
+    ├── dashboard_screen.dart                    # Dashboard tab — substance cards list
+    ├── dashboard/
+    │   ├── substance_log_screen.dart            # Per-substance dose history (infinite scroll)
+    │   └── widgets/
+    │       ├── substance_card.dart              # Card: stats + chart + toolbar
+    │       └── decay_curve_chart.dart           # Mini fl_chart LineChart
+    ├── log/
+    │   ├── log_dose_screen.dart                 # Log dose form
+    │   ├── edit_dose_screen.dart                # Edit existing dose
+    │   └── widgets/
+    │       └── time_picker.dart                 # Date + time picker
+    └── substances/
+        ├── substances_screen.dart               # Substance list management
+        └── widgets/
+            └── substance_form_card.dart         # Add/edit substance form
 test/
-└── widget_test.dart       # Default test (to be replaced)
-pubspec.yaml               # Dependencies (currently just defaults)
+├── helpers/
+│   └── test_database.dart                       # In-memory test DB factory
+├── utils/
+│   ├── day_boundary_test.dart                   # Day boundary unit tests
+│   └── decay_calculator_test.dart               # Decay math unit tests
+├── dashboard_screen_test.dart                   # Dashboard widget tests
+├── substance_log_screen_test.dart               # Substance log widget tests
+├── log_dose_screen_test.dart                    # Log dose widget tests
+└── substances_screen_test.dart                  # Substances widget tests
+plans/
+└── caffeine-tracker.md                          # Full roadmap
 ```
 
 ## Architecture (Flutter equivalent of old Kotlin MVVM)
@@ -56,25 +90,29 @@ pubspec.yaml               # Dependencies (currently just defaults)
 | Database           | Drift tables + DAOs (code-gen)       | Room DAO               | Eloquent query scopes   |
 | Model              | Drift DataClasses (generated)        | Room `@Entity`         | Eloquent Model          |
 
-## Data Models
+## Data Models (schema v4)
 
 ### Substance
 - `id: int` (auto-increment PK)
 - `name: String` (e.g., "Caffeine")
-- `halfLifeHours: double` (e.g., 5.0 for caffeine)
-- `createdAt: DateTime`
+- `isMain: bool` (default false — is this the default in the Log form?)
+- `isVisible: bool` (default true — does it appear in the Log form dropdown?)
+- `halfLifeHours: double?` (nullable — null = no decay tracking, e.g., Water)
+- `unit: String` (default "mg" — free text, displayed as amount suffix)
+- `color: int` (ARGB int — auto-assigned from `substanceColorPalette`)
 
 ### DoseLog
 - `id: int` (auto-increment PK)
 - `substanceId: int` (FK → substances)
-- `amountMg: double` (e.g., 90.0)
+- `amount: double` (e.g., 90.0 — unit comes from substance)
 - `loggedAt: DateTime` (when the dose was consumed)
 
 ## Decay Curve Formula
 ```
 active_amount(t) = Σ dose_mg × 0.5^(hours_elapsed / half_life)
 ```
-Sample every 5 minutes from midnight to midnight, summing all active doses at each point.
+Sample every 5 minutes from day boundary (5 AM) to next day boundary, summing all active doses at each point.
+Doses beyond 5 half-lives are ignored (< 3% remaining, negligible).
 
 ## Collaboration Style
 - **Small steps** — Make changes incrementally so the developer can follow along

@@ -31,10 +31,20 @@ android {
     }
 
     buildTypes {
+        // Debug builds get a ".dev" suffix so they install as a separate app
+        // on your phone alongside the release version. Think of it like
+        // Laravel's APP_ENV — same code, different identity.
+        debug {
+            applicationIdSuffix = ".dev"
+            // This changes the app name in the launcher so you can tell them apart
+            resValue("string", "app_name", "Taper DEV")
+        }
+
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            resValue("string", "app_name", "Taper")
         }
     }
 }

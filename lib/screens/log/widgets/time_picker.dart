@@ -37,12 +37,13 @@ class TimePicker extends StatelessWidget {
 
         const SizedBox(width: 12),
 
-        // Time chip — tap to open time picker
+        // Time chip — tap to open time picker.
+        // Shows 24h NATO format: "14:30" instead of locale-dependent AM/PM.
         Expanded(
           child: OutlinedButton.icon(
             onPressed: () => _pickTime(context),
             icon: const Icon(Icons.access_time, size: 18),
-            label: Text(time.format(context)),
+            label: Text(format24h(time)),
           ),
         ),
       ],
@@ -64,8 +65,21 @@ class TimePicker extends StatelessWidget {
     final picked = await showTimePicker(
       context: context,
       initialTime: time,
+      // Use 24h input mode to match NATO time format.
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
     );
     if (picked != null) onTimeChanged(picked);
+  }
+
+  /// Format a TimeOfDay as 24h NATO: "14:30", "09:05".
+  /// Public so other widgets can reuse the same format.
+  static String format24h(TimeOfDay t) {
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 
   /// Format date as "Mon, Feb 21" — short and readable.

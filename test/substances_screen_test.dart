@@ -10,22 +10,18 @@ import 'package:taper/screens/substances/substances_screen.dart';
 import 'helpers/test_database.dart';
 
 void main() {
-  // Each test gets its own in-memory DB — like Laravel's RefreshDatabase.
   late AppDatabase db;
 
   setUp(() async {
     db = createTestDatabase();
   });
 
-  // Safety net: close DB even if test fails before cleanUp().
   tearDown(() async {
     try {
       await db.close();
     } catch (_) {}
   });
 
-  /// Build the SubstancesScreen wrapped in ProviderScope + MaterialApp.
-  /// Like setting up a Livewire test component with a mocked DB.
   Widget buildTestWidget() {
     return ProviderScope(
       overrides: [
@@ -37,14 +33,11 @@ void main() {
     );
   }
 
-  /// Bounded pump — same pattern as log_dose_screen_test.dart.
   Future<void> pumpAndWait(WidgetTester tester) async {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
   }
 
-  /// Clean up: dispose widgets first, then close DB.
-  /// Same ordering as log_dose_screen_test.dart to avoid Drift deadlocks.
   Future<void> cleanUp(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
@@ -53,38 +46,70 @@ void main() {
     await tester.pump();
   }
 
+  // --- Header test ---
+
+  testWidgets('shows Substances header', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    expect(find.text('Substances'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
   // --- Seeded data tests ---
 
   testWidgets('shows seeded substances with unit + half-life info', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Caffeine: unit "mg", half-life 5.0h
     expect(find.text('Caffeine'), findsOneWidget);
     expect(find.text('mg \u00B7 half-life: 5.0h'), findsOneWidget);
 
-    // Water: unit "ml", no half-life
     expect(find.text('Water'), findsOneWidget);
     expect(find.text('ml'), findsOneWidget);
 
-    // Alcohol: hidden, unit "ml", half-life 4.0h
     expect(find.text('Alcohol'), findsOneWidget);
     expect(find.text('ml \u00B7 half-life: 4.0h'), findsOneWidget);
 
     await cleanUp(tester);
   });
 
-  // --- Add substance with unit + half-life ---
+  // --- Add substance via bottom sheet ---
+
+  testWidgets('FAB opens add substance bottom sheet', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Tap the FAB to open the bottom sheet.
+    await tester.tap(find.byType(FloatingActionButton));
+    // Extra pump time for the bottom sheet slide-up animation.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // "Add Substance" appears as the heading AND as the FilledButton label.
+    expect(find.text('Add Substance'), findsNWidgets(2));
+    // Should have 3 text fields: name, unit, half-life.
+    expect(find.byType(TextField), findsNWidgets(3));
+
+    // Close by tapping the heading.
+    await tester.tap(find.text('Add Substance').first);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await cleanUp(tester);
+  });
 
   testWidgets('add substance with custom unit and half-life', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Tap the FAB to open the add form.
+    // Open add substance bottom sheet.
     await tester.tap(find.byType(FloatingActionButton));
+    // Extra pump time for the bottom sheet slide-up animation.
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    // The form should have three text fields: name, unit, half-life.
+    // Find the text fields inside the bottom sheet.
     final textFields = find.byType(TextField);
     expect(textFields, findsNWidgets(3));
 
@@ -96,8 +121,10 @@ void main() {
     await tester.enterText(textFields.at(2), '24.0');
     await tester.pump();
 
-    // Tap Save.
-    await tester.tap(find.text('Save'));
+    // Scroll the save button into view (may be off-screen in 600px viewport).
+    await tester.ensureVisible(find.byType(FilledButton));
+    // Tap the FilledButton ("Add Substance" save button).
+    await tester.tap(find.byType(FilledButton));
     await tester.pump();
     await pumpAndWait(tester);
 
@@ -106,7 +133,6 @@ void main() {
     final vitD = substances.firstWhere((s) => s.name == 'Vitamin D');
     expect(vitD.unit, 'IU');
     expect(vitD.halfLifeHours, 24.0);
-    // Color should be auto-assigned (4th substance = palette[3]).
     expect(vitD.color, substanceColorPalette[3]);
 
     await cleanUp(tester);
@@ -118,9 +144,11 @@ void main() {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Tap FAB to open add form.
+    // Open add substance bottom sheet.
     await tester.tap(find.byType(FloatingActionButton));
+    // Extra pump time for the bottom sheet slide-up animation.
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     final textFields = find.byType(TextField);
 
@@ -129,11 +157,12 @@ void main() {
     await tester.enterText(textFields.at(1), 'capsules');
     await tester.pump();
 
-    await tester.tap(find.text('Save'));
+    // Scroll the save button into view (may be off-screen in 600px viewport).
+    await tester.ensureVisible(find.byType(FilledButton));
+    await tester.tap(find.byType(FilledButton));
     await tester.pump();
     await pumpAndWait(tester);
 
-    // Verify half-life is null.
     final substances = await db.select(db.substances).get();
     final suppl = substances.firstWhere((s) => s.name == 'Supplements');
     expect(suppl.halfLifeHours, isNull);
@@ -148,15 +177,14 @@ void main() {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Tap Caffeine to open edit form.
+    // Tap Caffeine to open inline edit form.
     await tester.tap(find.text('Caffeine'));
     await tester.pump();
 
-    // The edit form should be pre-filled with Caffeine's current values.
+    // The edit form should be pre-filled.
     final textFields = find.byType(TextField);
     expect(textFields, findsNWidgets(3));
 
-    // Verify pre-filled values.
     final nameField = tester.widget<TextField>(textFields.at(0));
     expect(nameField.controller?.text, 'Caffeine');
     final unitField = tester.widget<TextField>(textFields.at(1));
@@ -173,7 +201,6 @@ void main() {
     await tester.pump();
     await pumpAndWait(tester);
 
-    // Verify the DB was updated.
     final substances = await db.select(db.substances).get();
     final caffeine = substances.firstWhere((s) => s.name == 'Caffeine');
     expect(caffeine.unit, 'g');
@@ -185,17 +212,14 @@ void main() {
   // --- Color auto-assignment ---
 
   testWidgets('color auto-assigned from palette', (tester) async {
-    // Check the seeded substances have the expected palette colors.
     final substances = await (db.select(db.substances)
           ..orderBy([(t) => OrderingTerm.asc(t.id)]))
         .get();
 
-    // Caffeine = palette[0], Water = palette[1], Alcohol = palette[2].
     expect(substances[0].color, substanceColorPalette[0]);
     expect(substances[1].color, substanceColorPalette[1]);
     expect(substances[2].color, substanceColorPalette[2]);
 
-    // Insert a 4th substance — should get palette[3].
     await db.insertSubstance('Test');
     final updated = await (db.select(db.substances)
           ..orderBy([(t) => OrderingTerm.asc(t.id)]))
@@ -208,8 +232,6 @@ void main() {
   });
 
   testWidgets('color cycles through palette for many substances', (tester) async {
-    // Insert 10 more substances (3 seeded + 10 = 13 total).
-    // Colors should cycle: palette[3], [4], ..., [9], [0], [1], [2].
     for (var i = 0; i < 10; i++) {
       await db.insertSubstance('Sub$i');
     }
@@ -218,13 +240,9 @@ void main() {
           ..orderBy([(t) => OrderingTerm.asc(t.id)]))
         .get();
 
-    // 13 total: 3 seeded + 10 added.
     expect(substances.length, 13);
 
-    // The 11th substance (index 10) wraps around: count was 10 at insert,
-    // so color = palette[10 % 10] = palette[0].
     final sub7 = substances.firstWhere((s) => s.name == 'Sub7');
-    // sub7 was inserted when count=10 → palette[10 % 10] = palette[0]
     expect(sub7.color, substanceColorPalette[0]);
 
     await tester.pumpWidget(const SizedBox());
@@ -237,8 +255,6 @@ void main() {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Find Container widgets with circle BoxShape — those are the color dots.
-    // Each substance in the list should have one.
     final colorDots = find.byWidgetPredicate((widget) {
       if (widget is Container && widget.decoration is BoxDecoration) {
         final dec = widget.decoration as BoxDecoration;
@@ -247,7 +263,6 @@ void main() {
       return false;
     });
 
-    // 3 seeded substances = 3 color dots.
     expect(colorDots, findsNWidgets(3));
 
     await cleanUp(tester);

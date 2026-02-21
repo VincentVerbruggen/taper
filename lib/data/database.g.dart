@@ -89,6 +89,18 @@ class $SubstancesTable extends Substances
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -98,6 +110,7 @@ class $SubstancesTable extends Substances
     halfLifeHours,
     unit,
     color,
+    sortOrder,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -157,6 +170,12 @@ class $SubstancesTable extends Substances
     } else if (isInserting) {
       context.missing(_colorMeta);
     }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
     return context;
   }
 
@@ -194,6 +213,10 @@ class $SubstancesTable extends Substances
         DriftSqlType.int,
         data['${effectivePrefix}color'],
       )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
     );
   }
 
@@ -211,6 +234,7 @@ class Substance extends DataClass implements Insertable<Substance> {
   final double? halfLifeHours;
   final String unit;
   final int color;
+  final int sortOrder;
   const Substance({
     required this.id,
     required this.name,
@@ -219,6 +243,7 @@ class Substance extends DataClass implements Insertable<Substance> {
     this.halfLifeHours,
     required this.unit,
     required this.color,
+    required this.sortOrder,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -232,6 +257,7 @@ class Substance extends DataClass implements Insertable<Substance> {
     }
     map['unit'] = Variable<String>(unit);
     map['color'] = Variable<int>(color);
+    map['sort_order'] = Variable<int>(sortOrder);
     return map;
   }
 
@@ -246,6 +272,7 @@ class Substance extends DataClass implements Insertable<Substance> {
           : Value(halfLifeHours),
       unit: Value(unit),
       color: Value(color),
+      sortOrder: Value(sortOrder),
     );
   }
 
@@ -262,6 +289,7 @@ class Substance extends DataClass implements Insertable<Substance> {
       halfLifeHours: serializer.fromJson<double?>(json['halfLifeHours']),
       unit: serializer.fromJson<String>(json['unit']),
       color: serializer.fromJson<int>(json['color']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
     );
   }
   @override
@@ -275,6 +303,7 @@ class Substance extends DataClass implements Insertable<Substance> {
       'halfLifeHours': serializer.toJson<double?>(halfLifeHours),
       'unit': serializer.toJson<String>(unit),
       'color': serializer.toJson<int>(color),
+      'sortOrder': serializer.toJson<int>(sortOrder),
     };
   }
 
@@ -286,6 +315,7 @@ class Substance extends DataClass implements Insertable<Substance> {
     Value<double?> halfLifeHours = const Value.absent(),
     String? unit,
     int? color,
+    int? sortOrder,
   }) => Substance(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -296,6 +326,7 @@ class Substance extends DataClass implements Insertable<Substance> {
         : this.halfLifeHours,
     unit: unit ?? this.unit,
     color: color ?? this.color,
+    sortOrder: sortOrder ?? this.sortOrder,
   );
   Substance copyWithCompanion(SubstancesCompanion data) {
     return Substance(
@@ -308,6 +339,7 @@ class Substance extends DataClass implements Insertable<Substance> {
           : this.halfLifeHours,
       unit: data.unit.present ? data.unit.value : this.unit,
       color: data.color.present ? data.color.value : this.color,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
     );
   }
 
@@ -320,14 +352,23 @@ class Substance extends DataClass implements Insertable<Substance> {
           ..write('isVisible: $isVisible, ')
           ..write('halfLifeHours: $halfLifeHours, ')
           ..write('unit: $unit, ')
-          ..write('color: $color')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, isMain, isVisible, halfLifeHours, unit, color);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    isMain,
+    isVisible,
+    halfLifeHours,
+    unit,
+    color,
+    sortOrder,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -338,7 +379,8 @@ class Substance extends DataClass implements Insertable<Substance> {
           other.isVisible == this.isVisible &&
           other.halfLifeHours == this.halfLifeHours &&
           other.unit == this.unit &&
-          other.color == this.color);
+          other.color == this.color &&
+          other.sortOrder == this.sortOrder);
 }
 
 class SubstancesCompanion extends UpdateCompanion<Substance> {
@@ -349,6 +391,7 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
   final Value<double?> halfLifeHours;
   final Value<String> unit;
   final Value<int> color;
+  final Value<int> sortOrder;
   const SubstancesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -357,6 +400,7 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     this.halfLifeHours = const Value.absent(),
     this.unit = const Value.absent(),
     this.color = const Value.absent(),
+    this.sortOrder = const Value.absent(),
   });
   SubstancesCompanion.insert({
     this.id = const Value.absent(),
@@ -366,6 +410,7 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     this.halfLifeHours = const Value.absent(),
     this.unit = const Value.absent(),
     required int color,
+    this.sortOrder = const Value.absent(),
   }) : name = Value(name),
        color = Value(color);
   static Insertable<Substance> custom({
@@ -376,6 +421,7 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     Expression<double>? halfLifeHours,
     Expression<String>? unit,
     Expression<int>? color,
+    Expression<int>? sortOrder,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -385,6 +431,7 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
       if (halfLifeHours != null) 'half_life_hours': halfLifeHours,
       if (unit != null) 'unit': unit,
       if (color != null) 'color': color,
+      if (sortOrder != null) 'sort_order': sortOrder,
     });
   }
 
@@ -396,6 +443,7 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     Value<double?>? halfLifeHours,
     Value<String>? unit,
     Value<int>? color,
+    Value<int>? sortOrder,
   }) {
     return SubstancesCompanion(
       id: id ?? this.id,
@@ -405,6 +453,7 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
       halfLifeHours: halfLifeHours ?? this.halfLifeHours,
       unit: unit ?? this.unit,
       color: color ?? this.color,
+      sortOrder: sortOrder ?? this.sortOrder,
     );
   }
 
@@ -432,6 +481,9 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     if (color.present) {
       map['color'] = Variable<int>(color.value);
     }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
     return map;
   }
 
@@ -444,7 +496,8 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
           ..write('isVisible: $isVisible, ')
           ..write('halfLifeHours: $halfLifeHours, ')
           ..write('unit: $unit, ')
-          ..write('color: $color')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder')
           ..write(')'))
         .toString();
   }
@@ -776,6 +829,7 @@ typedef $$SubstancesTableCreateCompanionBuilder =
       Value<double?> halfLifeHours,
       Value<String> unit,
       required int color,
+      Value<int> sortOrder,
     });
 typedef $$SubstancesTableUpdateCompanionBuilder =
     SubstancesCompanion Function({
@@ -786,6 +840,7 @@ typedef $$SubstancesTableUpdateCompanionBuilder =
       Value<double?> halfLifeHours,
       Value<String> unit,
       Value<int> color,
+      Value<int> sortOrder,
     });
 
 final class $$SubstancesTableReferences
@@ -853,6 +908,11 @@ class $$SubstancesTableFilterComposer
 
   ColumnFilters<int> get color => $composableBuilder(
     column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -925,6 +985,11 @@ class $$SubstancesTableOrderingComposer
     column: $table.color,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SubstancesTableAnnotationComposer
@@ -958,6 +1023,9 @@ class $$SubstancesTableAnnotationComposer
 
   GeneratedColumn<int> get color =>
       $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
 
   Expression<T> doseLogsRefs<T extends Object>(
     Expression<T> Function($$DoseLogsTableAnnotationComposer a) f,
@@ -1020,6 +1088,7 @@ class $$SubstancesTableTableManager
                 Value<double?> halfLifeHours = const Value.absent(),
                 Value<String> unit = const Value.absent(),
                 Value<int> color = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
               }) => SubstancesCompanion(
                 id: id,
                 name: name,
@@ -1028,6 +1097,7 @@ class $$SubstancesTableTableManager
                 halfLifeHours: halfLifeHours,
                 unit: unit,
                 color: color,
+                sortOrder: sortOrder,
               ),
           createCompanionCallback:
               ({
@@ -1038,6 +1108,7 @@ class $$SubstancesTableTableManager
                 Value<double?> halfLifeHours = const Value.absent(),
                 Value<String> unit = const Value.absent(),
                 required int color,
+                Value<int> sortOrder = const Value.absent(),
               }) => SubstancesCompanion.insert(
                 id: id,
                 name: name,
@@ -1046,6 +1117,7 @@ class $$SubstancesTableTableManager
                 halfLifeHours: halfLifeHours,
                 unit: unit,
                 color: color,
+                sortOrder: sortOrder,
               ),
           withReferenceMapper: (p0) => p0
               .map(

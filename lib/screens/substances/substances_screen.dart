@@ -19,150 +19,145 @@ class SubstancesScreen extends ConsumerStatefulWidget {
 }
 
 class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
-  // Whether the "add new substance" form is visible.
-  // Like: public bool $showAddForm = false; in Livewire.
-  bool _showAddForm = false;
-
   // Which substance is being edited (null = not editing).
   // Like: public ?Substance $editing = null; in Livewire.
   Substance? _editingSubstance;
 
   @override
   Widget build(BuildContext context) {
-    // ref.watch() = subscribe to a provider and rebuild when it changes.
-    // substancesProvider is a StreamProvider, so it returns AsyncValue
-    // wrapping three states: loading, data, or error.
     final substancesAsync = ref.watch(substancesProvider);
 
     return Scaffold(
-      // FAB = Floating Action Button, the "+" at bottom right.
-      // Hidden when the add form is already showing.
-      floatingActionButton: _showAddForm
-          ? null
-          : FloatingActionButton(
-              onPressed: () {
-                setState(() {
-                  _showAddForm = true;
-                  _editingSubstance = null; // Close any open edit form
-                });
-              },
-              child: const Icon(Icons.add),
-            ),
-
-      // AsyncValue.when() = pattern matching on the stream state.
-      // Like a Blade @if($loading) / @elseif($error) / @else pattern.
-      body: substancesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Error: $error')),
-        data: (substances) => _buildSubstancesList(substances),
+      // FAB opens the add substance dialog.
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddSubstanceDialog(context),
+        child: const Icon(Icons.add),
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: substancesAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stack) => Center(child: Text('Error: $error')),
+          data: (substances) => _buildSubstancesList(substances),
+        ),
       ),
     );
   }
 
   Widget _buildSubstancesList(List<Substance> substances) {
-    // Empty state — show a hint when no substances and no add form.
-    if (substances.isEmpty && !_showAddForm) {
-      return const Center(
-        child: Text('No substances yet. Tap + to add one.'),
+    // Empty state — show a hint when no substances.
+    if (substances.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'Substances',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 48),
+          const Center(
+            child: Text('No substances yet. Tap + to add one.'),
+          ),
+        ],
       );
     }
 
-    // ListView.builder lazily builds items as they scroll into view.
-    // If the add form is visible, it takes index 0 and the rest shift by 1.
-    final formOffset = _showAddForm ? 1 : 0;
-
-    return ListView.builder(
-      itemCount: substances.length + formOffset,
-      itemBuilder: (context, index) {
-        // Add form at the top of the list
-        if (_showAddForm && index == 0) {
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: _SubstanceFormCard(
-              title: 'Add Substance',
-              initialName: '',
-              initialUnit: 'mg',
-              initialHalfLife: null,
-              onSave: _addSubstance,
-              onCancel: () => setState(() => _showAddForm = false),
-            ),
-          );
-        }
-
-        final substance = substances[index - formOffset];
-
-        // Inline edit form replaces the list item when tapped
-        if (_editingSubstance?.id == substance.id) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 4.0,
-            ),
-            child: _SubstanceFormCard(
-              title: 'Edit Substance',
-              initialName: substance.name,
-              initialUnit: substance.unit,
-              initialHalfLife: substance.halfLifeHours,
-              onSave: (name, unit, halfLife) =>
-                  _updateSubstance(substance.id, name, unit, halfLife),
-              onCancel: () => setState(() => _editingSubstance = null),
-            ),
-          );
-        }
-
-        // Normal list item — tap to edit, icons to toggle main/visibility/delete
-        return _SubstanceListItem(
-          substance: substance,
-          onEdit: () {
-            setState(() {
-              _editingSubstance = substance;
-              _showAddForm = false; // Close add form when editing
-            });
-          },
-          onDelete: () => _deleteSubstance(substance.id),
-          onToggleMain: () => _setMainSubstance(substance.id),
-          onToggleVisibility: () => _toggleVisibility(
-            substance.id,
-            substance.isVisible,
+    // ReorderableListView with a header. The header is a non-reorderable
+    // item at the top. Since ReorderableListView needs keys on all children,
+    // we use a Column wrapping approach: header is outside in a Column.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- "Substances" heading ---
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            'Substances',
+            style: Theme.of(context).textTheme.headlineMedium,
           ),
-        );
-      },
+        ),
+
+        // --- Reorderable substance list ---
+        Expanded(
+          child: ReorderableListView.builder(
+            itemCount: substances.length,
+            onReorder: (oldIndex, newIndex) =>
+                _onReorder(substances, oldIndex, newIndex),
+            itemBuilder: (context, index) {
+              final substance = substances[index];
+
+              // Inline edit form replaces the list item when tapped.
+              if (_editingSubstance?.id == substance.id) {
+                return Padding(
+                  key: ValueKey(substance.id),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 4.0,
+                  ),
+                  child: _SubstanceFormCard(
+                    title: 'Edit Substance',
+                    initialName: substance.name,
+                    initialUnit: substance.unit,
+                    initialHalfLife: substance.halfLifeHours,
+                    onSave: (name, unit, halfLife) =>
+                        _updateSubstance(substance.id, name, unit, halfLife),
+                    onCancel: () => setState(() => _editingSubstance = null),
+                  ),
+                );
+              }
+
+              // Normal list item.
+              return _SubstanceListItem(
+                key: ValueKey(substance.id),
+                substance: substance,
+                isFirst: index == 0,
+                isLast: index == substances.length - 1,
+                onEdit: () {
+                  setState(() {
+                    _editingSubstance = substance;
+                  });
+                },
+                onDelete: () => _deleteSubstance(substance.id),
+                onToggleMain: () => _setMainSubstance(substance.id),
+                onToggleVisibility: () => _toggleVisibility(
+                  substance.id,
+                  substance.isVisible,
+                ),
+                onMoveUp: () => _onReorder(substances, index, index - 1),
+                onMoveDown: () => _onReorder(substances, index, index + 2),
+              );
+            },
+          ),
+        ),
+      ],
     );
+  }
+
+  /// Handle drag-to-reorder.
+  void _onReorder(List<Substance> substances, int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final ids = substances.map((s) => s.id).toList();
+    final movedId = ids.removeAt(oldIndex);
+    ids.insert(newIndex, movedId);
+    ref.read(databaseProvider).reorderSubstances(ids);
   }
 
   // --- Mutation methods ---
-  // These call the database directly via ref.read(databaseProvider).
-  // ref.read() = one-time access (no subscription, no rebuild).
-  // Like app()->make(AppDatabase::class)->method() in Laravel.
-
-  void _addSubstance(String name, String unit, double? halfLifeHours) async {
-    await ref.read(databaseProvider).insertSubstance(
-      name,
-      unit: unit,
-      halfLifeHours: halfLifeHours,
-    );
-    setState(() => _showAddForm = false);
-  }
 
   void _updateSubstance(int id, String name, String unit, double? halfLifeHours) async {
     await ref.read(databaseProvider).updateSubstance(
       id,
       name: name,
       unit: unit,
-      // Value(halfLifeHours) — explicitly set, even if null (to clear it).
       halfLifeHours: Value(halfLifeHours),
     );
     setState(() => _editingSubstance = null);
   }
 
-  /// Set a substance as the main (default in Log form dropdown).
-  /// Like clicking a radio button — only one can be active at a time.
   void _setMainSubstance(int id) async {
     await ref.read(databaseProvider).setMainSubstance(id);
   }
 
-  /// Toggle a substance's visibility in the Log form dropdown.
-  /// Hidden substances keep their dose history — like soft-deleting.
   void _toggleVisibility(int id, bool currentlyVisible) async {
     await ref.read(databaseProvider).toggleSubstanceVisibility(
       id,
@@ -170,12 +165,161 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
     );
   }
 
-  /// Delete immediately, no confirmation dialog.
   void _deleteSubstance(int id) async {
     if (_editingSubstance?.id == id) {
       setState(() => _editingSubstance = null);
     }
     await ref.read(databaseProvider).deleteSubstance(id);
+  }
+
+  /// Shows a bottom sheet dialog for adding a new substance.
+  /// Has the same fields as the inline form: name, unit, half-life.
+  /// Like a modal create form that slides up from the bottom.
+  void _showAddSubstanceDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        return _AddSubstanceBottomSheet(
+          onSave: (name, unit, halfLife) async {
+            await ref.read(databaseProvider).insertSubstance(
+              name,
+              unit: unit,
+              halfLifeHours: halfLife,
+            );
+            if (sheetContext.mounted) Navigator.pop(sheetContext);
+          },
+        );
+      },
+    );
+  }
+}
+
+/// Bottom sheet form for adding a new substance.
+/// Contains name, unit, and half-life fields, same as the old inline form.
+class _AddSubstanceBottomSheet extends StatefulWidget {
+  /// Callback that receives the form values and should close the sheet.
+  final void Function(String name, String unit, double? halfLife) onSave;
+
+  const _AddSubstanceBottomSheet({required this.onSave});
+
+  @override
+  State<_AddSubstanceBottomSheet> createState() => _AddSubstanceBottomSheetState();
+}
+
+class _AddSubstanceBottomSheetState extends State<_AddSubstanceBottomSheet> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _unitController;
+  late final TextEditingController _halfLifeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    _unitController = TextEditingController(text: 'mg');
+    _halfLifeController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _unitController.dispose();
+    _halfLifeController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+
+    final unit = _unitController.text.trim().isEmpty
+        ? 'mg'
+        : _unitController.text.trim();
+    final halfLife = double.tryParse(_halfLifeController.text.trim());
+
+    widget.onSave(name, unit, halfLife);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Add Substance',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 20),
+
+          // Substance name input.
+          TextField(
+            controller: _nameController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Substance name',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Unit + Half-life in a row.
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _unitController,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit',
+                    hintText: 'mg',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _halfLifeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Half-life (hours)',
+                    hintText: 'e.g. 5.0',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Save button — disabled until name has content.
+          ListenableBuilder(
+            listenable: _nameController,
+            builder: (context, child) {
+              return FilledButton.icon(
+                onPressed: _nameController.text.trim().isNotEmpty
+                    ? _submit
+                    : null,
+                icon: const Icon(Icons.check),
+                label: const Text('Add Substance'),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -184,25 +328,30 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
 // ---------------------------------------------------------------------------
 
 /// A single substance in the list.
-/// Shows star (main), name, eye (visibility), and delete icons.
+/// Shows star (main), name, reorder arrows, eye (visibility), and delete icons.
 /// Tap name to edit.
-///
-/// Layout:
-///   [★ star] [Substance Name] [👁 eye] [🗑 delete]
-///   leading    title            trailing (Row of two icons)
 class _SubstanceListItem extends StatelessWidget {
   final Substance substance;
+  final bool isFirst;
+  final bool isLast;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onToggleMain;
   final VoidCallback onToggleVisibility;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
 
   const _SubstanceListItem({
+    super.key,
     required this.substance,
+    required this.isFirst,
+    required this.isLast,
     required this.onEdit,
     required this.onDelete,
     required this.onToggleMain,
     required this.onToggleVisibility,
+    required this.onMoveUp,
+    required this.onMoveDown,
   });
 
   @override
@@ -212,33 +361,20 @@ class _SubstanceListItem extends StatelessWidget {
     return Column(
       children: [
         ListTile(
-          // Leading: Star icon for "main" substance (the default in the Log form).
-          // Filled star = this is the main substance; outlined = not main.
-          // Disabled (greyed out) when hidden — can't set a hidden substance as main.
-          // Like a radio button with a star visual instead of a circle.
           leading: IconButton(
             icon: Icon(
               substance.isMain ? Icons.star : Icons.star_outline,
-              // Gold when main, grey when not, dimmed when hidden.
               color: isHidden
                   ? Theme.of(context).colorScheme.onSurface.withAlpha(77)
                   : substance.isMain
                       ? Colors.amber
                       : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            // null = disabled. Can't make a hidden substance the default.
             onPressed: isHidden ? null : onToggleMain,
             tooltip: 'Set as default',
           ),
-
-          // Title row: color dot + substance name.
-          // The color dot shows the auto-assigned chart color.
-          // Strikethrough + dimmed when hidden to show it won't appear
-          // in the Log form dropdown.
           title: Row(
             children: [
-              // Small circle showing the substance's chart color.
-              // Like a colored bullet point in a legend.
               Container(
                 width: 12,
                 height: 12,
@@ -264,12 +400,9 @@ class _SubstanceListItem extends StatelessWidget {
               ),
             ],
           ),
-
-          // Subtitle: unit + half-life info (e.g., "mg · half-life: 5.0h").
-          // Shows just the unit if there's no half-life (e.g., Water → "ml").
           subtitle: Text(
             substance.halfLifeHours != null
-                ? '${substance.unit} · half-life: ${substance.halfLifeHours}h'
+                ? '${substance.unit} \u00B7 half-life: ${substance.halfLifeHours}h'
                 : substance.unit,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant.withAlpha(
@@ -277,17 +410,25 @@ class _SubstanceListItem extends StatelessWidget {
               ),
             ),
           ),
-
-          // Trailing: eye toggle + delete button in a Row.
-          // Row must be wrapped in a SizedBox with a fixed width — otherwise
-          // ListTile's trailing slot expands to fill all available space.
-          // Like putting two inline buttons in a <td> cell.
           trailing: SizedBox(
-            width: 96,
+            width: 192,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Eye icon: open = visible, closed = hidden.
+                // Up/down arrows for reordering.
+                // Disabled when at top/bottom of the list.
+                IconButton(
+                  icon: const Icon(Icons.arrow_upward, size: 20),
+                  onPressed: isFirst ? null : onMoveUp,
+                  tooltip: 'Move up',
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.arrow_downward, size: 20),
+                  onPressed: isLast ? null : onMoveDown,
+                  tooltip: 'Move down',
+                  visualDensity: VisualDensity.compact,
+                ),
                 IconButton(
                   icon: Icon(
                     isHidden ? Icons.visibility_off : Icons.visibility,
@@ -298,7 +439,6 @@ class _SubstanceListItem extends StatelessWidget {
                   onPressed: onToggleVisibility,
                   tooltip: isHidden ? 'Show' : 'Hide',
                 ),
-                // Delete icon — same as before.
                 IconButton(
                   icon: Icon(
                     Icons.delete_outline,
@@ -309,7 +449,6 @@ class _SubstanceListItem extends StatelessWidget {
               ],
             ),
           ),
-
           onTap: onEdit,
         ),
         const Divider(height: 1),
@@ -318,20 +457,11 @@ class _SubstanceListItem extends StatelessWidget {
   }
 }
 
-/// Callback type for the substance form — passes name, unit, and optional halfLifeHours.
-/// Like a form DTO: SubstanceFormData { name, unit, halfLifeHours }.
+/// Callback type for the substance form.
 typedef SubstanceFormCallback = void Function(String name, String unit, double? halfLifeHours);
 
-/// Reusable form card for adding or editing a substance.
-///
-/// Used in two modes:
-///   1. "Add Substance" — at top of list when FAB is tapped
-///   2. "Edit Substance" — replaces a list item inline when tapped
-///
-/// Like a Blade partial (substances/_form.blade.php) used for both
-/// create and edit routes.
-///
-/// StatefulWidget because it manages its own TextEditingControllers.
+/// Reusable inline form card for editing a substance.
+/// Now only used for editing (add moved to bottom sheet dialog).
 class _SubstanceFormCard extends StatefulWidget {
   final String title;
   final String initialName;
@@ -354,7 +484,6 @@ class _SubstanceFormCard extends StatefulWidget {
 }
 
 class _SubstanceFormCardState extends State<_SubstanceFormCard> {
-  // One controller per text field — like separate wire:model properties in Livewire.
   late final TextEditingController _nameController;
   late final TextEditingController _unitController;
   late final TextEditingController _halfLifeController;
@@ -364,7 +493,6 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
     super.initState();
     _nameController = TextEditingController(text: widget.initialName);
     _unitController = TextEditingController(text: widget.initialUnit);
-    // Show half-life as a number string, empty if null (no decay tracking).
     _halfLifeController = TextEditingController(
       text: widget.initialHalfLife?.toString() ?? '',
     );
@@ -378,7 +506,6 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
     super.dispose();
   }
 
-  /// Submit the form if name is valid.
   void _submit() {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
@@ -386,7 +513,6 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
     final unit = _unitController.text.trim().isEmpty
         ? 'mg'
         : _unitController.text.trim();
-    // Empty half-life field = null (no decay tracking).
     final halfLife = double.tryParse(_halfLifeController.text.trim());
 
     widget.onSave(name, unit, halfLife);
@@ -400,7 +526,6 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header: title + close button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -414,8 +539,6 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
                 ),
               ],
             ),
-
-            // Substance name input
             TextField(
               controller: _nameController,
               decoration: const InputDecoration(
@@ -425,15 +548,9 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
               autofocus: true,
               onSubmitted: (_) => _submit(),
             ),
-
             const SizedBox(height: 12),
-
-            // Unit + Half-life in a row — like two <input> fields side by side.
-            // Expanded gives each field equal space within the Row.
             Row(
               children: [
-                // Unit field — free text input, defaults to "mg".
-                // Like <input type="text" value="mg" placeholder="Unit">.
                 Expanded(
                   child: TextField(
                     controller: _unitController,
@@ -445,8 +562,6 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Half-life field — numeric input, optional.
-                // Empty = null = no decay tracking for this substance.
                 Expanded(
                   child: TextField(
                     controller: _halfLifeController,
@@ -461,10 +576,7 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
                 ),
               ],
             ),
-
             const SizedBox(height: 8),
-
-            // Action buttons: Cancel + Save
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -472,8 +584,6 @@ class _SubstanceFormCardState extends State<_SubstanceFormCard> {
                   onPressed: widget.onCancel,
                   child: const Text('Cancel'),
                 ),
-                // ListenableBuilder rebuilds only the Save button when name changes.
-                // Save is disabled until name has content.
                 ListenableBuilder(
                   listenable: _nameController,
                   builder: (context, child) {

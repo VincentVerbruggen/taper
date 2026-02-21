@@ -54,6 +54,22 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.31.0
   build_runner: ^2.11.1
+  flutter_launcher_icons: ^0.14.4
+
+# Launcher icon config — run: dart run flutter_launcher_icons
+# Takes the source PNG and generates all required sizes for Android.
+# Like an image optimization pipeline (think Vite image plugin).
+#
+# Uses "flavors" to generate separate icons for release vs debug builds.
+# Android's resource merging picks the right one per build type —
+# like having different .env files per environment in Laravel.
+flutter_launcher_icons:
+  # Release icon (teal background)
+  image_path: "placeholder-icon-new.png"
+  adaptive_icon_foreground: "placeholder-icon-new.png"
+  adaptive_icon_background: "#FFFFFF"
+  android: true
+  ios: false
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
