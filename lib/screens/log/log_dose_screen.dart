@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/log/edit_dose_screen.dart';
+import 'package:taper/screens/log/widgets/time_picker.dart';
 
 /// LogDoseScreen = the form for recording a substance dose.
 ///
@@ -142,7 +144,8 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
           // --- Time picker ---
           // Tappable row that shows the current date + time.
           // Tapping opens Flutter's built-in date/time picker dialogs.
-          _TimePicker(
+          // Uses the shared TimePicker widget (like a Blade component: <x-time-picker />).
+          TimePicker(
             date: _selectedDate,
             time: _selectedTime,
             onDateChanged: (date) => setState(() => _selectedDate = date),
@@ -166,7 +169,111 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
               );
             },
           ),
+
+          const SizedBox(height: 32),
+
+          // --- Recent doses list ---
+          // Like showing the last 50 rows from DoseLog::with('substance')->latest()->get()
+          // right below the create form — similar to a Livewire table that auto-refreshes.
+          //
+          // We use ref.watch() so the list reactively updates when doses are
+          // added/deleted. The stream provider emits a new list automatically.
+          _buildRecentLogs(),
         ],
+      ),
+    );
+  }
+
+  /// Builds the "Recent Doses" section that watches the dose logs stream.
+  ///
+  /// Uses AsyncValue.when() to handle loading/error/data states — same pattern
+  /// as substancesAsync.when() at the top of build().
+  ///
+  /// Returns widgets directly (not a ListView) because we're already inside a
+  /// SingleChildScrollView → Column. Nesting a ListView inside a scroll view
+  /// causes layout errors. Instead we .map() the list into ListTiles — like
+  /// using @foreach in Blade instead of a separate scrollable <div>.
+  Widget _buildRecentLogs() {
+    final logsAsync = ref.watch(doseLogsProvider);
+
+    return logsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Text('Error loading logs: $error'),
+      data: (logs) {
+        if (logs.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24.0),
+            child: Text(
+              'No doses logged yet.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Recent Doses',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+
+            // .map() each log into a ListTile — like @foreach($logs as $log) in Blade.
+            // We spread (...) the mapped iterable into the Column's children list.
+            ...logs.map((entry) => _buildLogTile(entry)),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Builds a single log entry card.
+  ///
+  /// Card.outlined = Material 3's outlined variant — adds a visible border
+  /// around each entry. Like wrapping a Blade row in:
+  ///   <div class="border rounded-lg p-4">
+  ///
+  /// onTap navigates to the edit screen — like <a href="/doses/{{ $log->id }}/edit">.
+  Widget _buildLogTile(DoseLogWithSubstance entry) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Card.outlined(
+        child: ListTile(
+          // "Caffeine — 90 mg"
+          title: Text(
+            '${entry.substance.name} — ${entry.doseLog.amountMg.toStringAsFixed(0)} mg',
+          ),
+          // Formatted time with optional date context (see _formatLogTime below).
+          subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
+          // Delete button — same no-confirmation pattern as _deleteSubstance()
+          // in substances_screen.dart. Quick corrections for a personal app.
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _deleteDoseLog(entry.doseLog.id),
+            tooltip: 'Delete',
+          ),
+          // Tap the card to navigate to the edit screen.
+          // Like clicking a table row in a Livewire component: wire:click="edit({{ $log->id }})".
+          onTap: () => _editDoseLog(entry),
+        ),
+      ),
+    );
+  }
+
+  /// Navigate to the edit screen for this dose log entry.
+  ///
+  /// Navigator.push() = like a traditional page navigation (href="/doses/1/edit").
+  /// MaterialPageRoute slides the new screen in from the right.
+  /// The bottom nav stays underneath, but the edit screen covers it.
+  void _editDoseLog(DoseLogWithSubstance entry) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditDoseScreen(entry: entry),
       ),
     );
   }
@@ -216,83 +323,46 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     _saving = false;
     setState(() {});
   }
-}
 
-// ---------------------------------------------------------------------------
-// Time picker widget
-// ---------------------------------------------------------------------------
-
-/// Tappable date + time display that opens picker dialogs.
-///
-/// Like two <input type="date"> and <input type="time"> side by side,
-/// but using Flutter's native Material 3 picker dialogs.
-class _TimePicker extends StatelessWidget {
-  final DateTime date;
-  final TimeOfDay time;
-  final ValueChanged<DateTime> onDateChanged;
-  final ValueChanged<TimeOfDay> onTimeChanged;
-
-  const _TimePicker({
-    required this.date,
-    required this.time,
-    required this.onDateChanged,
-    required this.onTimeChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        // Date chip — tap to open date picker
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _pickDate(context),
-            icon: const Icon(Icons.calendar_today, size: 18),
-            label: Text(_formatDate(date)),
-          ),
-        ),
-
-        const SizedBox(width: 12),
-
-        // Time chip — tap to open time picker
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _pickTime(context),
-            icon: const Icon(Icons.access_time, size: 18),
-            label: Text(time.format(context)),
-          ),
-        ),
-      ],
-    );
+  /// Delete a dose log by ID. No confirmation — matches the quick-delete
+  /// pattern from _deleteSubstance() in substances_screen.dart.
+  /// The stream provider automatically re-emits the updated list.
+  void _deleteDoseLog(int id) async {
+    await ref.read(databaseProvider).deleteDoseLog(id);
   }
 
-  void _pickDate(BuildContext context) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: date,
-      // Allow logging up to 7 days in the past (forgot to log yesterday's coffee).
-      firstDate: DateTime.now().subtract(const Duration(days: 7)),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) onDateChanged(picked);
-  }
+  /// Format a log's timestamp for display in the recent logs list.
+  ///
+  /// Shows just the time for today's entries (e.g., "2:45 PM"),
+  /// and adds date context for older ones (e.g., "Fri, Feb 20 — 2:45 PM").
+  /// Like Carbon's diffForHumans() but with a fixed format.
+  String _formatLogTime(DateTime loggedAt) {
+    final now = DateTime.now();
+    final time = TimeOfDay.fromDateTime(loggedAt).format(context);
 
-  void _pickTime(BuildContext context) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: time,
-    );
-    if (picked != null) onTimeChanged(picked);
-  }
+    // Same calendar day? Just show the time.
+    final isToday = loggedAt.year == now.year &&
+        loggedAt.month == now.month &&
+        loggedAt.day == now.day;
 
-  /// Format date as "Mon, Feb 21" — short and readable.
-  String _formatDate(DateTime d) {
+    if (isToday) return time;
+
+    // Yesterday check — compare calendar days, not 24h windows.
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final isYesterday = loggedAt.year == yesterday.year &&
+        loggedAt.month == yesterday.month &&
+        loggedAt.day == yesterday.day;
+
+    if (isYesterday) return 'Yesterday, $time';
+
+    // Older: show short date + time using the same format as _TimePicker._formatDate().
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    // DateTime.weekday: 1=Monday, 7=Sunday. Subtract 1 for 0-indexed array.
-    return '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}';
+    final dateStr = '${days[loggedAt.weekday - 1]}, ${months[loggedAt.month - 1]} ${loggedAt.day}';
+    return '$dateStr — $time';
   }
 }
+

@@ -113,6 +113,19 @@ class AppDatabase extends _$AppDatabase {
     return (delete(doseLogs)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Update an existing dose log.
+  /// Like: DoseLog::find($id)->update([...])
+  /// Same pattern as updateSubstance() above — build an update query with
+  /// a where clause, then .write() the new values wrapped in a Companion.
+  Future<int> updateDoseLog(int id, int substanceId, double amountMg, DateTime loggedAt) {
+    return (update(doseLogs)..where((t) => t.id.equals(id)))
+        .write(DoseLogsCompanion(
+          substanceId: Value(substanceId),
+          amountMg: Value(amountMg),
+          loggedAt: Value(loggedAt),
+        ));
+  }
+
   /// Watch recent dose logs (last 50), newest first, with substance name.
   /// Returns a stream of (DoseLog, Substance) pairs — like an Eloquent eager load:
   ///   DoseLog::with('substance')->latest('logged_at')->limit(50)->get()
