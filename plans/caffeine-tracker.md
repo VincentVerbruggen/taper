@@ -103,6 +103,17 @@ Example: Caffeine half-life = 5 hours → 90mg at 8am → ~45mg at 1pm → ~22mg
 - DoseLog entity + DAO
 - DoseLogRepository
 - LogDoseScreen with substance picker, amount input, time picker
+- Substance dropdown defaults to the "main" substance (falls back to first if none set)
+
+### Milestone 2a: Recent Logs on Log Screen
+- Show a list of recent dose logs below the log form (all substances, newest first)
+- Each entry shows: substance name, amount, time logged
+- Swipe-to-delete or delete button on each entry for quick corrections
+- Tapping an entry could allow editing (stretch goal)
+
+### Milestone 2b: Substance Management Enhancements
+- **Main substance:** Add an `isMain` flag to Substance. One substance can be marked as main — used as the default selection in the Log form. In the Substances screen, a button/toggle to set which one is main (selecting a new main unsets the previous one).
+- **Visibility toggle:** Add an `isVisible` flag to Substance. Hidden substances don't appear in the Log dropdown or elsewhere in the app, but their data is preserved. Useful for substances you've stopped tracking but don't want to delete (and lose the history).
 
 ### Milestone 3: Decay Curve Chart
 - DecayCalculator (pure math, unit tested)
@@ -114,3 +125,7 @@ Example: Caffeine half-life = 5 hours → 90mg at 8am → ~45mg at 1pm → ~22mg
 - Multi-substance chart (different colored lines)
 - Date picker to view historical days
 - Swipe-to-delete on dose logs
+
+### Milestone 5: Units & UX Cleanup
+- **Per-substance units:** Add a `unit` field to the Substance model (e.g., "mg", "ml", "g", "IU"). The dose log just stores a raw `amount` — the unit is derived from the associated substance. Remove any hardcoded "mg" references from the UI.
+- **Rename "Substances" tab to "Settings":** The current name sounds a bit too… clinical. The Settings tab will still contain substance management as its primary feature, but the softer name leaves room for future app-wide settings too.

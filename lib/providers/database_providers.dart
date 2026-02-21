@@ -38,3 +38,12 @@ final substancesProvider = StreamProvider<List<Substance>>((ref) {
   final db = ref.watch(databaseProvider);
   return db.watchAllSubstances();
 });
+
+/// doseLogsProvider = reactive stream of recent dose logs with substance names.
+///
+/// Like: DoseLog::with('substance')->latest()->limit(50)->get()
+/// ...but reactive. Will be used by Dashboard in Milestone 3.
+final doseLogsProvider = StreamProvider<List<DoseLogWithSubstance>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchRecentDoseLogs();
+});

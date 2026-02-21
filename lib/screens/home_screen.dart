@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:taper/screens/dashboard_screen.dart';
-import 'package:taper/screens/log_screen.dart';
+import 'package:taper/screens/log/log_dose_screen.dart';
 import 'package:taper/screens/substances/substances_screen.dart';
 
 /// HomeScreen = the app's main navigation shell.
@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _selectedIndex,
         children: const [
           DashboardScreen(),
-          LogScreen(),
+          LogDoseScreen(),
           SubstancesScreen(),
         ],
       ),

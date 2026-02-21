@@ -80,7 +80,7 @@ Sample every 5 minutes from midnight to midnight, summing all active doses at ea
 - **Small steps** — Make changes incrementally so the developer can follow along
 - **Comments everywhere** — Focus on the HOW and WHY, not WHAT (the dev can read code fine)
 - **Ask questions aggressively** — Use AskUserQuestion tool liberally to clarify before building
-- **Plans as markdown** — Feature plans go in `plans/` directory with how/why explanations
+- **Plans as markdown** — Feature plans go in `plans/` directory with how/why explanations. Add the start of each plan execution copy the  ~/.claude/plans/*.md file into the repo.
 - **PHP/Laravel analogies** — Explain Flutter/Dart concepts by comparing to PHP/Laravel/inertia js/vue/tailwind/web dev stuff
 - **No touching git** — Git belongs to the developer and is used to check changes and see what is going on.
 
