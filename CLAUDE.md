@@ -6,10 +6,13 @@ A cross-platform app (Flutter, migrated from native Android/Kotlin) that tracks 
 The developer is a PHP/web developer (8 YOE) learning Flutter/Dart — always include explanatory comments in code changes explaining how/why things work.
 
 ## Tech Stack
-- **Framework:** Flutter (Dart)
-- **SDK:** ^3.11.0
+- **Framework:** Flutter 3.41.2 (Dart 3.11.0)
 - **UI:** Material 3 (Material Design)
+- **State Management:** Riverpod 3.x (typed DI container with reactive providers)
+- **Database:** Drift 2.x (type-safe SQLite ORM with code generation)
+- **Charting:** fl_chart
 - **Build:** `flutter run` / `flutter build`
+- **Code gen:** `dart run build_runner build` (generates Drift table code)
 - **Package name:** `com.vincent.taper`
 
 ## Migration Status
@@ -43,15 +46,15 @@ test/
 pubspec.yaml               # Dependencies (currently just defaults)
 ```
 
-## Architecture Plan (Flutter equivalent of old Kotlin MVVM)
+## Architecture (Flutter equivalent of old Kotlin MVVM)
 
-| Layer | Flutter | Old Kotlin | Laravel equivalent |
-|-------|---------|-----------|-------------------|
-| UI (Widgets) | `StatelessWidget` / `StatefulWidget` | `@Composable` | Blade templates |
-| State Management | TBD (Provider/Riverpod/Bloc) | `ViewModel` + `StateFlow` | Controller |
-| Repository | Dart classes wrapping DB | Kotlin repository classes | Service/Repository class |
-| Database | TBD (sqflite/drift/isar) | Room DAO | Eloquent query scopes |
-| Model | Dart classes | Room `@Entity` data classes | Eloquent Model |
+| Layer              | Flutter                              | Old Kotlin             | Laravel equivalent      |
+|--------------------|--------------------------------------|------------------------|-------------------------|
+| UI (Widgets)       | `StatelessWidget` / `StatefulWidget` | `@Composable`          | Blade templates         |
+| State Management   | Riverpod providers                   | `ViewModel` + `StateFlow` | Controller           |
+| Repository         | Dart classes wrapping Drift DAOs     | Kotlin repository classes | Service/Repository   |
+| Database           | Drift tables + DAOs (code-gen)       | Room DAO               | Eloquent query scopes   |
+| Model              | Drift DataClasses (generated)        | Room `@Entity`         | Eloquent Model          |
 
 ## Data Models
 
@@ -78,17 +81,16 @@ Sample every 5 minutes from midnight to midnight, summing all active doses at ea
 - **Comments everywhere** — Focus on the HOW and WHY, not WHAT (the dev can read code fine)
 - **Ask questions aggressively** — Use AskUserQuestion tool liberally to clarify before building
 - **Plans as markdown** — Feature plans go in `plans/` directory with how/why explanations
-- **PHP/Laravel analogies** — Explain Flutter/Dart concepts by comparing to PHP/Laravel/web dev
+- **PHP/Laravel analogies** — Explain Flutter/Dart concepts by comparing to PHP/Laravel/inertia js/vue/tailwind/web dev stuff
+- **No touching git** — Git belongs to the developer and is used to check changes and see what is going on.
 
 ## Build & Run
 - Run: `flutter run`
 - Build APK: `flutter build apk`
 - Tests: `flutter test`
 - Analyze: `flutter analyze`
-- Note: Flutter CLI not yet on PATH — may need to install/configure
+- Code gen: `dart run build_runner build --delete-conflicting-outputs`
 
-## Dependencies (to be added)
-TBD — will need packages for:
-- Local database (sqflite, drift, or isar)
-- State management (provider, riverpod, or bloc)
-- Charting (fl_chart or similar)
+## Dependencies
+**Runtime:** flutter_riverpod, riverpod_annotation, drift, sqlite3_flutter_libs, path_provider, path, fl_chart
+**Dev:** drift_dev, build_runner
