@@ -60,7 +60,9 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final substancesAsync = ref.watch(substancesProvider);
+    // Watch visible substances only — hidden ones don't appear in the dropdown.
+    // The Substances management screen uses substancesProvider (all) instead.
+    final substancesAsync = ref.watch(visibleSubstancesProvider);
 
     return Scaffold(
       body: substancesAsync.when(
@@ -85,6 +87,23 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
       );
     }
 
+    // Auto-select the main substance on first load (when nothing is selected yet).
+    // ??= is Dart's null-aware assignment — same as PHP's ??= operator.
+    // We set it directly (no setState) because we use it immediately below in
+    // the same build pass. The dropdown picks it up via currentSelected.
+    // Like setting a default in a Blade form: $selected ??= $substances->firstWhere(...)
+    _selectedSubstance ??= substances.where((s) => s.isMain).firstOrNull;
+
+    // Look up the selected substance by ID from the current stream data.
+    // Drift's stream emits NEW Substance instances each time, so the old
+    // _selectedSubstance object won't match by reference (Dart's == compares
+    // all fields). We need the matching instance from the current list for
+    // the dropdown's `value` to work correctly.
+    // Like: $selected = $substances->firstWhere(fn($s) => $s->id === $selectedId)
+    final currentSelected = _selectedSubstance != null
+        ? substances.where((s) => s.id == _selectedSubstance!.id).firstOrNull
+        : null;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
@@ -102,14 +121,17 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
 
           // --- Substance picker ---
           // DropdownButtonFormField = <select> in HTML.
-          // Populates from the substances list (reactive via provider).
+          // Populates from the visible substances list (reactive via provider).
+          // initialValue sets the dropdown's state on first creation. Since we
+          // auto-select _selectedSubstance above (before this widget builds),
+          // currentSelected is already set on the first render.
           DropdownButtonFormField<Substance>(
-            initialValue: _selectedSubstance,
+            initialValue: currentSelected,
             decoration: const InputDecoration(
               labelText: 'Substance',
               border: OutlineInputBorder(),
             ),
-            // Build one <option> per substance.
+            // Build one <option> per visible substance.
             items: substances.map((s) {
               return DropdownMenuItem<Substance>(
                 value: s,

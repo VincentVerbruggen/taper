@@ -9,6 +9,19 @@ part 'database.g.dart';
 class Substances extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
+
+  // Whether this substance is the "default" in the Log form dropdown.
+  // Only one substance can be main at a time — like a radio button.
+  // withDefault(false) makes it optional in insert() calls, so existing
+  // code that just passes a name keeps working.
+  // Laravel equivalent: $table->boolean('is_main')->default(false)
+  BoolColumn get isMain => boolean().withDefault(const Constant(false))();
+
+  // Whether this substance appears in the Log form dropdown.
+  // Hidden substances keep their dose history but don't clutter the UI.
+  // Defaults to true so new substances are visible immediately.
+  // Laravel equivalent: $table->boolean('is_visible')->default(true)
+  BoolColumn get isVisible => boolean().withDefault(const Constant(true))();
 }
 
 /// Dose logs table — records each time a user takes a substance.
@@ -49,15 +62,29 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     // onCreate = fresh install. Creates all tables and seeds data.
+    // Seeds three substances so users see visibility/main features immediately.
     onCreate: (Migrator m) async {
       await m.createAll();
+
+      // Caffeine: main + visible — the default substance in the Log form.
       await into(substances).insert(
-        SubstancesCompanion.insert(name: 'Caffeine'),
+        SubstancesCompanion.insert(name: 'Caffeine', isMain: const Value(true)),
+      );
+      // Water: visible but not main — a second option in the dropdown.
+      await into(substances).insert(
+        SubstancesCompanion.insert(name: 'Water'),
+      );
+      // Alcohol: hidden — won't appear in Log dropdown, but data preserved.
+      await into(substances).insert(
+        SubstancesCompanion.insert(
+          name: 'Alcohol',
+          isVisible: const Value(false),
+        ),
       );
     },
 
@@ -68,6 +95,25 @@ class AppDatabase extends _$AppDatabase {
         // v1 → v2: add the dose_logs table.
         await m.createTable(doseLogs);
       }
+      if (from < 3) {
+        // v2 → v3: add isMain and isVisible columns to substances.
+        // m.addColumn() generates: ALTER TABLE substances ADD COLUMN is_main INTEGER NOT NULL DEFAULT 0
+        // Existing rows get the default value automatically — like Laravel's migration with ->default().
+        await m.addColumn(substances, substances.isMain);
+        await m.addColumn(substances, substances.isVisible);
+
+        // Seed Water and Alcohol for existing installs too, so they have
+        // something to see the visibility difference with.
+        await into(substances).insert(
+          SubstancesCompanion.insert(name: 'Water'),
+        );
+        await into(substances).insert(
+          SubstancesCompanion.insert(
+            name: 'Alcohol',
+            isVisible: const Value(false),
+          ),
+        );
+      }
     },
   );
 
@@ -77,6 +123,60 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<Substance>> watchAllSubstances() {
     return (select(substances)..orderBy([(t) => OrderingTerm.asc(t.name)]))
         .watch();
+  }
+
+  /// Watch only visible substances, sorted by name.
+  /// Used by the Log form dropdown — hidden substances don't appear.
+  /// Like: Substance::where('is_visible', true)->orderBy('name')->get()
+  Stream<List<Substance>> watchVisibleSubstances() {
+    return (select(substances)
+          ..where((t) => t.isVisible.equals(true))
+          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+        .watch();
+  }
+
+  /// Set a substance as the "main" (default) in the Log form.
+  /// Uses a transaction to ensure only one substance is main at a time —
+  /// first unset all, then set the target. Like a radio button group.
+  ///
+  /// Laravel equivalent:
+  ///   DB::transaction(function () use ($id) {
+  ///       Substance::query()->update(['is_main' => false]);
+  ///       Substance::find($id)->update(['is_main' => true]);
+  ///   });
+  Future<void> setMainSubstance(int id) {
+    return transaction(() async {
+      // Clear all isMain flags first.
+      await update(substances).write(
+        const SubstancesCompanion(isMain: Value(false)),
+      );
+      // Set the target substance as main.
+      await (update(substances)..where((t) => t.id.equals(id)))
+          .write(const SubstancesCompanion(isMain: Value(true)));
+    });
+  }
+
+  /// Toggle a substance's visibility. When hiding (isVisible = false),
+  /// also clears isMain — a hidden substance can't be the default in the Log form.
+  ///
+  /// Laravel equivalent:
+  ///   DB::transaction(function () use ($id, $visible) {
+  ///       $substance = Substance::find($id);
+  ///       $substance->is_visible = $visible;
+  ///       if (!$visible) $substance->is_main = false;
+  ///       $substance->save();
+  ///   });
+  Future<void> toggleSubstanceVisibility(int id, bool isVisible) {
+    return transaction(() async {
+      final companion = isVisible
+          ? SubstancesCompanion(isVisible: Value(isVisible))
+          : SubstancesCompanion(
+              isVisible: Value(isVisible),
+              isMain: const Value(false), // Can't be main if hidden
+            );
+      await (update(substances)..where((t) => t.id.equals(id)))
+          .write(companion);
+    });
   }
 
   Future<int> insertSubstance(String name) {

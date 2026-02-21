@@ -39,6 +39,20 @@ final substancesProvider = StreamProvider<List<Substance>>((ref) {
   return db.watchAllSubstances();
 });
 
+/// visibleSubstancesProvider = reactive stream of visible-only substances.
+///
+/// Used by the Log form dropdown — hidden substances don't appear.
+/// The Substances management screen uses substancesProvider instead (shows ALL).
+///
+/// Like a Livewire computed property with a scope:
+///   public function getVisibleSubstancesProperty() {
+///       return Substance::visible()->orderBy('name')->get();
+///   }
+final visibleSubstancesProvider = StreamProvider<List<Substance>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchVisibleSubstances();
+});
+
 /// doseLogsProvider = reactive stream of recent dose logs with substance names.
 ///
 /// Like: DoseLog::with('substance')->latest()->limit(50)->get()

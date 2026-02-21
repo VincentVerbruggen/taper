@@ -31,8 +31,36 @@ class $SubstancesTable extends Substances
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isMainMeta = const VerificationMeta('isMain');
   @override
-  List<GeneratedColumn> get $columns => [id, name];
+  late final GeneratedColumn<bool> isMain = GeneratedColumn<bool>(
+    'is_main',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_main" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _isVisibleMeta = const VerificationMeta(
+    'isVisible',
+  );
+  @override
+  late final GeneratedColumn<bool> isVisible = GeneratedColumn<bool>(
+    'is_visible',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_visible" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, isMain, isVisible];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -56,6 +84,18 @@ class $SubstancesTable extends Substances
     } else if (isInserting) {
       context.missing(_nameMeta);
     }
+    if (data.containsKey('is_main')) {
+      context.handle(
+        _isMainMeta,
+        isMain.isAcceptableOrUnknown(data['is_main']!, _isMainMeta),
+      );
+    }
+    if (data.containsKey('is_visible')) {
+      context.handle(
+        _isVisibleMeta,
+        isVisible.isAcceptableOrUnknown(data['is_visible']!, _isVisibleMeta),
+      );
+    }
     return context;
   }
 
@@ -73,6 +113,14 @@ class $SubstancesTable extends Substances
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      isMain: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_main'],
+      )!,
+      isVisible: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_visible'],
+      )!,
     );
   }
 
@@ -85,17 +133,31 @@ class $SubstancesTable extends Substances
 class Substance extends DataClass implements Insertable<Substance> {
   final int id;
   final String name;
-  const Substance({required this.id, required this.name});
+  final bool isMain;
+  final bool isVisible;
+  const Substance({
+    required this.id,
+    required this.name,
+    required this.isMain,
+    required this.isVisible,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
+    map['is_main'] = Variable<bool>(isMain);
+    map['is_visible'] = Variable<bool>(isVisible);
     return map;
   }
 
   SubstancesCompanion toCompanion(bool nullToAbsent) {
-    return SubstancesCompanion(id: Value(id), name: Value(name));
+    return SubstancesCompanion(
+      id: Value(id),
+      name: Value(name),
+      isMain: Value(isMain),
+      isVisible: Value(isVisible),
+    );
   }
 
   factory Substance.fromJson(
@@ -106,6 +168,8 @@ class Substance extends DataClass implements Insertable<Substance> {
     return Substance(
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      isMain: serializer.fromJson<bool>(json['isMain']),
+      isVisible: serializer.fromJson<bool>(json['isVisible']),
     );
   }
   @override
@@ -114,15 +178,24 @@ class Substance extends DataClass implements Insertable<Substance> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
+      'isMain': serializer.toJson<bool>(isMain),
+      'isVisible': serializer.toJson<bool>(isVisible),
     };
   }
 
-  Substance copyWith({int? id, String? name}) =>
-      Substance(id: id ?? this.id, name: name ?? this.name);
+  Substance copyWith({int? id, String? name, bool? isMain, bool? isVisible}) =>
+      Substance(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        isMain: isMain ?? this.isMain,
+        isVisible: isVisible ?? this.isVisible,
+      );
   Substance copyWithCompanion(SubstancesCompanion data) {
     return Substance(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      isMain: data.isMain.present ? data.isMain.value : this.isMain,
+      isVisible: data.isVisible.present ? data.isVisible.value : this.isVisible,
     );
   }
 
@@ -130,42 +203,68 @@ class Substance extends DataClass implements Insertable<Substance> {
   String toString() {
     return (StringBuffer('Substance(')
           ..write('id: $id, ')
-          ..write('name: $name')
+          ..write('name: $name, ')
+          ..write('isMain: $isMain, ')
+          ..write('isVisible: $isVisible')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name);
+  int get hashCode => Object.hash(id, name, isMain, isVisible);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is Substance && other.id == this.id && other.name == this.name);
+      (other is Substance &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.isMain == this.isMain &&
+          other.isVisible == this.isVisible);
 }
 
 class SubstancesCompanion extends UpdateCompanion<Substance> {
   final Value<int> id;
   final Value<String> name;
+  final Value<bool> isMain;
+  final Value<bool> isVisible;
   const SubstancesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.isMain = const Value.absent(),
+    this.isVisible = const Value.absent(),
   });
   SubstancesCompanion.insert({
     this.id = const Value.absent(),
     required String name,
+    this.isMain = const Value.absent(),
+    this.isVisible = const Value.absent(),
   }) : name = Value(name);
   static Insertable<Substance> custom({
     Expression<int>? id,
     Expression<String>? name,
+    Expression<bool>? isMain,
+    Expression<bool>? isVisible,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (isMain != null) 'is_main': isMain,
+      if (isVisible != null) 'is_visible': isVisible,
     });
   }
 
-  SubstancesCompanion copyWith({Value<int>? id, Value<String>? name}) {
-    return SubstancesCompanion(id: id ?? this.id, name: name ?? this.name);
+  SubstancesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<bool>? isMain,
+    Value<bool>? isVisible,
+  }) {
+    return SubstancesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      isMain: isMain ?? this.isMain,
+      isVisible: isVisible ?? this.isVisible,
+    );
   }
 
   @override
@@ -177,6 +276,12 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
+    if (isMain.present) {
+      map['is_main'] = Variable<bool>(isMain.value);
+    }
+    if (isVisible.present) {
+      map['is_visible'] = Variable<bool>(isVisible.value);
+    }
     return map;
   }
 
@@ -184,7 +289,9 @@ class SubstancesCompanion extends UpdateCompanion<Substance> {
   String toString() {
     return (StringBuffer('SubstancesCompanion(')
           ..write('id: $id, ')
-          ..write('name: $name')
+          ..write('name: $name, ')
+          ..write('isMain: $isMain, ')
+          ..write('isVisible: $isVisible')
           ..write(')'))
         .toString();
   }
@@ -510,9 +617,19 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 }
 
 typedef $$SubstancesTableCreateCompanionBuilder =
-    SubstancesCompanion Function({Value<int> id, required String name});
+    SubstancesCompanion Function({
+      Value<int> id,
+      required String name,
+      Value<bool> isMain,
+      Value<bool> isVisible,
+    });
 typedef $$SubstancesTableUpdateCompanionBuilder =
-    SubstancesCompanion Function({Value<int> id, Value<String> name});
+    SubstancesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<bool> isMain,
+      Value<bool> isVisible,
+    });
 
 final class $$SubstancesTableReferences
     extends BaseReferences<_$AppDatabase, $SubstancesTable, Substance> {
@@ -554,6 +671,16 @@ class $$SubstancesTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isMain => $composableBuilder(
+    column: $table.isMain,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isVisible => $composableBuilder(
+    column: $table.isVisible,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -601,6 +728,16 @@ class $$SubstancesTableOrderingComposer
     column: $table.name,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isMain => $composableBuilder(
+    column: $table.isMain,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isVisible => $composableBuilder(
+    column: $table.isVisible,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SubstancesTableAnnotationComposer
@@ -617,6 +754,12 @@ class $$SubstancesTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isMain =>
+      $composableBuilder(column: $table.isMain, builder: (column) => column);
+
+  GeneratedColumn<bool> get isVisible =>
+      $composableBuilder(column: $table.isVisible, builder: (column) => column);
 
   Expression<T> doseLogsRefs<T extends Object>(
     Expression<T> Function($$DoseLogsTableAnnotationComposer a) f,
@@ -674,10 +817,26 @@ class $$SubstancesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
-              }) => SubstancesCompanion(id: id, name: name),
+                Value<bool> isMain = const Value.absent(),
+                Value<bool> isVisible = const Value.absent(),
+              }) => SubstancesCompanion(
+                id: id,
+                name: name,
+                isMain: isMain,
+                isVisible: isVisible,
+              ),
           createCompanionCallback:
-              ({Value<int> id = const Value.absent(), required String name}) =>
-                  SubstancesCompanion.insert(id: id, name: name),
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                Value<bool> isMain = const Value.absent(),
+                Value<bool> isVisible = const Value.absent(),
+              }) => SubstancesCompanion.insert(
+                id: id,
+                name: name,
+                isMain: isMain,
+                isVisible: isVisible,
+              ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (

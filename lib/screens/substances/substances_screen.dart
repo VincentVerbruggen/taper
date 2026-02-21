@@ -104,7 +104,7 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
           );
         }
 
-        // Normal list item — tap to edit, trash icon to delete
+        // Normal list item — tap to edit, icons to toggle main/visibility/delete
         return _SubstanceListItem(
           substance: substance,
           onEdit: () {
@@ -114,6 +114,11 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
             });
           },
           onDelete: () => _deleteSubstance(substance.id),
+          onToggleMain: () => _setMainSubstance(substance.id),
+          onToggleVisibility: () => _toggleVisibility(
+            substance.id,
+            substance.isVisible,
+          ),
         );
       },
     );
@@ -134,6 +139,21 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
     setState(() => _editingSubstance = null);
   }
 
+  /// Set a substance as the main (default in Log form dropdown).
+  /// Like clicking a radio button — only one can be active at a time.
+  void _setMainSubstance(int id) async {
+    await ref.read(databaseProvider).setMainSubstance(id);
+  }
+
+  /// Toggle a substance's visibility in the Log form dropdown.
+  /// Hidden substances keep their dose history — like soft-deleting.
+  void _toggleVisibility(int id, bool currentlyVisible) async {
+    await ref.read(databaseProvider).toggleSubstanceVisibility(
+      id,
+      !currentlyVisible,
+    );
+  }
+
   /// Delete immediately, no confirmation dialog.
   void _deleteSubstance(int id) async {
     if (_editingSubstance?.id == id) {
@@ -148,32 +168,97 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
 // ---------------------------------------------------------------------------
 
 /// A single substance in the list.
-/// Tap to edit, trash icon to delete.
+/// Shows star (main), name, eye (visibility), and delete icons.
+/// Tap name to edit.
+///
+/// Layout:
+///   [★ star] [Substance Name] [👁 eye] [🗑 delete]
+///   leading    title            trailing (Row of two icons)
 class _SubstanceListItem extends StatelessWidget {
   final Substance substance;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onToggleMain;
+  final VoidCallback onToggleVisibility;
 
   const _SubstanceListItem({
     required this.substance,
     required this.onEdit,
     required this.onDelete,
+    required this.onToggleMain,
+    required this.onToggleVisibility,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isHidden = !substance.isVisible;
+
     return Column(
       children: [
-        // ListTile = Material 3 list item with title + trailing slots.
         ListTile(
-          title: Text(substance.name),
-          trailing: IconButton(
+          // Leading: Star icon for "main" substance (the default in the Log form).
+          // Filled star = this is the main substance; outlined = not main.
+          // Disabled (greyed out) when hidden — can't set a hidden substance as main.
+          // Like a radio button with a star visual instead of a circle.
+          leading: IconButton(
             icon: Icon(
-              Icons.delete_outline,
-              color: Theme.of(context).colorScheme.error,
+              substance.isMain ? Icons.star : Icons.star_outline,
+              // Gold when main, grey when not, dimmed when hidden.
+              color: isHidden
+                  ? Theme.of(context).colorScheme.onSurface.withAlpha(77)
+                  : substance.isMain
+                      ? Colors.amber
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            onPressed: onDelete,
+            // null = disabled. Can't make a hidden substance the default.
+            onPressed: isHidden ? null : onToggleMain,
+            tooltip: 'Set as default',
           ),
+
+          // Title: substance name. Strikethrough + dimmed when hidden to show
+          // it won't appear in the Log form dropdown.
+          title: Text(
+            substance.name,
+            style: isHidden
+                ? TextStyle(
+                    decoration: TextDecoration.lineThrough,
+                    color: Theme.of(context).colorScheme.onSurface.withAlpha(128),
+                  )
+                : null,
+          ),
+
+          // Trailing: eye toggle + delete button in a Row.
+          // Row must be wrapped in a SizedBox with a fixed width — otherwise
+          // ListTile's trailing slot expands to fill all available space.
+          // Like putting two inline buttons in a <td> cell.
+          trailing: SizedBox(
+            width: 96,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Eye icon: open = visible, closed = hidden.
+                IconButton(
+                  icon: Icon(
+                    isHidden ? Icons.visibility_off : Icons.visibility,
+                    color: isHidden
+                        ? Theme.of(context).colorScheme.onSurface.withAlpha(128)
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  onPressed: onToggleVisibility,
+                  tooltip: isHidden ? 'Show' : 'Hide',
+                ),
+                // Delete icon — same as before.
+                IconButton(
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
+          ),
+
           onTap: onEdit,
         ),
         const Divider(height: 1),
