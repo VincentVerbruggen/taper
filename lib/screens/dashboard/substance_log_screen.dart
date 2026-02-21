@@ -57,6 +57,7 @@ class _SubstanceLogScreenState extends ConsumerState<SubstanceLogScreen> {
       // the history screen. Like a "quick add" shortcut in a to-do app.
       // FAB opens the shared quick-add dialog for this substance.
       floatingActionButton: FloatingActionButton(
+        heroTag: 'substanceLogFab',
         onPressed: () => showQuickAddDoseDialog(
           context: context,
           substance: substance,

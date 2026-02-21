@@ -33,7 +33,11 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     return Scaffold(
       // FAB opens the log dose bottom sheet — the full form with substance
       // picker, amount, and time.
+      // heroTag must be unique across all visible FABs to avoid hero animation
+      // conflicts. Multiple tabs can be in the widget tree at once, so each
+      // FAB needs its own tag (like unique element IDs in HTML).
       floatingActionButton: FloatingActionButton(
+        heroTag: 'logDoseFab',
         onPressed: () => _showLogDoseSheet(context),
         child: const Icon(Icons.add),
       ),

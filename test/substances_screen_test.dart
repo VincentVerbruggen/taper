@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/substances/edit_substance_screen.dart';
 import 'package:taper/screens/substances/substances_screen.dart';
 
 import 'helpers/test_database.dart';
@@ -38,7 +39,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
   }
 
-  Future<void> cleanUp(WidgetTester tester) async {
+  Future<void> cleanUp(WidgetTester tester, {bool hasNavigated = false}) async {
+    if (hasNavigated) {
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -171,17 +179,21 @@ void main() {
     await cleanUp(tester);
   });
 
-  // --- Edit substance unit + half-life ---
+  // --- Edit substance via dedicated screen ---
 
-  testWidgets('edit substance updates unit and half-life', (tester) async {
+  testWidgets('tap navigates to EditSubstanceScreen', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    // Tap Caffeine to open inline edit form.
+    // Tap Caffeine to navigate to the edit screen.
     await tester.tap(find.text('Caffeine'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    // The edit form should be pre-filled.
+    // Should be on the edit screen with pre-filled fields.
+    expect(find.byType(EditSubstanceScreen), findsOneWidget);
+    expect(find.text('Edit Substance'), findsOneWidget);
+
     final textFields = find.byType(TextField);
     expect(textFields, findsNWidgets(3));
 
@@ -192,15 +204,35 @@ void main() {
     final halfLifeField = tester.widget<TextField>(textFields.at(2));
     expect(halfLifeField.controller?.text, '5.0');
 
+    await cleanUp(tester, hasNavigated: true);
+  });
+
+  testWidgets('edit substance saves changes and pops back', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Navigate to edit screen.
+    await tester.tap(find.text('Caffeine'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
     // Change unit to "g" and half-life to "6.0".
+    final textFields = find.byType(TextField);
     await tester.enterText(textFields.at(1), 'g');
     await tester.enterText(textFields.at(2), '6.0');
     await tester.pump();
 
-    await tester.tap(find.text('Save'));
+    // Tap "Save Changes".
+    await tester.tap(find.text('Save Changes'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     await pumpAndWait(tester);
 
+    // Should be back on the substances list.
+    expect(find.byType(EditSubstanceScreen), findsNothing);
+    expect(find.text('Substances'), findsOneWidget);
+
+    // Verify the substance was updated in the database.
     final substances = await db.select(db.substances).get();
     final caffeine = substances.firstWhere((s) => s.name == 'Caffeine');
     expect(caffeine.unit, 'g');

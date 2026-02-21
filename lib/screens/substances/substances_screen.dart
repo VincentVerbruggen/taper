@@ -1,9 +1,9 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/substances/edit_substance_screen.dart';
 
 /// SubstancesScreen = the full CRUD screen for managing substances.
 ///
@@ -19,10 +19,6 @@ class SubstancesScreen extends ConsumerStatefulWidget {
 }
 
 class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
-  // Which substance is being edited (null = not editing).
-  // Like: public ?Substance $editing = null; in Livewire.
-  Substance? _editingSubstance;
-
   @override
   Widget build(BuildContext context) {
     final substancesAsync = ref.watch(substancesProvider);
@@ -30,6 +26,7 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
     return Scaffold(
       // FAB opens the add substance dialog.
       floatingActionButton: FloatingActionButton(
+        heroTag: 'addSubstanceFab',
         onPressed: () => _showAddSubstanceDialog(context),
         child: const Icon(Icons.add),
       ),
@@ -86,37 +83,12 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
             itemBuilder: (context, index) {
               final substance = substances[index];
 
-              // Inline edit form replaces the list item when tapped.
-              if (_editingSubstance?.id == substance.id) {
-                return Padding(
-                  key: ValueKey(substance.id),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 4.0,
-                  ),
-                  child: _SubstanceFormCard(
-                    title: 'Edit Substance',
-                    initialName: substance.name,
-                    initialUnit: substance.unit,
-                    initialHalfLife: substance.halfLifeHours,
-                    onSave: (name, unit, halfLife) =>
-                        _updateSubstance(substance.id, name, unit, halfLife),
-                    onCancel: () => setState(() => _editingSubstance = null),
-                  ),
-                );
-              }
-
-              // Normal list item.
               return _SubstanceListItem(
                 key: ValueKey(substance.id),
                 substance: substance,
                 isFirst: index == 0,
                 isLast: index == substances.length - 1,
-                onEdit: () {
-                  setState(() {
-                    _editingSubstance = substance;
-                  });
-                },
+                onEdit: () => _editSubstance(substance),
                 onDelete: () => _deleteSubstance(substance.id),
                 onToggleMain: () => _setMainSubstance(substance.id),
                 onToggleVisibility: () => _toggleVisibility(
@@ -144,14 +116,15 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
 
   // --- Mutation methods ---
 
-  void _updateSubstance(int id, String name, String unit, double? halfLifeHours) async {
-    await ref.read(databaseProvider).updateSubstance(
-      id,
-      name: name,
-      unit: unit,
-      halfLifeHours: Value(halfLifeHours),
+  /// Navigate to the edit screen for this substance.
+  /// Like clicking a row in a Laravel resource table → GET /substances/{id}/edit.
+  void _editSubstance(Substance substance) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditSubstanceScreen(substance: substance),
+      ),
     );
-    setState(() => _editingSubstance = null);
   }
 
   void _setMainSubstance(int id) async {
@@ -166,9 +139,6 @@ class _SubstancesScreenState extends ConsumerState<SubstancesScreen> {
   }
 
   void _deleteSubstance(int id) async {
-    if (_editingSubstance?.id == id) {
-      setState(() => _editingSubstance = null);
-    }
     await ref.read(databaseProvider).deleteSubstance(id);
   }
 
@@ -457,149 +427,3 @@ class _SubstanceListItem extends StatelessWidget {
   }
 }
 
-/// Callback type for the substance form.
-typedef SubstanceFormCallback = void Function(String name, String unit, double? halfLifeHours);
-
-/// Reusable inline form card for editing a substance.
-/// Now only used for editing (add moved to bottom sheet dialog).
-class _SubstanceFormCard extends StatefulWidget {
-  final String title;
-  final String initialName;
-  final String initialUnit;
-  final double? initialHalfLife;
-  final SubstanceFormCallback onSave;
-  final VoidCallback onCancel;
-
-  const _SubstanceFormCard({
-    required this.title,
-    required this.initialName,
-    required this.initialUnit,
-    required this.initialHalfLife,
-    required this.onSave,
-    required this.onCancel,
-  });
-
-  @override
-  State<_SubstanceFormCard> createState() => _SubstanceFormCardState();
-}
-
-class _SubstanceFormCardState extends State<_SubstanceFormCard> {
-  late final TextEditingController _nameController;
-  late final TextEditingController _unitController;
-  late final TextEditingController _halfLifeController;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(text: widget.initialName);
-    _unitController = TextEditingController(text: widget.initialUnit);
-    _halfLifeController = TextEditingController(
-      text: widget.initialHalfLife?.toString() ?? '',
-    );
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _unitController.dispose();
-    _halfLifeController.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final name = _nameController.text.trim();
-    if (name.isEmpty) return;
-
-    final unit = _unitController.text.trim().isEmpty
-        ? 'mg'
-        : _unitController.text.trim();
-    final halfLife = double.tryParse(_halfLifeController.text.trim());
-
-    widget.onSave(name, unit, halfLife);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  widget.title,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: widget.onCancel,
-                ),
-              ],
-            ),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Substance name',
-                border: OutlineInputBorder(),
-              ),
-              autofocus: true,
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _unitController,
-                    decoration: const InputDecoration(
-                      labelText: 'Unit',
-                      hintText: 'mg',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _halfLifeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Half-life (hours)',
-                      hintText: 'e.g. 5.0',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: widget.onCancel,
-                  child: const Text('Cancel'),
-                ),
-                ListenableBuilder(
-                  listenable: _nameController,
-                  builder: (context, child) {
-                    return TextButton(
-                      onPressed: _nameController.text.trim().isNotEmpty
-                          ? _submit
-                          : null,
-                      child: const Text('Save'),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
