@@ -92,6 +92,7 @@ class _TrackablesScreenState extends ConsumerState<TrackablesScreen> {
                 trackable: trackable,
                 index: index,
                 onEdit: () => _editTrackable(trackable),
+                onDuplicate: () => _duplicateTrackable(trackable),
                 onTogglePin: () => _togglePin(trackable),
                 onToggleVisibility: () => _toggleVisibility(trackable),
                 onDelete: () => _deleteTrackable(trackable),
@@ -143,7 +144,10 @@ class _TrackablesScreenState extends ConsumerState<TrackablesScreen> {
       if (!granted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Notification permission required to pin')),
+            const SnackBar(
+              showCloseIcon: true, // Let users dismiss the snackbar manually
+              content: Text('Notification permission required to pin'),
+            ),
           );
         }
         return;
@@ -192,10 +196,27 @@ class _TrackablesScreenState extends ConsumerState<TrackablesScreen> {
       await db.deleteTrackable(trackable.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${trackable.name} deleted')),
+          SnackBar(
+            showCloseIcon: true, // Let users dismiss the snackbar manually
+            content: Text('${trackable.name} deleted'),
+          ),
         );
       }
     }
+  }
+
+  /// Duplicate a trackable: creates "Copy of X" with the same settings.
+  /// Like Laravel's replicate(): $copy = $trackable->replicate()->fill(['name' => "Copy of $name"])
+  void _duplicateTrackable(Trackable trackable) async {
+    final db = ref.read(databaseProvider);
+    await db.insertTrackable(
+      'Copy of ${trackable.name}',
+      unit: trackable.unit,
+      halfLifeHours: trackable.halfLifeHours,
+      decayModel: trackable.decayModel,
+      eliminationRate: trackable.eliminationRate,
+      absorptionMinutes: trackable.absorptionMinutes,
+    );
   }
 
   /// Navigate to the add trackable screen.
@@ -228,6 +249,7 @@ class _TrackableListItem extends ConsumerWidget {
   // which item to pick up when the user starts dragging.
   final int index;
   final VoidCallback onEdit;
+  final VoidCallback onDuplicate;
   final VoidCallback onTogglePin;
   final VoidCallback onToggleVisibility;
   final VoidCallback onDelete;
@@ -237,6 +259,7 @@ class _TrackableListItem extends ConsumerWidget {
     required this.trackable,
     required this.index,
     required this.onEdit,
+    required this.onDuplicate,
     required this.onTogglePin,
     required this.onToggleVisibility,
     required this.onDelete,
@@ -249,9 +272,16 @@ class _TrackableListItem extends ConsumerWidget {
     final pinnedId = ref.watch(pinnedTrackableIdProvider);
     final isPinned = pinnedId == trackable.id;
 
-    return Column(
-      children: [
-        ListTile(
+    // Unified card pattern matching log_dose_screen.dart:
+    // Padding > Card(shape: RoundedRectangleBorder(12)) > ListTile
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      child: Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
           // Leading: drag handle + color dot in a row.
           // ReorderableDragStartListener wraps the drag handle icon so that
           // touching it initiates a drag-to-reorder (like a ≡ grip handle).
@@ -325,6 +355,8 @@ class _TrackableListItem extends ConsumerWidget {
                   switch (value) {
                     case 'edit':
                       onEdit();
+                    case 'duplicate':
+                      onDuplicate();
                     case 'visibility':
                       onToggleVisibility();
                     case 'delete':
@@ -339,6 +371,17 @@ class _TrackableListItem extends ConsumerWidget {
                       leading: Icon(Icons.edit_outlined),
                       title: Text('Edit'),
                       // Dense so the menu items aren't too tall.
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  // Duplicate — creates "Copy of X" with same settings.
+                  // Like a "replicate" action in a CMS.
+                  const PopupMenuItem(
+                    value: 'duplicate',
+                    child: ListTile(
+                      leading: Icon(Icons.copy_outlined),
+                      title: Text('Duplicate'),
                       visualDensity: VisualDensity.compact,
                       contentPadding: EdgeInsets.zero,
                     ),
@@ -378,8 +421,7 @@ class _TrackableListItem extends ConsumerWidget {
             ],
           ),
         ),
-        const Divider(height: 1),
-      ],
+      ),
     );
   }
 

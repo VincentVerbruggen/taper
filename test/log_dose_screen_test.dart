@@ -195,6 +195,39 @@ void main() {
     await cleanUp(tester);
   });
 
+  // --- Copy dose tests ---
+
+  testWidgets('copy icon appears on dose entries', (tester) async {
+    await db.insertDoseLog(1, 100, DateTime.now());
+
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // The copy icon should be visible on the dose entry.
+    expect(find.byIcon(Icons.copy), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('copy dose opens AddDoseScreen with pre-filled amount', (tester) async {
+    await db.insertDoseLog(1, 250, DateTime.now());
+
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Tap the copy icon on the dose entry.
+    await tester.tap(find.byIcon(Icons.copy));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await pumpAndWait(tester);
+
+    // Should be on AddDoseScreen with the amount pre-filled.
+    expect(find.byType(AddDoseScreen), findsOneWidget);
+    expect(find.text('250'), findsOneWidget);
+
+    await cleanUp(tester, hasNavigated: true);
+  });
+
   // --- Add dose screen tests ---
 
   testWidgets('FAB navigates to AddDoseScreen', (tester) async {

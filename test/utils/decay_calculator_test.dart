@@ -98,6 +98,136 @@ void main() {
     });
   });
 
+  // --- Absorption phase tests (2-phase model) ---
+  // When absorptionMinutes is set, the dose ramps up linearly before decaying.
+  // Phase 1: 0 → full amount over absorptionMinutes.
+  // Phase 2: normal decay from full amount.
+
+  group('activeDoseAt with absorption', () {
+    test('at t=0, active is 0 (not yet absorbed)', () {
+      final loggedAt = DateTime(2026, 2, 21, 8, 0);
+      final result = DecayCalculator.activeDoseAt(
+        amount: 100,
+        loggedAt: loggedAt,
+        halfLifeHours: 5.0,
+        queryTime: loggedAt,
+        absorptionMinutes: 30, // 30 min absorption
+      );
+
+      // At t=0, nothing has been absorbed yet.
+      expect(result, 0.0);
+    });
+
+    test('at 50% of absorption time, active is 50% of dose', () {
+      final loggedAt = DateTime(2026, 2, 21, 8, 0);
+      // 15 min into a 30-min absorption phase = 50%.
+      final queryTime = loggedAt.add(const Duration(minutes: 15));
+      final result = DecayCalculator.activeDoseAt(
+        amount: 100,
+        loggedAt: loggedAt,
+        halfLifeHours: 5.0,
+        queryTime: queryTime,
+        absorptionMinutes: 30,
+      );
+
+      expect(result, closeTo(50.0, 0.01));
+    });
+
+    test('at 100% of absorption time, active is full dose', () {
+      final loggedAt = DateTime(2026, 2, 21, 8, 0);
+      // Exactly at 30 min = absorption complete, decay just begins.
+      final queryTime = loggedAt.add(const Duration(minutes: 30));
+      final result = DecayCalculator.activeDoseAt(
+        amount: 100,
+        loggedAt: loggedAt,
+        halfLifeHours: 5.0,
+        queryTime: queryTime,
+        absorptionMinutes: 30,
+      );
+
+      // At t=absorptionMinutes, decay hours = 0, so amount × 0.5^0 = amount.
+      expect(result, closeTo(100.0, 0.01));
+    });
+
+    test('after absorption, normal exponential decay applies', () {
+      final loggedAt = DateTime(2026, 2, 21, 8, 0);
+      // 30 min absorption + 5 hours decay = 5h 30min total.
+      // At this point, one full half-life of decay has passed.
+      final queryTime = loggedAt.add(const Duration(hours: 5, minutes: 30));
+      final result = DecayCalculator.activeDoseAt(
+        amount: 100,
+        loggedAt: loggedAt,
+        halfLifeHours: 5.0,
+        queryTime: queryTime,
+        absorptionMinutes: 30,
+      );
+
+      // Decay started at t=30min from full 100mg.
+      // After 5h of decay: 100 × 0.5^1 = 50.
+      expect(result, closeTo(50.0, 0.01));
+    });
+
+    test('null absorptionMinutes = original instant absorption', () {
+      // Verify backward compatibility — null means instant absorption.
+      final loggedAt = DateTime(2026, 2, 21, 8, 0);
+      final result = DecayCalculator.activeDoseAt(
+        amount: 100,
+        loggedAt: loggedAt,
+        halfLifeHours: 5.0,
+        queryTime: loggedAt,
+        absorptionMinutes: null,
+      );
+
+      // At t=0 with instant absorption: full amount.
+      expect(result, 100.0);
+    });
+  });
+
+  group('activeLinearDoseAt with absorption', () {
+    test('at t=0, active is 0 (not yet absorbed)', () {
+      final loggedAt = DateTime(2026, 2, 21, 20, 0);
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0,
+        queryTime: loggedAt,
+        absorptionMinutes: 30,
+      );
+
+      expect(result, 0.0);
+    });
+
+    test('at 50% of absorption time, active is 50% of dose', () {
+      final loggedAt = DateTime(2026, 2, 21, 20, 0);
+      final queryTime = loggedAt.add(const Duration(minutes: 15));
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0,
+        queryTime: queryTime,
+        absorptionMinutes: 30,
+      );
+
+      expect(result, closeTo(18.0, 0.01));
+    });
+
+    test('after absorption, normal linear decay applies', () {
+      final loggedAt = DateTime(2026, 2, 21, 20, 0);
+      // 30 min absorption + 1 hour decay = 1h 30min total.
+      final queryTime = loggedAt.add(const Duration(hours: 1, minutes: 30));
+      final result = DecayCalculator.activeLinearDoseAt(
+        amount: 36,
+        loggedAt: loggedAt,
+        eliminationRate: 9.0,
+        queryTime: queryTime,
+        absorptionMinutes: 30,
+      );
+
+      // After 1h of linear decay: 36 - 9*1 = 27.
+      expect(result, closeTo(27.0, 0.01));
+    });
+  });
+
   group('totalActiveAt', () {
     test('sums active amounts from multiple doses', () {
       // Two 100mg doses, one at t=0 and one at t=-5h (one half-life ago).

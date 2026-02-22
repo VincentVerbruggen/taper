@@ -124,6 +124,18 @@ class $TrackablesTable extends Trackables
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _absorptionMinutesMeta = const VerificationMeta(
+    'absorptionMinutes',
+  );
+  @override
+  late final GeneratedColumn<double> absorptionMinutes =
+      GeneratedColumn<double>(
+        'absorption_minutes',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -136,6 +148,7 @@ class $TrackablesTable extends Trackables
     sortOrder,
     decayModel,
     eliminationRate,
+    absorptionMinutes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -216,6 +229,15 @@ class $TrackablesTable extends Trackables
         ),
       );
     }
+    if (data.containsKey('absorption_minutes')) {
+      context.handle(
+        _absorptionMinutesMeta,
+        absorptionMinutes.isAcceptableOrUnknown(
+          data['absorption_minutes']!,
+          _absorptionMinutesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -265,6 +287,10 @@ class $TrackablesTable extends Trackables
         DriftSqlType.double,
         data['${effectivePrefix}elimination_rate'],
       ),
+      absorptionMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}absorption_minutes'],
+      ),
     );
   }
 
@@ -285,6 +311,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
   final int sortOrder;
   final String decayModel;
   final double? eliminationRate;
+  final double? absorptionMinutes;
   const Trackable({
     required this.id,
     required this.name,
@@ -296,6 +323,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     required this.sortOrder,
     required this.decayModel,
     this.eliminationRate,
+    this.absorptionMinutes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -313,6 +341,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     map['decay_model'] = Variable<String>(decayModel);
     if (!nullToAbsent || eliminationRate != null) {
       map['elimination_rate'] = Variable<double>(eliminationRate);
+    }
+    if (!nullToAbsent || absorptionMinutes != null) {
+      map['absorption_minutes'] = Variable<double>(absorptionMinutes);
     }
     return map;
   }
@@ -333,6 +364,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       eliminationRate: eliminationRate == null && nullToAbsent
           ? const Value.absent()
           : Value(eliminationRate),
+      absorptionMinutes: absorptionMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(absorptionMinutes),
     );
   }
 
@@ -352,6 +386,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       decayModel: serializer.fromJson<String>(json['decayModel']),
       eliminationRate: serializer.fromJson<double?>(json['eliminationRate']),
+      absorptionMinutes: serializer.fromJson<double?>(
+        json['absorptionMinutes'],
+      ),
     );
   }
   @override
@@ -368,6 +405,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       'sortOrder': serializer.toJson<int>(sortOrder),
       'decayModel': serializer.toJson<String>(decayModel),
       'eliminationRate': serializer.toJson<double?>(eliminationRate),
+      'absorptionMinutes': serializer.toJson<double?>(absorptionMinutes),
     };
   }
 
@@ -382,6 +420,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     int? sortOrder,
     String? decayModel,
     Value<double?> eliminationRate = const Value.absent(),
+    Value<double?> absorptionMinutes = const Value.absent(),
   }) => Trackable(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -397,6 +436,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     eliminationRate: eliminationRate.present
         ? eliminationRate.value
         : this.eliminationRate,
+    absorptionMinutes: absorptionMinutes.present
+        ? absorptionMinutes.value
+        : this.absorptionMinutes,
   );
   Trackable copyWithCompanion(TrackablesCompanion data) {
     return Trackable(
@@ -416,6 +458,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       eliminationRate: data.eliminationRate.present
           ? data.eliminationRate.value
           : this.eliminationRate,
+      absorptionMinutes: data.absorptionMinutes.present
+          ? data.absorptionMinutes.value
+          : this.absorptionMinutes,
     );
   }
 
@@ -431,7 +476,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           ..write('color: $color, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('decayModel: $decayModel, ')
-          ..write('eliminationRate: $eliminationRate')
+          ..write('eliminationRate: $eliminationRate, ')
+          ..write('absorptionMinutes: $absorptionMinutes')
           ..write(')'))
         .toString();
   }
@@ -448,6 +494,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     sortOrder,
     decayModel,
     eliminationRate,
+    absorptionMinutes,
   );
   @override
   bool operator ==(Object other) =>
@@ -462,7 +509,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           other.color == this.color &&
           other.sortOrder == this.sortOrder &&
           other.decayModel == this.decayModel &&
-          other.eliminationRate == this.eliminationRate);
+          other.eliminationRate == this.eliminationRate &&
+          other.absorptionMinutes == this.absorptionMinutes);
 }
 
 class TrackablesCompanion extends UpdateCompanion<Trackable> {
@@ -476,6 +524,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
   final Value<int> sortOrder;
   final Value<String> decayModel;
   final Value<double?> eliminationRate;
+  final Value<double?> absorptionMinutes;
   const TrackablesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -487,6 +536,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.sortOrder = const Value.absent(),
     this.decayModel = const Value.absent(),
     this.eliminationRate = const Value.absent(),
+    this.absorptionMinutes = const Value.absent(),
   });
   TrackablesCompanion.insert({
     this.id = const Value.absent(),
@@ -499,6 +549,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.sortOrder = const Value.absent(),
     this.decayModel = const Value.absent(),
     this.eliminationRate = const Value.absent(),
+    this.absorptionMinutes = const Value.absent(),
   }) : name = Value(name),
        color = Value(color);
   static Insertable<Trackable> custom({
@@ -512,6 +563,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Expression<int>? sortOrder,
     Expression<String>? decayModel,
     Expression<double>? eliminationRate,
+    Expression<double>? absorptionMinutes,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -524,6 +576,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       if (sortOrder != null) 'sort_order': sortOrder,
       if (decayModel != null) 'decay_model': decayModel,
       if (eliminationRate != null) 'elimination_rate': eliminationRate,
+      if (absorptionMinutes != null) 'absorption_minutes': absorptionMinutes,
     });
   }
 
@@ -538,6 +591,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Value<int>? sortOrder,
     Value<String>? decayModel,
     Value<double?>? eliminationRate,
+    Value<double?>? absorptionMinutes,
   }) {
     return TrackablesCompanion(
       id: id ?? this.id,
@@ -550,6 +604,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       sortOrder: sortOrder ?? this.sortOrder,
       decayModel: decayModel ?? this.decayModel,
       eliminationRate: eliminationRate ?? this.eliminationRate,
+      absorptionMinutes: absorptionMinutes ?? this.absorptionMinutes,
     );
   }
 
@@ -586,6 +641,9 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     if (eliminationRate.present) {
       map['elimination_rate'] = Variable<double>(eliminationRate.value);
     }
+    if (absorptionMinutes.present) {
+      map['absorption_minutes'] = Variable<double>(absorptionMinutes.value);
+    }
     return map;
   }
 
@@ -601,7 +659,8 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
           ..write('color: $color, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('decayModel: $decayModel, ')
-          ..write('eliminationRate: $eliminationRate')
+          ..write('eliminationRate: $eliminationRate, ')
+          ..write('absorptionMinutes: $absorptionMinutes')
           ..write(')'))
         .toString();
   }
@@ -659,8 +718,23 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
   @override
-  List<GeneratedColumn> get $columns => [id, trackableId, amount, loggedAt];
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    trackableId,
+    amount,
+    loggedAt,
+    name,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -703,6 +777,12 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
     } else if (isInserting) {
       context.missing(_loggedAtMeta);
     }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
     return context;
   }
 
@@ -728,6 +808,10 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}logged_at'],
       )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
     );
   }
 
@@ -742,11 +826,13 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
   final int trackableId;
   final double amount;
   final DateTime loggedAt;
+  final String? name;
   const DoseLog({
     required this.id,
     required this.trackableId,
     required this.amount,
     required this.loggedAt,
+    this.name,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -755,6 +841,9 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     map['trackable_id'] = Variable<int>(trackableId);
     map['amount'] = Variable<double>(amount);
     map['logged_at'] = Variable<DateTime>(loggedAt);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
     return map;
   }
 
@@ -764,6 +853,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       trackableId: Value(trackableId),
       amount: Value(amount),
       loggedAt: Value(loggedAt),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
     );
   }
 
@@ -777,6 +867,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       trackableId: serializer.fromJson<int>(json['trackableId']),
       amount: serializer.fromJson<double>(json['amount']),
       loggedAt: serializer.fromJson<DateTime>(json['loggedAt']),
+      name: serializer.fromJson<String?>(json['name']),
     );
   }
   @override
@@ -787,6 +878,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       'trackableId': serializer.toJson<int>(trackableId),
       'amount': serializer.toJson<double>(amount),
       'loggedAt': serializer.toJson<DateTime>(loggedAt),
+      'name': serializer.toJson<String?>(name),
     };
   }
 
@@ -795,11 +887,13 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     int? trackableId,
     double? amount,
     DateTime? loggedAt,
+    Value<String?> name = const Value.absent(),
   }) => DoseLog(
     id: id ?? this.id,
     trackableId: trackableId ?? this.trackableId,
     amount: amount ?? this.amount,
     loggedAt: loggedAt ?? this.loggedAt,
+    name: name.present ? name.value : this.name,
   );
   DoseLog copyWithCompanion(DoseLogsCompanion data) {
     return DoseLog(
@@ -809,6 +903,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
           : this.trackableId,
       amount: data.amount.present ? data.amount.value : this.amount,
       loggedAt: data.loggedAt.present ? data.loggedAt.value : this.loggedAt,
+      name: data.name.present ? data.name.value : this.name,
     );
   }
 
@@ -818,13 +913,14 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
           ..write('id: $id, ')
           ..write('trackableId: $trackableId, ')
           ..write('amount: $amount, ')
-          ..write('loggedAt: $loggedAt')
+          ..write('loggedAt: $loggedAt, ')
+          ..write('name: $name')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, trackableId, amount, loggedAt);
+  int get hashCode => Object.hash(id, trackableId, amount, loggedAt, name);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -832,7 +928,8 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
           other.id == this.id &&
           other.trackableId == this.trackableId &&
           other.amount == this.amount &&
-          other.loggedAt == this.loggedAt);
+          other.loggedAt == this.loggedAt &&
+          other.name == this.name);
 }
 
 class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
@@ -840,17 +937,20 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
   final Value<int> trackableId;
   final Value<double> amount;
   final Value<DateTime> loggedAt;
+  final Value<String?> name;
   const DoseLogsCompanion({
     this.id = const Value.absent(),
     this.trackableId = const Value.absent(),
     this.amount = const Value.absent(),
     this.loggedAt = const Value.absent(),
+    this.name = const Value.absent(),
   });
   DoseLogsCompanion.insert({
     this.id = const Value.absent(),
     required int trackableId,
     required double amount,
     required DateTime loggedAt,
+    this.name = const Value.absent(),
   }) : trackableId = Value(trackableId),
        amount = Value(amount),
        loggedAt = Value(loggedAt);
@@ -859,12 +959,14 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     Expression<int>? trackableId,
     Expression<double>? amount,
     Expression<DateTime>? loggedAt,
+    Expression<String>? name,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (trackableId != null) 'trackable_id': trackableId,
       if (amount != null) 'amount': amount,
       if (loggedAt != null) 'logged_at': loggedAt,
+      if (name != null) 'name': name,
     });
   }
 
@@ -873,12 +975,14 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     Value<int>? trackableId,
     Value<double>? amount,
     Value<DateTime>? loggedAt,
+    Value<String?>? name,
   }) {
     return DoseLogsCompanion(
       id: id ?? this.id,
       trackableId: trackableId ?? this.trackableId,
       amount: amount ?? this.amount,
       loggedAt: loggedAt ?? this.loggedAt,
+      name: name ?? this.name,
     );
   }
 
@@ -897,6 +1001,9 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     if (loggedAt.present) {
       map['logged_at'] = Variable<DateTime>(loggedAt.value);
     }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
     return map;
   }
 
@@ -906,7 +1013,8 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
           ..write('id: $id, ')
           ..write('trackableId: $trackableId, ')
           ..write('amount: $amount, ')
-          ..write('loggedAt: $loggedAt')
+          ..write('loggedAt: $loggedAt, ')
+          ..write('name: $name')
           ..write(')'))
         .toString();
   }
@@ -1265,12 +1373,317 @@ class PresetsCompanion extends UpdateCompanion<Preset> {
   }
 }
 
+class $ThresholdsTable extends Thresholds
+    with TableInfo<$ThresholdsTable, Threshold> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ThresholdsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _trackableIdMeta = const VerificationMeta(
+    'trackableId',
+  );
+  @override
+  late final GeneratedColumn<int> trackableId = GeneratedColumn<int>(
+    'trackable_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES trackables (id)',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, trackableId, name, amount];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'thresholds';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Threshold> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('trackable_id')) {
+      context.handle(
+        _trackableIdMeta,
+        trackableId.isAcceptableOrUnknown(
+          data['trackable_id']!,
+          _trackableIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_trackableIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Threshold map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Threshold(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      trackableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}trackable_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+    );
+  }
+
+  @override
+  $ThresholdsTable createAlias(String alias) {
+    return $ThresholdsTable(attachedDatabase, alias);
+  }
+}
+
+class Threshold extends DataClass implements Insertable<Threshold> {
+  final int id;
+  final int trackableId;
+  final String name;
+  final double amount;
+  const Threshold({
+    required this.id,
+    required this.trackableId,
+    required this.name,
+    required this.amount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['trackable_id'] = Variable<int>(trackableId);
+    map['name'] = Variable<String>(name);
+    map['amount'] = Variable<double>(amount);
+    return map;
+  }
+
+  ThresholdsCompanion toCompanion(bool nullToAbsent) {
+    return ThresholdsCompanion(
+      id: Value(id),
+      trackableId: Value(trackableId),
+      name: Value(name),
+      amount: Value(amount),
+    );
+  }
+
+  factory Threshold.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Threshold(
+      id: serializer.fromJson<int>(json['id']),
+      trackableId: serializer.fromJson<int>(json['trackableId']),
+      name: serializer.fromJson<String>(json['name']),
+      amount: serializer.fromJson<double>(json['amount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'trackableId': serializer.toJson<int>(trackableId),
+      'name': serializer.toJson<String>(name),
+      'amount': serializer.toJson<double>(amount),
+    };
+  }
+
+  Threshold copyWith({
+    int? id,
+    int? trackableId,
+    String? name,
+    double? amount,
+  }) => Threshold(
+    id: id ?? this.id,
+    trackableId: trackableId ?? this.trackableId,
+    name: name ?? this.name,
+    amount: amount ?? this.amount,
+  );
+  Threshold copyWithCompanion(ThresholdsCompanion data) {
+    return Threshold(
+      id: data.id.present ? data.id.value : this.id,
+      trackableId: data.trackableId.present
+          ? data.trackableId.value
+          : this.trackableId,
+      name: data.name.present ? data.name.value : this.name,
+      amount: data.amount.present ? data.amount.value : this.amount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Threshold(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('name: $name, ')
+          ..write('amount: $amount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, trackableId, name, amount);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Threshold &&
+          other.id == this.id &&
+          other.trackableId == this.trackableId &&
+          other.name == this.name &&
+          other.amount == this.amount);
+}
+
+class ThresholdsCompanion extends UpdateCompanion<Threshold> {
+  final Value<int> id;
+  final Value<int> trackableId;
+  final Value<String> name;
+  final Value<double> amount;
+  const ThresholdsCompanion({
+    this.id = const Value.absent(),
+    this.trackableId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.amount = const Value.absent(),
+  });
+  ThresholdsCompanion.insert({
+    this.id = const Value.absent(),
+    required int trackableId,
+    required String name,
+    required double amount,
+  }) : trackableId = Value(trackableId),
+       name = Value(name),
+       amount = Value(amount);
+  static Insertable<Threshold> custom({
+    Expression<int>? id,
+    Expression<int>? trackableId,
+    Expression<String>? name,
+    Expression<double>? amount,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (trackableId != null) 'trackable_id': trackableId,
+      if (name != null) 'name': name,
+      if (amount != null) 'amount': amount,
+    });
+  }
+
+  ThresholdsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? trackableId,
+    Value<String>? name,
+    Value<double>? amount,
+  }) {
+    return ThresholdsCompanion(
+      id: id ?? this.id,
+      trackableId: trackableId ?? this.trackableId,
+      name: name ?? this.name,
+      amount: amount ?? this.amount,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (trackableId.present) {
+      map['trackable_id'] = Variable<int>(trackableId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ThresholdsCompanion(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('name: $name, ')
+          ..write('amount: $amount')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $TrackablesTable trackables = $TrackablesTable(this);
   late final $DoseLogsTable doseLogs = $DoseLogsTable(this);
   late final $PresetsTable presets = $PresetsTable(this);
+  late final $ThresholdsTable thresholds = $ThresholdsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1279,6 +1692,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     trackables,
     doseLogs,
     presets,
+    thresholds,
   ];
 }
 
@@ -1294,6 +1708,7 @@ typedef $$TrackablesTableCreateCompanionBuilder =
       Value<int> sortOrder,
       Value<String> decayModel,
       Value<double?> eliminationRate,
+      Value<double?> absorptionMinutes,
     });
 typedef $$TrackablesTableUpdateCompanionBuilder =
     TrackablesCompanion Function({
@@ -1307,6 +1722,7 @@ typedef $$TrackablesTableUpdateCompanionBuilder =
       Value<int> sortOrder,
       Value<String> decayModel,
       Value<double?> eliminationRate,
+      Value<double?> absorptionMinutes,
     });
 
 final class $$TrackablesTableReferences
@@ -1346,6 +1762,27 @@ final class $$TrackablesTableReferences
     ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_presetsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ThresholdsTable, List<Threshold>>
+  _thresholdsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.thresholds,
+    aliasName: $_aliasNameGenerator(
+      db.trackables.id,
+      db.thresholds.trackableId,
+    ),
+  );
+
+  $$ThresholdsTableProcessedTableManager get thresholdsRefs {
+    final manager = $$ThresholdsTableTableManager(
+      $_db,
+      $_db.thresholds,
+    ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_thresholdsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1411,6 +1848,11 @@ class $$TrackablesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<double> get absorptionMinutes => $composableBuilder(
+    column: $table.absorptionMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> doseLogsRefs(
     Expression<bool> Function($$DoseLogsTableFilterComposer f) f,
   ) {
@@ -1452,6 +1894,31 @@ class $$TrackablesTableFilterComposer
           }) => $$PresetsTableFilterComposer(
             $db: $db,
             $table: $db.presets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> thresholdsRefs(
+    Expression<bool> Function($$ThresholdsTableFilterComposer f) f,
+  ) {
+    final $$ThresholdsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.thresholds,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ThresholdsTableFilterComposer(
+            $db: $db,
+            $table: $db.thresholds,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -1520,6 +1987,11 @@ class $$TrackablesTableOrderingComposer
     column: $table.eliminationRate,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get absorptionMinutes => $composableBuilder(
+    column: $table.absorptionMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TrackablesTableAnnotationComposer
@@ -1564,6 +2036,11 @@ class $$TrackablesTableAnnotationComposer
 
   GeneratedColumn<double> get eliminationRate => $composableBuilder(
     column: $table.eliminationRate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get absorptionMinutes => $composableBuilder(
+    column: $table.absorptionMinutes,
     builder: (column) => column,
   );
 
@@ -1616,6 +2093,31 @@ class $$TrackablesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> thresholdsRefs<T extends Object>(
+    Expression<T> Function($$ThresholdsTableAnnotationComposer a) f,
+  ) {
+    final $$ThresholdsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.thresholds,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ThresholdsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.thresholds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TrackablesTableTableManager
@@ -1631,7 +2133,11 @@ class $$TrackablesTableTableManager
           $$TrackablesTableUpdateCompanionBuilder,
           (Trackable, $$TrackablesTableReferences),
           Trackable,
-          PrefetchHooks Function({bool doseLogsRefs, bool presetsRefs})
+          PrefetchHooks Function({
+            bool doseLogsRefs,
+            bool presetsRefs,
+            bool thresholdsRefs,
+          })
         > {
   $$TrackablesTableTableManager(_$AppDatabase db, $TrackablesTable table)
     : super(
@@ -1656,6 +2162,7 @@ class $$TrackablesTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 Value<String> decayModel = const Value.absent(),
                 Value<double?> eliminationRate = const Value.absent(),
+                Value<double?> absorptionMinutes = const Value.absent(),
               }) => TrackablesCompanion(
                 id: id,
                 name: name,
@@ -1667,6 +2174,7 @@ class $$TrackablesTableTableManager
                 sortOrder: sortOrder,
                 decayModel: decayModel,
                 eliminationRate: eliminationRate,
+                absorptionMinutes: absorptionMinutes,
               ),
           createCompanionCallback:
               ({
@@ -1680,6 +2188,7 @@ class $$TrackablesTableTableManager
                 Value<int> sortOrder = const Value.absent(),
                 Value<String> decayModel = const Value.absent(),
                 Value<double?> eliminationRate = const Value.absent(),
+                Value<double?> absorptionMinutes = const Value.absent(),
               }) => TrackablesCompanion.insert(
                 id: id,
                 name: name,
@@ -1691,6 +2200,7 @@ class $$TrackablesTableTableManager
                 sortOrder: sortOrder,
                 decayModel: decayModel,
                 eliminationRate: eliminationRate,
+                absorptionMinutes: absorptionMinutes,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -1700,62 +2210,89 @@ class $$TrackablesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({doseLogsRefs = false, presetsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (doseLogsRefs) db.doseLogs,
-                if (presetsRefs) db.presets,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (doseLogsRefs)
-                    await $_getPrefetchedData<
-                      Trackable,
-                      $TrackablesTable,
-                      DoseLog
-                    >(
-                      currentTable: table,
-                      referencedTable: $$TrackablesTableReferences
-                          ._doseLogsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$TrackablesTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).doseLogsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where(
-                            (e) => e.trackableId == item.id,
-                          ),
-                      typedResults: items,
-                    ),
-                  if (presetsRefs)
-                    await $_getPrefetchedData<
-                      Trackable,
-                      $TrackablesTable,
-                      Preset
-                    >(
-                      currentTable: table,
-                      referencedTable: $$TrackablesTableReferences
-                          ._presetsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$TrackablesTableReferences(
-                            db,
-                            table,
-                            p0,
-                          ).presetsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where(
-                            (e) => e.trackableId == item.id,
-                          ),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({
+                doseLogsRefs = false,
+                presetsRefs = false,
+                thresholdsRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (doseLogsRefs) db.doseLogs,
+                    if (presetsRefs) db.presets,
+                    if (thresholdsRefs) db.thresholds,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (doseLogsRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          DoseLog
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._doseLogsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).doseLogsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (presetsRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          Preset
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._presetsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).presetsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (thresholdsRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          Threshold
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._thresholdsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).thresholdsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -1772,7 +2309,11 @@ typedef $$TrackablesTableProcessedTableManager =
       $$TrackablesTableUpdateCompanionBuilder,
       (Trackable, $$TrackablesTableReferences),
       Trackable,
-      PrefetchHooks Function({bool doseLogsRefs, bool presetsRefs})
+      PrefetchHooks Function({
+        bool doseLogsRefs,
+        bool presetsRefs,
+        bool thresholdsRefs,
+      })
     >;
 typedef $$DoseLogsTableCreateCompanionBuilder =
     DoseLogsCompanion Function({
@@ -1780,6 +2321,7 @@ typedef $$DoseLogsTableCreateCompanionBuilder =
       required int trackableId,
       required double amount,
       required DateTime loggedAt,
+      Value<String?> name,
     });
 typedef $$DoseLogsTableUpdateCompanionBuilder =
     DoseLogsCompanion Function({
@@ -1787,6 +2329,7 @@ typedef $$DoseLogsTableUpdateCompanionBuilder =
       Value<int> trackableId,
       Value<double> amount,
       Value<DateTime> loggedAt,
+      Value<String?> name,
     });
 
 final class $$DoseLogsTableReferences
@@ -1834,6 +2377,11 @@ class $$DoseLogsTableFilterComposer
 
   ColumnFilters<DateTime> get loggedAt => $composableBuilder(
     column: $table.loggedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1885,6 +2433,11 @@ class $$DoseLogsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$TrackablesTableOrderingComposer get trackableId {
     final $$TrackablesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -1926,6 +2479,9 @@ class $$DoseLogsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get loggedAt =>
       $composableBuilder(column: $table.loggedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
 
   $$TrackablesTableAnnotationComposer get trackableId {
     final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
@@ -1983,11 +2539,13 @@ class $$DoseLogsTableTableManager
                 Value<int> trackableId = const Value.absent(),
                 Value<double> amount = const Value.absent(),
                 Value<DateTime> loggedAt = const Value.absent(),
+                Value<String?> name = const Value.absent(),
               }) => DoseLogsCompanion(
                 id: id,
                 trackableId: trackableId,
                 amount: amount,
                 loggedAt: loggedAt,
+                name: name,
               ),
           createCompanionCallback:
               ({
@@ -1995,11 +2553,13 @@ class $$DoseLogsTableTableManager
                 required int trackableId,
                 required double amount,
                 required DateTime loggedAt,
+                Value<String?> name = const Value.absent(),
               }) => DoseLogsCompanion.insert(
                 id: id,
                 trackableId: trackableId,
                 amount: amount,
                 loggedAt: loggedAt,
+                name: name,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -2381,6 +2941,300 @@ typedef $$PresetsTableProcessedTableManager =
       Preset,
       PrefetchHooks Function({bool trackableId})
     >;
+typedef $$ThresholdsTableCreateCompanionBuilder =
+    ThresholdsCompanion Function({
+      Value<int> id,
+      required int trackableId,
+      required String name,
+      required double amount,
+    });
+typedef $$ThresholdsTableUpdateCompanionBuilder =
+    ThresholdsCompanion Function({
+      Value<int> id,
+      Value<int> trackableId,
+      Value<String> name,
+      Value<double> amount,
+    });
+
+final class $$ThresholdsTableReferences
+    extends BaseReferences<_$AppDatabase, $ThresholdsTable, Threshold> {
+  $$ThresholdsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $TrackablesTable _trackableIdTable(_$AppDatabase db) =>
+      db.trackables.createAlias(
+        $_aliasNameGenerator(db.thresholds.trackableId, db.trackables.id),
+      );
+
+  $$TrackablesTableProcessedTableManager get trackableId {
+    final $_column = $_itemColumn<int>('trackable_id')!;
+
+    final manager = $$TrackablesTableTableManager(
+      $_db,
+      $_db.trackables,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_trackableIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ThresholdsTableFilterComposer
+    extends Composer<_$AppDatabase, $ThresholdsTable> {
+  $$ThresholdsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TrackablesTableFilterComposer get trackableId {
+    final $$TrackablesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableFilterComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ThresholdsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ThresholdsTable> {
+  $$ThresholdsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TrackablesTableOrderingComposer get trackableId {
+    final $$TrackablesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableOrderingComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ThresholdsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ThresholdsTable> {
+  $$ThresholdsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  $$TrackablesTableAnnotationComposer get trackableId {
+    final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ThresholdsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ThresholdsTable,
+          Threshold,
+          $$ThresholdsTableFilterComposer,
+          $$ThresholdsTableOrderingComposer,
+          $$ThresholdsTableAnnotationComposer,
+          $$ThresholdsTableCreateCompanionBuilder,
+          $$ThresholdsTableUpdateCompanionBuilder,
+          (Threshold, $$ThresholdsTableReferences),
+          Threshold,
+          PrefetchHooks Function({bool trackableId})
+        > {
+  $$ThresholdsTableTableManager(_$AppDatabase db, $ThresholdsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ThresholdsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ThresholdsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ThresholdsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> trackableId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+              }) => ThresholdsCompanion(
+                id: id,
+                trackableId: trackableId,
+                name: name,
+                amount: amount,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int trackableId,
+                required String name,
+                required double amount,
+              }) => ThresholdsCompanion.insert(
+                id: id,
+                trackableId: trackableId,
+                name: name,
+                amount: amount,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ThresholdsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({trackableId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (trackableId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.trackableId,
+                                referencedTable: $$ThresholdsTableReferences
+                                    ._trackableIdTable(db),
+                                referencedColumn: $$ThresholdsTableReferences
+                                    ._trackableIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ThresholdsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ThresholdsTable,
+      Threshold,
+      $$ThresholdsTableFilterComposer,
+      $$ThresholdsTableOrderingComposer,
+      $$ThresholdsTableAnnotationComposer,
+      $$ThresholdsTableCreateCompanionBuilder,
+      $$ThresholdsTableUpdateCompanionBuilder,
+      (Threshold, $$ThresholdsTableReferences),
+      Threshold,
+      PrefetchHooks Function({bool trackableId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2391,4 +3245,6 @@ class $AppDatabaseManager {
       $$DoseLogsTableTableManager(_db, _db.doseLogs);
   $$PresetsTableTableManager get presets =>
       $$PresetsTableTableManager(_db, _db.presets);
+  $$ThresholdsTableTableManager get thresholds =>
+      $$ThresholdsTableTableManager(_db, _db.thresholds);
 }

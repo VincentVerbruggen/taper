@@ -2,19 +2,24 @@ import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/providers/settings_providers.dart';
+import 'package:taper/screens/settings/settings_screen.dart';
 import 'package:taper/screens/trackables/add_trackable_screen.dart';
 import 'package:taper/screens/trackables/edit_trackable_screen.dart';
-import 'package:taper/screens/trackables/trackables_screen.dart';
 
 import 'helpers/test_database.dart';
 
+/// Trackable management tests — now rendered inside SettingsScreen
+/// since the Trackables tab was merged into Settings (Milestone 8, Task 6).
 void main() {
   late AppDatabase db;
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     db = createTestDatabase();
   });
 
@@ -24,13 +29,17 @@ void main() {
     } catch (_) {}
   });
 
-  Widget buildTestWidget() {
+  /// Builds the test widget asynchronously so we can get the SharedPreferences
+  /// instance first (needed by SettingsScreen for day boundary settings).
+  Future<Widget> buildTestWidgetAsync() async {
+    final prefs = await SharedPreferences.getInstance();
     return ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(db),
+        sharedPreferencesProvider.overrideWithValue(prefs),
       ],
       child: const MaterialApp(
-        home: Scaffold(body: TrackablesScreen()),
+        home: SettingsScreen(),
       ),
     );
   }
@@ -57,8 +66,8 @@ void main() {
 
   // --- Header test ---
 
-  testWidgets('shows Trackables header', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+  testWidgets('shows Trackables section header', (tester) async {
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     expect(find.text('Trackables'), findsOneWidget);
@@ -69,7 +78,7 @@ void main() {
   // --- Seeded data tests ---
 
   testWidgets('shows seeded trackables with decay model info', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     expect(find.text('Caffeine'), findsOneWidget);
@@ -87,14 +96,14 @@ void main() {
     await cleanUp(tester);
   });
 
-  // --- Add trackable via bottom sheet ---
+  // --- Add trackable via inline button (replaces old FAB) ---
 
-  testWidgets('FAB navigates to AddTrackableScreen', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+  testWidgets('"Add trackable" button navigates to AddTrackableScreen', (tester) async {
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // Tap the FAB to navigate to the add trackable screen.
-    await tester.tap(find.byType(FloatingActionButton));
+    // Tap the "Add trackable" inline button.
+    await tester.tap(find.text('Add trackable'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -103,7 +112,6 @@ void main() {
     // "Add Trackable" in the AppBar title AND as the FilledButton label.
     expect(find.text('Add Trackable'), findsNWidgets(2));
     // Should have 2 text fields (name + unit) and a decay model dropdown.
-    // No half-life or elimination rate fields yet (decay model starts as "None").
     expect(find.byType(TextField), findsNWidgets(2));
     expect(find.text('None'), findsOneWidget);
 
@@ -111,11 +119,11 @@ void main() {
   });
 
   testWidgets('add trackable with custom unit and decay model none', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // Navigate to add trackable screen.
-    await tester.tap(find.byType(FloatingActionButton));
+    await tester.tap(find.text('Add trackable'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -128,9 +136,8 @@ void main() {
     await tester.enterText(textFields.at(1), 'IU');
     await tester.pump();
 
-    // Scroll the save button into view (may be off-screen in 600px viewport).
+    // Scroll the save button into view.
     await tester.ensureVisible(find.byType(FilledButton));
-    // Tap the FilledButton ("Add Trackable" save button).
     await tester.tap(find.byType(FilledButton));
     await tester.pump();
     await pumpAndWait(tester);
@@ -149,11 +156,11 @@ void main() {
   // --- Add with exponential decay model ---
 
   testWidgets('add trackable with exponential decay model', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // Navigate to add trackable screen.
-    await tester.tap(find.byType(FloatingActionButton));
+    await tester.tap(find.text('Add trackable'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -164,18 +171,15 @@ void main() {
     await tester.pump();
 
     // Select "Exponential (half-life)" from the decay model dropdown.
-    // Tap the dropdown to open it.
     await tester.tap(find.text('None'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    // Tap the "Exponential (half-life)" option.
     await tester.tap(find.text('Exponential (half-life)').last);
     await tester.pump();
 
-    // Half-life field should now be visible — enter a value.
-    // There are now 3 text fields: name, unit, half-life.
+    // Half-life + absorption fields should now be visible (name, unit, half-life, absorption).
     final updatedFields = find.byType(TextField);
-    expect(updatedFields, findsNWidgets(3));
+    expect(updatedFields, findsNWidgets(4));
     await tester.enterText(updatedFields.at(2), '2.0');
     await tester.pump();
 
@@ -198,17 +202,17 @@ void main() {
   // --- Edit trackable via three-dots menu ---
 
   testWidgets('three-dots menu Edit navigates to EditTrackableScreen', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // Open the three-dots menu on the first trackable (Caffeine).
-    // There are 3 PopupMenuButtons (one per trackable) — tap the first one.
     await tester.tap(find.byIcon(Icons.more_vert).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // The popup menu should show Edit, Hide, and Delete options.
+    // The popup menu should show Edit, Duplicate, Hide, and Delete options.
     expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
     expect(find.text('Hide'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
 
@@ -221,9 +225,9 @@ void main() {
     expect(find.byType(EditTrackableScreen), findsOneWidget);
     expect(find.text('Edit Trackable'), findsOneWidget);
 
-    // TextFields: name, unit, and half-life (shown because Caffeine is exponential).
+    // TextFields: name, unit, half-life, and absorption (shown because Caffeine is exponential).
     final textFields = find.byType(TextField);
-    expect(textFields, findsNWidgets(3));
+    expect(textFields, findsNWidgets(4));
 
     final nameField = tester.widget<TextField>(textFields.at(0));
     expect(nameField.controller?.text, 'Caffeine');
@@ -232,14 +236,13 @@ void main() {
     final halfLifeField = tester.widget<TextField>(textFields.at(2));
     expect(halfLifeField.controller?.text, '5.0');
 
-    // Decay model dropdown should show "Exponential (half-life)".
     expect(find.text('Exponential (half-life)'), findsOneWidget);
 
     await cleanUp(tester, hasNavigated: true);
   });
 
   testWidgets('edit trackable saves changes and pops back', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // Open three-dots menu on Caffeine and tap Edit to navigate.
@@ -256,17 +259,15 @@ void main() {
     await tester.enterText(textFields.at(2), '6.0');
     await tester.pump();
 
-    // Scroll the save button into view (may be off-screen in 600px viewport).
     await tester.ensureVisible(find.text('Save Changes'));
-    // Tap "Save Changes".
     await tester.tap(find.text('Save Changes'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await pumpAndWait(tester);
 
-    // Should be back on the trackables list.
+    // Should be back on the settings screen.
     expect(find.byType(EditTrackableScreen), findsNothing);
-    expect(find.text('Trackables'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
 
     // Verify the trackable was updated in the database.
     final trackables = await db.select(db.trackables).get();
@@ -320,7 +321,7 @@ void main() {
   // --- Color dot in list item ---
 
   testWidgets('color dot is visible in trackable list', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     final colorDots = find.byWidgetPredicate((widget) {
@@ -339,7 +340,7 @@ void main() {
   // --- Pin button tests ---
 
   testWidgets('each trackable shows a pin button', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // All 3 trackables should have an outlined pin icon (none pinned).
@@ -351,13 +352,12 @@ void main() {
   });
 
   testWidgets('pin icon shows filled when trackable is pinned', (tester) async {
-    // Build widget, then manually pin trackable 1 via the provider.
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // Pin trackable 1 (Caffeine) directly through the provider.
     final container = ProviderScope.containerOf(
-      tester.element(find.byType(TrackablesScreen)),
+      tester.element(find.byType(SettingsScreen)),
     );
     container.read(pinnedTrackableIdProvider.notifier).pin(1);
     await tester.pump();
@@ -372,7 +372,7 @@ void main() {
   // --- Drag handle tests ---
 
   testWidgets('each trackable shows a drag handle', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // All 3 trackables should have a drag handle icon.
@@ -383,26 +383,24 @@ void main() {
 
   // --- Three-dots menu tests ---
 
-  testWidgets('three-dots menu shows Edit, Hide, Delete', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+  testWidgets('three-dots menu shows Edit, Duplicate, Hide, Delete', (tester) async {
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // Open the three-dots menu on the first trackable.
     await tester.tap(find.byIcon(Icons.more_vert).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // All three menu items should be visible.
     expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
     expect(find.text('Hide'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
 
-    // Verify menu item icons are present.
     expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.copy_outlined), findsOneWidget);
     expect(find.byIcon(Icons.visibility_off), findsOneWidget);
     expect(find.byIcon(Icons.delete_outline), findsOneWidget);
 
-    // Dismiss the menu by tapping outside.
     await tester.tapAt(Offset.zero);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -410,9 +408,32 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('duplicate creates "Copy of" trackable with same settings', (tester) async {
+    await tester.pumpWidget(await buildTestWidgetAsync());
+    await pumpAndWait(tester);
+
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.text('Duplicate'));
+    await pumpAndWait(tester);
+
+    expect(find.text('Copy of Caffeine'), findsOneWidget);
+
+    final all = await (db.select(db.trackables)
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .get();
+    final copy = all.firstWhere((t) => t.name == 'Copy of Caffeine');
+    expect(copy.unit, 'mg');
+    expect(copy.halfLifeHours, 5.0);
+    expect(copy.decayModel, 'exponential');
+
+    await cleanUp(tester);
+  });
+
   testWidgets('three-dots menu shows "Show" for hidden trackable', (tester) async {
-    // Alcohol is hidden (isVisible: false) from the seeder.
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // Open the three-dots menu on Alcohol (the last / 3rd item).
@@ -424,7 +445,6 @@ void main() {
     expect(find.text('Show'), findsOneWidget);
     expect(find.byIcon(Icons.visibility), findsOneWidget);
 
-    // Dismiss the menu.
     await tester.tapAt(Offset.zero);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -433,7 +453,7 @@ void main() {
   });
 
   testWidgets('toggle visibility from menu updates the trackable', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
     // Caffeine is visible. Open its menu and tap "Hide".
@@ -444,7 +464,6 @@ void main() {
     await tester.pump();
     await pumpAndWait(tester);
 
-    // Verify in the database that Caffeine is now hidden.
     final trackables = await db.select(db.trackables).get();
     final caffeine = trackables.firstWhere((t) => t.name == 'Caffeine');
     expect(caffeine.isVisible, false);
@@ -453,44 +472,35 @@ void main() {
   });
 
   testWidgets('delete from menu removes the trackable after confirmation', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // Open the three-dots menu on the first trackable (Caffeine).
     await tester.tap(find.byIcon(Icons.more_vert).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Tap "Delete" to trigger the confirmation dialog.
     await tester.tap(find.text('Delete'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Confirmation dialog should be showing.
     expect(find.text('Delete Trackable'), findsOneWidget);
     expect(find.textContaining('Delete "Caffeine"?'), findsOneWidget);
 
-    // Tap "Delete" in the dialog to confirm.
-    // There are now two "Delete" texts: the dialog title uses "Delete Trackable",
-    // and the confirm button says "Delete".
     await tester.tap(find.widgetWithText(TextButton, 'Delete'));
     await tester.pump();
     await pumpAndWait(tester);
 
-    // Verify Caffeine was deleted from the database.
     final trackables = await db.select(db.trackables).get();
     expect(trackables.any((t) => t.name == 'Caffeine'), false);
-    // Should show a snackbar.
     expect(find.text('Caffeine deleted'), findsOneWidget);
 
     await cleanUp(tester);
   });
 
   testWidgets('delete cancel does not remove the trackable', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // Open menu and tap Delete.
     await tester.tap(find.byIcon(Icons.more_vert).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -498,12 +508,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Tap "Cancel" in the confirmation dialog.
     await tester.tap(find.text('Cancel'));
     await tester.pump();
     await pumpAndWait(tester);
 
-    // Caffeine should still be in the database.
     final trackables = await db.select(db.trackables).get();
     expect(trackables.any((t) => t.name == 'Caffeine'), true);
 
@@ -513,10 +521,9 @@ void main() {
   // --- No more arrow buttons ---
 
   testWidgets('no up/down arrow buttons in the list', (tester) async {
-    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // Arrow icons should no longer be present — replaced by drag handle.
     expect(find.byIcon(Icons.arrow_upward), findsNothing);
     expect(find.byIcon(Icons.arrow_downward), findsNothing);
 

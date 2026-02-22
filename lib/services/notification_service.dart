@@ -229,6 +229,7 @@ class NotificationService {
           doses: allDoses,
           halfLifeHours: trackable.halfLifeHours!,
           queryTime: now,
+          absorptionMinutes: trackable.absorptionMinutes,
         );
         body = '${active.toStringAsFixed(0)} / ${totalToday.toStringAsFixed(0)} ${trackable.unit}';
       case DecayModel.linear:
@@ -236,6 +237,7 @@ class NotificationService {
           doses: allDoses,
           eliminationRate: trackable.eliminationRate!,
           queryTime: now,
+          absorptionMinutes: trackable.absorptionMinutes,
         );
         body = '${active.toStringAsFixed(0)} / ${totalToday.toStringAsFixed(0)} ${trackable.unit}';
       case DecayModel.none:
@@ -347,11 +349,13 @@ class NotificationService {
     final lastDose = await db.getLastDose(trackable.id);
     if (lastDose == null) return;
 
-    // Insert a new dose with the same amount, timestamped now.
+    // Insert a new dose with the same amount and preset name, timestamped now.
+    // Preserves the preset name (e.g., "Espresso") from the original dose.
     await db.insertDoseLog(
       trackable.id,
       lastDose.amount,
       DateTime.now(),
+      name: lastDose.name,
     );
 
     // Refresh the notification immediately so the new dose shows up.

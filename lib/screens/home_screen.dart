@@ -5,7 +5,6 @@ import 'package:taper/providers/backup_providers.dart';
 import 'package:taper/screens/dashboard_screen.dart';
 import 'package:taper/screens/log/log_dose_screen.dart';
 import 'package:taper/screens/settings/settings_screen.dart';
-import 'package:taper/screens/trackables/trackables_screen.dart';
 
 /// HomeScreen = the app's main navigation shell.
 ///
@@ -38,17 +37,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       //
       // Without IndexedStack, switching tabs would destroy and rebuild the
       // screen each time — losing any open forms or scroll positions.
+      // 3 tabs: Dashboard, Log, Settings (Trackables merged into Settings).
       body: IndexedStack(
         index: _selectedIndex,
         children: const [
           DashboardScreen(),
           LogDoseScreen(),
-          TrackablesScreen(),
           SettingsScreen(),
         ],
       ),
 
       // NavigationBar = Material 3 bottom navigation.
+      // Reduced from 4 to 3 tabs — Trackables moved into Settings.
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -64,11 +64,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Icon(Icons.add_circle_outline),
             selectedIcon: Icon(Icons.add_circle),
             label: 'Log',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.science_outlined),
-            selectedIcon: Icon(Icons.science),
-            label: 'Trackables',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),

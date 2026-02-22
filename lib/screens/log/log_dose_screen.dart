@@ -128,10 +128,22 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
             customBorder: shape,
             onTap: () => _editDoseLog(entry),
             child: ListTile(
+              // Show preset name when available (e.g., "Caffeine — Espresso"),
+              // fall back to raw amount (e.g., "Caffeine — 63 mg").
               title: Text(
-                '${entry.trackable.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
+                entry.doseLog.name != null
+                    ? '${entry.trackable.name} — ${entry.doseLog.name}'
+                    : '${entry.trackable.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
               ),
               subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
+              // Copy button: opens AddDoseScreen pre-filled with this dose's
+              // trackable + amount, but with current time.
+              // Like a "duplicate" action in a CMS.
+              trailing: IconButton(
+                icon: const Icon(Icons.copy, size: 20),
+                tooltip: 'Copy dose',
+                onPressed: () => _copyDose(entry),
+              ),
             ),
           ),
         ),
@@ -169,16 +181,32 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     // controller — like a toast notification manager.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        showCloseIcon: true, // Let users dismiss the snackbar manually
         content: Text(
           'Deleted ${entry.trackable.name} — ${dose.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
         ),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
-            // Re-insert with the same trackable, amount, and timestamp.
+            // Re-insert with the same trackable, amount, timestamp, and preset name.
             // This creates a new row (new ID) but with identical data.
-            db.insertDoseLog(dose.trackableId, dose.amount, dose.loggedAt);
+            db.insertDoseLog(dose.trackableId, dose.amount, dose.loggedAt, name: dose.name);
           },
+        ),
+      ),
+    );
+  }
+
+  /// Copy a dose: opens AddDoseScreen pre-filled with this dose's trackable + amount.
+  /// Time defaults to now — like duplicating a row in a CMS but with a fresh timestamp.
+  void _copyDose(DoseLogWithTrackable entry) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddDoseScreen(
+          initialTrackableId: entry.doseLog.trackableId,
+          initialAmount: entry.doseLog.amount,
+          initialName: entry.doseLog.name,
         ),
       ),
     );

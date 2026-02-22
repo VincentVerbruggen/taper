@@ -190,6 +190,37 @@ No swipe-to-delete anywhere. All delete actions use a **delete button with a con
 - [ ] **Dark mode toggle** — light / dark / auto (system default) theme toggle in settings. Currently dark-only.
 - [ ] **Absorption speed field** — optional `absorptionMinutes` on trackables. Models time to peak effect (e.g., caffeine ~45 min). Decay curve ramps up over this period before decaying.
 - [ ] **Thresholds per trackable** — multiple named thresholds (e.g., "Healthy daily limit" = 400mg caffeine, "Sleep cutoff" = 200mg). Each has a `name`, `amount`, and optional `rollingAverageDays` for rolling average comparison. Show as horizontal lines on the decay chart and indicators on dashboard card stats.
+- [ ] **Performance: zero background work** — the app should do nothing when not visible. See details below.
+
+#### Performance: Zero Background Work
+
+The app is a simple local tracker — it should be completely idle when the user isn't looking at it. Currently it's not.
+
+**Problem 1: Stale dashboard on app resume**
+`trackableCardDataProvider` captures `DateTime.now()` once when its stream is created. Decay amounts and the "now" dotted line freeze at that time. Reopening the app hours later shows stale data because Drift streams only re-emit on data changes, not time changes.
+
+*Fix:* Add an `appLifecycleRefreshProvider` — a `Notifier` with `WidgetsBindingObserver` that:
+1. On `resumed`: increments a counter (triggers immediate refresh) **and** starts a 5-minute `Timer.periodic` that keeps incrementing while the app stays in the foreground.
+2. On `paused`: cancels the timer (zero background work).
+
+The card data provider watches this counter, so any increment triggers a fresh `DateTime.now()` recalculation. This gives us: instant refresh on app open + fresh data every 5 min while staring at the dashboard + zero work in background.
+
+**Problem 2: Notification timer runs in background (15s)**
+`NotificationService._updateTimer` is a `Timer.periodic(15 seconds)` that recalculates decay and updates the notification. It keeps running even when the app is backgrounded (until the OS kills it). 15 seconds is aggressive.
+
+The timer can't be removed entirely — it also re-posts the notification because Android lets users swipe away "ongoing" notifications. Without the timer, a dismissed sticky notification would never come back.
+
+*Fix:* Increase the interval (30–60s). The notification shows rounded values so a 1-minute lag is imperceptible, and re-posting within 60s of a swipe-dismiss is fast enough. No need to pause on background — the timer naturally stops when the OS suspends the app, and the notification needs to stay visible anyway.
+
+**Problem 3: IndexedStack keeps all tabs alive**
+`HomeScreen` uses `IndexedStack` which keeps all 3 tabs (Dashboard, Log, Settings) mounted simultaneously. Every Drift `.watch()` stream across all tabs stays subscribed even when the tab is invisible. That's ~8+ active SQLite watchers at all times.
+
+*Fix:* This is a tradeoff. IndexedStack preserves scroll position and form state when switching tabs (good UX). The alternative (`PageView` or rebuilding tabs) loses that state. The Drift streams are event-driven (not polling), so they only fire on actual data changes — the cost is low in practice. **Keep IndexedStack for now**, but revisit if profiling shows it's a real drain.
+
+**Problem 4: No app-wide background pause**
+Nothing in the app reacts to lifecycle changes. Drift streams, timers, and providers all keep running when backgrounded.
+
+*Fix:* The lifecycle observer from Problem 1 solves the resume side. For the pause side, the notification timer fix (Problem 2) handles the only active timer. Drift streams are passive (SQLite triggers, not polling), so they're cheap when no data changes — no need to tear them down.
 
 ### Milestone 9: Taper Plans
 

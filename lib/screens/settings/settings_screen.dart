@@ -1,26 +1,43 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'package:taper/data/database.dart';
+import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/backup_providers.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
+import 'package:taper/screens/trackables/add_trackable_screen.dart';
+import 'package:taper/screens/trackables/edit_trackable_screen.dart';
 import 'package:taper/services/backup_service.dart';
+import 'package:taper/services/notification_service.dart';
 
-/// Settings screen — the 4th tab in the bottom nav.
+/// Settings screen — the 3rd tab in the bottom nav.
 ///
-/// Contains app preferences (day boundary) and data management
-/// (export, import, auto-backup).
+/// Combines trackable management (previously a separate tab) with app settings.
+/// Layout: Trackables section → Settings section → Data section.
 ///
-/// Like a Laravel settings page (/settings/general) with form fields
-/// that persist to the database (here: SharedPreferences).
-class SettingsScreen extends ConsumerWidget {
+/// ConsumerStatefulWidget because we need both:
+///   - Riverpod providers for reactive data (trackables, settings)
+///   - Local state for trackable list reorder callbacks
+///
+/// Like a Laravel settings page that also embeds an inline CRUD list
+/// (imagine a "Manage categories" section above general settings).
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final trackablesAsync = ref.watch(trackablesProvider);
     final boundaryHour = ref.watch(dayBoundaryHourProvider);
+    final themeMode = ref.watch(themeModeProvider);
     final autoBackupEnabled = ref.watch(autoBackupEnabledProvider);
     final lastBackupTime = ref.watch(lastBackupTimeProvider);
 
@@ -36,9 +53,42 @@ class SettingsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
 
+            // =================================================================
+            // TRACKABLES SECTION
+            // Moved from the old Trackables tab into Settings.
+            // Uses a ReorderableListView with shrinkWrap so it fits inside the
+            // outer ListView without needing its own scroll physics.
+            // =================================================================
+            Text(
+              'Trackables',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+
+            // Trackable list content — loading / empty / populated.
+            trackablesAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, s) => Center(child: Text('Error: $e')),
+              data: (trackables) => _buildTrackablesSection(trackables),
+            ),
+
+            const SizedBox(height: 8),
+
+            // "Add trackable" button — replaces the FAB since we're inside a scroll.
+            // Inline button instead of floating: better UX inside a settings list.
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('Add trackable'),
+              onTap: _addTrackable,
+            ),
+
+            const Divider(height: 32),
+
+            // =================================================================
+            // SETTINGS SECTION
+            // =================================================================
+
             // --- Day boundary setting ---
-            // ListTile with a dropdown on the trailing side.
-            // The dropdown offers hours 0–12 (midnight to noon), formatted as "05:00".
             ListTile(
               title: const Text('Day starts at'),
               subtitle: const Text(
@@ -47,7 +97,6 @@ class SettingsScreen extends ConsumerWidget {
               trailing: DropdownButton<int>(
                 value: boundaryHour,
                 // Generate items for hours 0 through 12.
-                // Formatted as "HH:00" — e.g., 5 → "05:00", 0 → "00:00".
                 items: List.generate(13, (hour) {
                   final label = '${hour.toString().padLeft(2, '0')}:00';
                   return DropdownMenuItem<int>(
@@ -63,9 +112,41 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
 
+            // --- Theme mode setting ---
+            // Dropdown with Auto/Light/Dark — same pattern as day boundary.
+            // Like a CSS prefers-color-scheme toggle in a settings panel.
+            ListTile(
+              title: const Text('Theme'),
+              subtitle: const Text('Control light/dark appearance'),
+              trailing: DropdownButton<ThemeMode>(
+                value: themeMode,
+                items: const [
+                  DropdownMenuItem(
+                    value: ThemeMode.system,
+                    child: Text('Auto'),
+                  ),
+                  DropdownMenuItem(
+                    value: ThemeMode.light,
+                    child: Text('Light'),
+                  ),
+                  DropdownMenuItem(
+                    value: ThemeMode.dark,
+                    child: Text('Dark'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    ref.read(themeModeProvider.notifier).setMode(value);
+                  }
+                },
+              ),
+            ),
+
             const Divider(height: 32),
 
-            // --- Data section header ---
+            // =================================================================
+            // DATA SECTION
+            // =================================================================
             Text(
               'Data',
               style: Theme.of(context).textTheme.titleMedium,
@@ -73,8 +154,6 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 8),
 
             // --- Auto-backup toggle ---
-            // SwitchListTile = a ListTile with a built-in Switch on the trailing side.
-            // Like a toggle input in a Livewire component that auto-saves on change.
             SwitchListTile(
               title: const Text('Daily auto-backup'),
               subtitle: Text(
@@ -109,52 +188,196 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  /// Export the database via the native share sheet.
+  // ===========================================================================
+  // TRACKABLES SECTION BUILD
+  // ===========================================================================
+
+  /// Builds the trackable list as a ReorderableListView with shrinkWrap.
   ///
-  /// Flow: checkpoint WAL → copy to temp → open share sheet.
-  /// Like generating a download link in a Laravel controller:
-  ///   return response()->download(storage_path('taper.sqlite'))
+  /// shrinkWrap + NeverScrollableScrollPhysics makes it behave like a Column
+  /// inside the outer ListView — it takes only the height it needs and doesn't
+  /// scroll independently. Like a nested <div> with no overflow scroll.
+  Widget _buildTrackablesSection(List<Trackable> trackables) {
+    if (trackables.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(child: Text('No trackables yet. Add one below.')),
+      );
+    }
+
+    return ReorderableListView.builder(
+      shrinkWrap: true, // Only take the height needed (don't expand to fill)
+      physics: const NeverScrollableScrollPhysics(), // Let outer ListView scroll
+      itemCount: trackables.length,
+      onReorder: (oldIndex, newIndex) =>
+          _onReorder(trackables, oldIndex, newIndex),
+      itemBuilder: (context, index) {
+        final trackable = trackables[index];
+        return _TrackableListItem(
+          key: ValueKey(trackable.id),
+          trackable: trackable,
+          index: index,
+          onEdit: () => _editTrackable(trackable),
+          onDuplicate: () => _duplicateTrackable(trackable),
+          onTogglePin: () => _togglePin(trackable),
+          onToggleVisibility: () => _toggleVisibility(trackable),
+          onDelete: () => _deleteTrackable(trackable),
+        );
+      },
+    );
+  }
+
+  // ===========================================================================
+  // TRACKABLE ACTIONS (moved from TrackablesScreen)
+  // ===========================================================================
+
+  /// Handle drag-to-reorder.
+  void _onReorder(List<Trackable> trackables, int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final ids = trackables.map((t) => t.id).toList();
+    final movedId = ids.removeAt(oldIndex);
+    ids.insert(newIndex, movedId);
+    ref.read(databaseProvider).reorderTrackables(ids);
+  }
+
+  /// Navigate to the edit screen for this trackable.
+  void _editTrackable(Trackable trackable) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditTrackableScreen(trackable: trackable),
+      ),
+    );
+  }
+
+  /// Duplicate a trackable: creates "Copy of X" with the same settings.
+  void _duplicateTrackable(Trackable trackable) async {
+    final db = ref.read(databaseProvider);
+    await db.insertTrackable(
+      'Copy of ${trackable.name}',
+      unit: trackable.unit,
+      halfLifeHours: trackable.halfLifeHours,
+      decayModel: trackable.decayModel,
+      eliminationRate: trackable.eliminationRate,
+      absorptionMinutes: trackable.absorptionMinutes,
+    );
+  }
+
+  /// Toggle pin: pin this trackable to a persistent notification, or unpin it.
+  void _togglePin(Trackable trackable) async {
+    final notificationService = NotificationService.instance;
+    final pinnedId = ref.read(pinnedTrackableIdProvider);
+
+    if (pinnedId == trackable.id) {
+      await notificationService.stopTracking();
+      ref.read(pinnedTrackableIdProvider.notifier).unpin();
+    } else {
+      final granted = await notificationService.requestPermission();
+      if (!granted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              showCloseIcon: true,
+              content: Text('Notification permission required to pin'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final db = ref.read(databaseProvider);
+      await notificationService.startTracking(trackable, db);
+      ref.read(pinnedTrackableIdProvider.notifier).pin(trackable.id);
+    }
+  }
+
+  /// Toggle visibility of a trackable.
+  void _toggleVisibility(Trackable trackable) {
+    final db = ref.read(databaseProvider);
+    db.updateTrackable(trackable.id, isVisible: Value(!trackable.isVisible));
+  }
+
+  /// Delete a trackable after showing a confirmation dialog.
+  void _deleteTrackable(Trackable trackable) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Trackable'),
+        content: Text(
+          'Delete "${trackable.name}"? This will also delete all dose logs for this trackable.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              'Delete',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final db = ref.read(databaseProvider);
+      await db.deleteTrackable(trackable.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            showCloseIcon: true,
+            content: Text('${trackable.name} deleted'),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Navigate to the add trackable screen.
+  void _addTrackable() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddTrackableScreen()),
+    );
+  }
+
+  // ===========================================================================
+  // DATA MANAGEMENT ACTIONS
+  // ===========================================================================
+
+  /// Export the database via the native share sheet.
   Future<void> _handleExport(BuildContext context, WidgetRef ref) async {
-    // Show a loading indicator while preparing the export.
     _showLoadingDialog(context, 'Preparing export...');
 
     try {
       final db = ref.read(databaseProvider);
       final backup = BackupService.instance;
 
-      // Flush WAL writes into the main file before copying.
       await db.checkpointWal();
-
-      // Copy DB to temp with a timestamped filename.
       final exportFile = await backup.prepareExportFile();
 
-      // Dismiss the loading dialog before opening the share sheet.
       if (context.mounted) Navigator.of(context).pop();
 
-      // Open the native share sheet with the file.
-      // On Android: "Share via" → save to Files, email, Drive, etc.
-      // On iOS: share sheet with AirDrop, save to Files, etc.
-      // Like a "Download" button that opens the browser's save dialog.
       await Share.shareXFiles([XFile(exportFile.path)]);
     } catch (e) {
-      // Dismiss loading dialog if still open.
       if (context.mounted) Navigator.of(context).pop();
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
+          SnackBar(
+            showCloseIcon: true,
+            content: Text('Export failed: $e'),
+          ),
         );
       }
     }
   }
 
   /// Import a database from a user-picked file.
-  ///
-  /// Flow: confirm → pick file → validate → close DB → replace → refresh providers.
-  /// Like a Laravel controller action that processes an uploaded file:
-  ///   $request->file('backup')->storeAs('/', 'taper.sqlite')
   Future<void> _handleImport(BuildContext context, WidgetRef ref) async {
-    // First confirmation: warn the user this is destructive.
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -179,9 +402,6 @@ class SettingsScreen extends ConsumerWidget {
 
     if (confirmed != true || !context.mounted) return;
 
-    // Open the file picker. Allow any file type because .sqlite isn't a
-    // standard MIME type that file pickers recognize.
-    // Like <input type="file"> in HTML — the user picks what to upload.
     final result = await FilePicker.platform.pickFiles(type: FileType.any);
 
     if (result == null || result.files.isEmpty || !context.mounted) return;
@@ -189,12 +409,12 @@ class SettingsScreen extends ConsumerWidget {
     final pickedPath = result.files.single.path;
     if (pickedPath == null || !context.mounted) return;
 
-    // Validate the file before doing anything destructive.
     final isValid = await BackupService.instance.isValidSqliteFile(pickedPath);
     if (!isValid) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
+            showCloseIcon: true,
             content: Text('Invalid file — not a valid SQLite database.'),
           ),
         );
@@ -202,59 +422,56 @@ class SettingsScreen extends ConsumerWidget {
       return;
     }
 
-    // Show progress while replacing the database.
     if (!context.mounted) return;
     _showLoadingDialog(context, 'Importing database...');
 
     try {
-      // Close the current database connection BEFORE replacing the file.
-      // This releases the file handle so we can overwrite it safely.
-      // Like calling DB::disconnect() before swapping the database file.
       final db = ref.read(databaseProvider);
       await db.close();
 
-      // Replace the database file on disk.
       final success = await BackupService.instance.importDatabase(pickedPath);
 
       if (!success) {
         if (context.mounted) Navigator.of(context).pop();
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Import failed — invalid database file.')),
+            const SnackBar(
+              showCloseIcon: true,
+              content: Text('Import failed — invalid database file.'),
+            ),
           );
         }
         return;
       }
 
-      // Force all providers to rebuild with the new database.
-      // Incrementing the generation counter invalidates databaseProvider,
-      // which cascades to all stream providers (trackables, doses, etc.).
-      // Like clearing Laravel's entire cache: Artisan::call('cache:clear')
       ref.read(databaseGenerationProvider.notifier).increment();
 
-      // Dismiss loading dialog.
       if (context.mounted) Navigator.of(context).pop();
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Database imported successfully!')),
+          const SnackBar(
+            showCloseIcon: true,
+            content: Text('Database imported successfully!'),
+          ),
         );
       }
     } catch (e) {
-      // If something went wrong, still try to recover by rebuilding the DB.
       ref.read(databaseGenerationProvider.notifier).increment();
 
       if (context.mounted) Navigator.of(context).pop();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import error: $e')),
+          SnackBar(
+            showCloseIcon: true,
+            content: Text('Import error: $e'),
+          ),
         );
       }
     }
   }
 
   /// Show a simple loading dialog with a spinner and message.
-  /// Like a "please wait" overlay in a web app.
   void _showLoadingDialog(BuildContext context, String message) {
     showDialog(
       context: context,
@@ -272,8 +489,6 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   /// Format a DateTime for display in the settings subtitle.
-  /// Shows "Today 14:30" or "Feb 22, 14:30" depending on whether it's today.
-  /// Like Carbon::format('M j, H:i') in Laravel.
   String _formatDateTime(DateTime dt) {
     final now = DateTime.now();
     final isToday = dt.year == now.year &&
@@ -285,11 +500,196 @@ class SettingsScreen extends ConsumerWidget {
 
     if (isToday) return 'Today $time';
 
-    // Month abbreviations — Dart doesn't have built-in month names without intl.
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
     return '${months[dt.month - 1]} ${dt.day}, $time';
+  }
+}
+
+// =============================================================================
+// TRACKABLE LIST ITEM — inline widget for the trackable list in settings.
+// Same design as the old TrackablesScreen's _TrackableListItem but wrapped
+// in the unified Card pattern (Padding > Card > ListTile).
+// =============================================================================
+
+/// A single trackable in the settings list — Card-wrapped with drag handle,
+/// color dot, pin button, and three-dots menu.
+///
+/// ConsumerWidget so it can watch pinnedTrackableIdProvider for pin icon state.
+class _TrackableListItem extends ConsumerWidget {
+  final Trackable trackable;
+  final int index;
+  final VoidCallback onEdit;
+  final VoidCallback onDuplicate;
+  final VoidCallback onTogglePin;
+  final VoidCallback onToggleVisibility;
+  final VoidCallback onDelete;
+
+  const _TrackableListItem({
+    super.key,
+    required this.trackable,
+    required this.index,
+    required this.onEdit,
+    required this.onDuplicate,
+    required this.onTogglePin,
+    required this.onToggleVisibility,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isHidden = !trackable.isVisible;
+    final pinnedId = ref.watch(pinnedTrackableIdProvider);
+    final isPinned = pinnedId == trackable.id;
+
+    // Unified card pattern: Card(shape: RoundedRectangleBorder(12)) > ListTile
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Card(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          // Leading: drag handle + color dot.
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ReorderableDragStartListener(
+                index: index,
+                child: const Icon(Icons.drag_handle, size: 24),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: Color(trackable.color).withAlpha(isHidden ? 77 : 255),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+          title: Text(
+            trackable.name,
+            style: isHidden
+                ? TextStyle(
+                    decoration: TextDecoration.lineThrough,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withAlpha(128),
+                  )
+                : null,
+          ),
+          subtitle: Text(
+            _buildSubtitle(),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withAlpha(
+                isHidden ? 77 : 179,
+              ),
+            ),
+          ),
+          // Trailing: pin button + three-dots menu.
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                  size: 20,
+                  color: isPinned
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                onPressed: onTogglePin,
+                tooltip: isPinned ? 'Unpin from notification' : 'Pin to notification',
+                visualDensity: VisualDensity.compact,
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, size: 20),
+                tooltip: 'More options',
+                onSelected: (value) {
+                  switch (value) {
+                    case 'edit':
+                      onEdit();
+                    case 'duplicate':
+                      onDuplicate();
+                    case 'visibility':
+                      onToggleVisibility();
+                    case 'delete':
+                      onDelete();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: ListTile(
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Edit'),
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'duplicate',
+                    child: ListTile(
+                      leading: Icon(Icons.copy_outlined),
+                      title: Text('Duplicate'),
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'visibility',
+                    child: ListTile(
+                      leading: Icon(
+                        isHidden ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      title: Text(isHidden ? 'Show' : 'Hide'),
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      leading: Icon(
+                        Icons.delete_outline,
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      title: Text(
+                        'Delete',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build the subtitle text showing unit and decay model info.
+  String _buildSubtitle() {
+    final model = DecayModel.fromString(trackable.decayModel);
+    return switch (model) {
+      DecayModel.exponential => trackable.halfLifeHours != null
+          ? '${trackable.unit} \u00B7 half-life: ${trackable.halfLifeHours}h'
+          : trackable.unit,
+      DecayModel.linear => trackable.eliminationRate != null
+          ? '${trackable.unit} \u00B7 elimination: ${trackable.eliminationRate} ${trackable.unit}/h'
+          : trackable.unit,
+      DecayModel.none => trackable.unit,
+    };
   }
 }

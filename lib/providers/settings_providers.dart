@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -56,5 +57,50 @@ class DayBoundaryHourNotifier extends Notifier<int> {
     final prefs = ref.read(sharedPreferencesProvider);
     prefs.setInt(_dayBoundaryHourKey, hour);
     state = hour;
+  }
+}
+
+// =============================================================================
+// THEME MODE
+// =============================================================================
+
+/// SharedPreferences key for theme mode ('light', 'dark', or 'system').
+const _themeModeKey = 'themeMode';
+
+/// Provider for the user's theme preference.
+///
+/// Returns ThemeMode (light/dark/system) backed by SharedPreferences.
+/// Default is ThemeMode.system — follows the device setting.
+///
+/// Like: config('app.theme', 'system') in Laravel.
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(
+  ThemeModeNotifier.new,
+);
+
+/// Notifier that reads/writes the theme mode preference.
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final stored = prefs.getString(_themeModeKey);
+    // Convert stored string back to ThemeMode enum.
+    return switch (stored) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system, // Default to system (auto) if not set or unknown.
+    };
+  }
+
+  /// Persist the new theme mode and update all watchers.
+  void setMode(ThemeMode mode) {
+    final prefs = ref.read(sharedPreferencesProvider);
+    // Store as simple string — easy to inspect in SharedPreferences.
+    final value = switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+    prefs.setString(_themeModeKey, value);
+    state = mode;
   }
 }

@@ -140,6 +140,10 @@ class TrackableCard extends ConsumerWidget {
                   startTime: data.dayBoundaryTime,
                   // Hide the "now" indicator when viewing past dates.
                   isLive: ref.watch(selectedDateProvider) == null,
+                  // Pass threshold lines for dashed horizontal references.
+                  thresholds: data.thresholds
+                      .map((t) => (name: t.name, amount: t.amount))
+                      .toList(),
                 ),
               ],
 
@@ -209,11 +213,13 @@ class TrackableCard extends ConsumerWidget {
     final lastDose = data.lastDose!;
     final db = ref.read(databaseProvider);
 
-    // Insert a new dose with the same amount and trackable, timestamped now.
+    // Insert a new dose with the same amount, name, and trackable, timestamped now.
+    // Preserves the preset name (e.g., "Espresso") from the original dose.
     final insertedId = await db.insertDoseLog(
       lastDose.trackableId,
       lastDose.amount,
       DateTime.now(),
+      name: lastDose.name,
     );
 
     // Show a SnackBar confirming the action, with an undo button.
@@ -221,6 +227,7 @@ class TrackableCard extends ConsumerWidget {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          showCloseIcon: true, // Let users dismiss the snackbar manually
           content: Text(
             'Logged ${lastDose.amount.toStringAsFixed(0)} ${data.trackable.unit} ${data.trackable.name}',
           ),

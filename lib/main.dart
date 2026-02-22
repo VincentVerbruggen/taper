@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:taper/data/database.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/home_screen.dart';
 import 'package:taper/services/notification_service.dart';
@@ -38,6 +39,17 @@ void main() async {
   // in all providers. Like loading config before booting the app container.
   final prefs = await SharedPreferences.getInstance();
 
+  // On first launch, seed demo data (presets, thresholds, dose logs) so the
+  // app looks "used" out of the box. The flag ensures this only runs once.
+  // Opens a temporary DB connection, seeds, then closes before Riverpod
+  // creates its own connection. Like php artisan db:seed in a deploy script.
+  if (prefs.getBool('demo_data_seeded') != true) {
+    final db = AppDatabase();
+    await db.seedDemoData();
+    await db.close();
+    await prefs.setBool('demo_data_seeded', true);
+  }
+
   runApp(
     ProviderScope(
       overrides: [
@@ -50,11 +62,19 @@ void main() async {
   );
 }
 
-class TaperApp extends StatelessWidget {
+/// TaperApp = the root MaterialApp widget.
+///
+/// ConsumerWidget so it can watch themeModeProvider to reactively switch
+/// between light/dark/system themes when the user changes the setting.
+/// Like a Vue root component that watches a Vuex store's theme value.
+class TaperApp extends ConsumerWidget {
   const TaperApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch the theme mode setting — rebuilds MaterialApp when changed.
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
       title: 'Taper',
       debugShowCheckedModeBanner: false,
@@ -82,9 +102,9 @@ class TaperApp extends StatelessWidget {
         useMaterial3: true,
       ),
 
-      // ThemeMode.system follows the device setting.
-      // Like CSS @media (prefers-color-scheme: dark).
-      themeMode: ThemeMode.system,
+      // Controlled by user setting: Auto (system), Light, or Dark.
+      // Like CSS @media (prefers-color-scheme: dark) when set to Auto.
+      themeMode: themeMode,
 
       home: const HomeScreen(),
     );

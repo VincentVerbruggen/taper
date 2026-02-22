@@ -3,18 +3,31 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:taper/data/database.dart';
+import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/settings/settings_screen.dart';
 import 'package:taper/services/backup_service.dart';
 
+import 'helpers/test_database.dart';
+
 void main() {
+  late AppDatabase db;
+
   setUp(() async {
-    // Initialize SharedPreferences with empty values for testing.
-    // Like setting up a test .env file in Laravel.
     SharedPreferences.setMockInitialValues({});
+    db = createTestDatabase();
   });
 
-  // Helper to build with a pre-loaded SharedPreferences instance.
+  tearDown(() async {
+    try {
+      await db.close();
+    } catch (_) {}
+  });
+
+  /// Helper to build the SettingsScreen with both DB and SharedPreferences.
+  /// Since SettingsScreen now embeds the trackable list, it needs databaseProvider
+  /// in addition to the old sharedPreferencesProvider.
   Future<Widget> buildTestWidgetAsync({
     Map<String, Object>? initialPrefs,
   }) async {
@@ -23,6 +36,7 @@ void main() {
 
     return ProviderScope(
       overrides: [
+        databaseProvider.overrideWithValue(db),
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
       child: const MaterialApp(
@@ -31,129 +45,224 @@ void main() {
     );
   }
 
+  Future<void> pumpAndWait(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+
+  Future<void> cleanUp(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await db.close();
+    await tester.pump();
+  }
+
   testWidgets('shows Settings header', (tester) async {
     final widget = await buildTestWidgetAsync();
     await tester.pumpWidget(widget);
-    await tester.pump();
+    await pumpAndWait(tester);
 
     expect(find.text('Settings'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('shows Trackables section with seeded trackables', (tester) async {
+    final widget = await buildTestWidgetAsync();
+    await tester.pumpWidget(widget);
+    await pumpAndWait(tester);
+
+    // Trackables header should be visible.
+    expect(find.text('Trackables'), findsOneWidget);
+    // Seeded trackables should appear.
+    expect(find.text('Caffeine'), findsOneWidget);
+    expect(find.text('Water'), findsOneWidget);
+    expect(find.text('Alcohol'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('shows "Add trackable" button', (tester) async {
+    final widget = await buildTestWidgetAsync();
+    await tester.pumpWidget(widget);
+    await pumpAndWait(tester);
+
+    expect(find.text('Add trackable'), findsOneWidget);
+
+    await cleanUp(tester);
   });
 
   testWidgets('shows day boundary dropdown with default 05:00', (tester) async {
     final widget = await buildTestWidgetAsync();
     await tester.pumpWidget(widget);
-    await tester.pump();
+    await pumpAndWait(tester);
 
-    // The "Day starts at" setting should be visible.
     expect(find.text('Day starts at'), findsOneWidget);
-    // Default value is 5 → "05:00" shown in the dropdown.
     expect(find.text('05:00'), findsOneWidget);
+
+    await cleanUp(tester);
   });
 
   testWidgets('changing dropdown persists new value', (tester) async {
     final widget = await buildTestWidgetAsync();
     await tester.pumpWidget(widget);
-    await tester.pump();
+    await pumpAndWait(tester);
 
-    // Open the dropdown by tapping the current value.
     await tester.tap(find.text('05:00'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Select "03:00" from the dropdown menu.
-    // The dropdown overlay shows all 13 items (0-12). Find "03:00" in the
-    // overlay and tap it. There may be two "05:00" widgets (selected + list).
     await tester.tap(find.text('03:00').last);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    // The dropdown should now show "03:00" as selected.
-    // After selection, the dropdown may still have an overlay item animating out,
-    // so we check for at least one widget showing the new value.
     expect(find.text('03:00'), findsWidgets);
 
-    // Verify the value was persisted to SharedPreferences.
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getInt('dayBoundaryHour'), 3);
+
+    await cleanUp(tester);
   });
 
   testWidgets('loads previously saved value', (tester) async {
-    // Pre-set the boundary to 8 AM.
     final widget = await buildTestWidgetAsync(
       initialPrefs: {'dayBoundaryHour': 8},
     );
     await tester.pumpWidget(widget);
-    await tester.pump();
+    await pumpAndWait(tester);
 
-    // The dropdown should show "08:00" (not the default "05:00").
     expect(find.text('08:00'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  // --- Theme mode tests ---
+
+  testWidgets('shows theme dropdown with default Auto', (tester) async {
+    final widget = await buildTestWidgetAsync();
+    await tester.pumpWidget(widget);
+    await pumpAndWait(tester);
+
+    expect(find.text('Theme'), findsOneWidget);
+    // Default is ThemeMode.system → shows "Auto" in the dropdown.
+    expect(find.text('Auto'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('changing theme persists to SharedPreferences', (tester) async {
+    final widget = await buildTestWidgetAsync();
+    await tester.pumpWidget(widget);
+    await pumpAndWait(tester);
+
+    // Open the theme dropdown.
+    await tester.tap(find.text('Auto'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Select "Dark".
+    await tester.tap(find.text('Dark').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Verify persisted to SharedPreferences.
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('themeMode'), 'dark');
+
+    await cleanUp(tester);
   });
 
   // --- Data section: auto-backup, export, import ---
+
+  // Helper: scroll the Data section into view.
+  // The trackable list at the top now pushes data management items off-screen.
+  Future<void> scrollToDataSection(WidgetTester tester) async {
+    await tester.scrollUntilVisible(
+      find.text('Data'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+  }
 
   group('Data section', () {
     testWidgets('shows Data header and all data management options',
         (tester) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
 
-      // Data section header.
+      await scrollToDataSection(tester);
       expect(find.text('Data'), findsOneWidget);
 
-      // Auto-backup toggle.
+      // Scroll further to reveal all data items.
+      await tester.scrollUntilVisible(
+        find.text('Import database'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Daily auto-backup'), findsOneWidget);
-
-      // Export and import buttons.
       expect(find.text('Export database'), findsOneWidget);
       expect(find.text('Import database'), findsOneWidget);
+
+      await cleanUp(tester);
     });
 
     testWidgets('auto-backup toggle defaults to enabled', (tester) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
 
-      // The SwitchListTile should be ON by default.
-      // Find the Switch widget and check its value.
+      await scrollToDataSection(tester);
+
       final switchFinder = find.byType(Switch);
       expect(switchFinder, findsOneWidget);
 
       final switchWidget = tester.widget<Switch>(switchFinder);
       expect(switchWidget.value, isTrue);
+
+      await cleanUp(tester);
     });
 
     testWidgets('auto-backup toggle persists when turned off', (tester) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
 
-      // Tap the switch to turn it off.
-      // SwitchListTile's tappable area includes the whole tile.
+      // Scroll the switch into view (it's below the trackable list + theme dropdown).
+      await tester.scrollUntilVisible(
+        find.byType(SwitchListTile),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+
       await tester.tap(find.text('Daily auto-backup'));
       await tester.pump();
 
-      // Verify it's now OFF.
       final switchWidget = tester.widget<Switch>(find.byType(Switch));
       expect(switchWidget.value, isFalse);
 
-      // Verify persistence.
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool(BackupService.autoBackupEnabledKey), isFalse);
+
+      await cleanUp(tester);
     });
 
     testWidgets('shows "Never backed up" when no backup exists',
         (tester) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
+
+      await scrollToDataSection(tester);
 
       expect(find.text('Never backed up'), findsOneWidget);
+
+      await cleanUp(tester);
     });
 
     testWidgets('shows last backup time when a backup was recorded',
         (tester) async {
-      // Set a backup time to a known value.
       final backupTime = DateTime(2026, 2, 20, 14, 30);
       final widget = await buildTestWidgetAsync(
         initialPrefs: {
@@ -162,12 +271,14 @@ void main() {
         },
       );
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
 
-      // Should show the formatted date (not "Never backed up").
+      await scrollToDataSection(tester);
+
       expect(find.text('Never backed up'), findsNothing);
-      // The exact format is "Feb 20, 14:30" (not today's date).
       expect(find.textContaining('Feb 20'), findsOneWidget);
+
+      await cleanUp(tester);
     });
 
     testWidgets('loads auto-backup as disabled from saved prefs',
@@ -176,48 +287,61 @@ void main() {
         initialPrefs: {BackupService.autoBackupEnabledKey: false},
       );
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
+
+      await scrollToDataSection(tester);
 
       final switchWidget = tester.widget<Switch>(find.byType(Switch));
       expect(switchWidget.value, isFalse);
+
+      await cleanUp(tester);
     });
 
     testWidgets('import shows confirmation dialog', (tester) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
 
-      // Tap "Import database".
+      // Need to scroll down to see the import button.
+      await tester.scrollUntilVisible(
+        find.text('Import database'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.text('Import database'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // The confirmation dialog should appear.
-      expect(find.text('Import database'), findsWidgets); // title + list tile
+      expect(find.text('Import database'), findsWidgets);
       expect(find.textContaining('replace ALL'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
       expect(find.text('Choose file'), findsOneWidget);
+
+      await cleanUp(tester);
     });
 
     testWidgets('import dialog can be cancelled', (tester) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
-      await tester.pump();
+      await pumpAndWait(tester);
 
-      // Open import dialog.
+      // Scroll down to import.
+      await tester.scrollUntilVisible(
+        find.text('Import database'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.text('Import database'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // Tap Cancel.
       await tester.tap(find.text('Cancel'));
-      // Pump enough frames for the dialog dismiss animation to complete.
-      // AlertDialog uses a ~150ms fade-out, so 300ms is plenty.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Dialog should be dismissed — the warning text is gone.
       expect(find.textContaining('replace ALL'), findsNothing);
+
+      await cleanUp(tester);
     });
   });
 }

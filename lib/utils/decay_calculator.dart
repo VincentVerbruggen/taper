@@ -30,6 +30,7 @@ class DecayCalculator {
     required DateTime loggedAt,
     required double halfLifeHours,
     required DateTime queryTime,
+    double? absorptionMinutes,
   }) {
     // Hours between dose and query time. negative = dose is in the future.
     final hoursElapsed = queryTime.difference(loggedAt).inMinutes / 60.0;
@@ -40,9 +41,22 @@ class DecayCalculator {
     // Beyond 10 half-lives → negligible amount (< 0.1%), skip calculation.
     if (hoursElapsed > halfLifeHours * 10) return 0.0;
 
-    // Core decay formula: amount × 0.5^(elapsed / halfLife)
-    // pow(0.5, 1.0) = 0.5 (one half-life = half remaining)
-    // pow(0.5, 2.0) = 0.25 (two half-lives = quarter remaining)
+    // 2-phase absorption model: ramp up linearly, then decay exponentially.
+    // Phase 1: dose is being absorbed (0 ≤ t < absorptionMinutes)
+    // Phase 2: full dose reached, normal exponential decay begins
+    if (absorptionMinutes != null && absorptionMinutes > 0) {
+      final absorptionHours = absorptionMinutes / 60.0;
+      if (hoursElapsed < absorptionHours) {
+        // Phase 1: linear ramp from 0 to full amount.
+        // At t=0: 0% absorbed. At t=absorptionMinutes: 100% absorbed.
+        return amount * (hoursElapsed / absorptionHours);
+      }
+      // Phase 2: decay starts from full amount at t=absorptionHours.
+      final decayHours = hoursElapsed - absorptionHours;
+      return amount * pow(0.5, decayHours / halfLifeHours);
+    }
+
+    // No absorption phase — instant absorption (original behavior).
     return amount * pow(0.5, hoursElapsed / halfLifeHours);
   }
 
@@ -57,6 +71,7 @@ class DecayCalculator {
     required List<DoseLog> doses,
     required double halfLifeHours,
     required DateTime queryTime,
+    double? absorptionMinutes,
   }) {
     return doses.fold(0.0, (sum, dose) {
       return sum +
@@ -65,6 +80,7 @@ class DecayCalculator {
             loggedAt: dose.loggedAt,
             halfLifeHours: halfLifeHours,
             queryTime: queryTime,
+            absorptionMinutes: absorptionMinutes,
           );
     });
   }
@@ -85,6 +101,7 @@ class DecayCalculator {
     required DateTime startTime,
     required DateTime endTime,
     int intervalMinutes = 5,
+    double? absorptionMinutes,
   }) {
     final points = <({DateTime time, double amount})>[];
     var current = startTime;
@@ -94,6 +111,7 @@ class DecayCalculator {
         doses: doses,
         halfLifeHours: halfLifeHours,
         queryTime: current,
+        absorptionMinutes: absorptionMinutes,
       );
       points.add((time: current, amount: amount));
       current = current.add(Duration(minutes: intervalMinutes));
@@ -132,12 +150,29 @@ class DecayCalculator {
     required DateTime loggedAt,
     required double eliminationRate,
     required DateTime queryTime,
+    double? absorptionMinutes,
   }) {
     final hoursElapsed = queryTime.difference(loggedAt).inMinutes / 60.0;
 
     // Future dose → not active yet.
     if (hoursElapsed < 0) return 0.0;
 
+    // 2-phase absorption model for linear decay: ramp up, then linear elimination.
+    // Phase 1: dose is being absorbed (0 ≤ t < absorptionMinutes)
+    // Phase 2: full dose reached, normal linear decay begins
+    if (absorptionMinutes != null && absorptionMinutes > 0) {
+      final absorptionHours = absorptionMinutes / 60.0;
+      if (hoursElapsed < absorptionHours) {
+        // Phase 1: linear ramp from 0 to full amount.
+        return amount * (hoursElapsed / absorptionHours);
+      }
+      // Phase 2: linear decay starts from full amount at t=absorptionHours.
+      final decayHours = hoursElapsed - absorptionHours;
+      final remaining = amount - eliminationRate * decayHours;
+      return max(0.0, remaining);
+    }
+
+    // No absorption phase — instant absorption (original behavior).
     // Linear decay: subtract rate × time, floor at 0.
     // Dose is fully gone after (amount / rate) hours.
     final remaining = amount - eliminationRate * hoursElapsed;
@@ -152,6 +187,7 @@ class DecayCalculator {
     required List<DoseLog> doses,
     required double eliminationRate,
     required DateTime queryTime,
+    double? absorptionMinutes,
   }) {
     return doses.fold(0.0, (sum, dose) {
       return sum +
@@ -160,6 +196,7 @@ class DecayCalculator {
             loggedAt: dose.loggedAt,
             eliminationRate: eliminationRate,
             queryTime: queryTime,
+            absorptionMinutes: absorptionMinutes,
           );
     });
   }
@@ -175,6 +212,7 @@ class DecayCalculator {
     required DateTime startTime,
     required DateTime endTime,
     int intervalMinutes = 5,
+    double? absorptionMinutes,
   }) {
     final points = <({DateTime time, double amount})>[];
     var current = startTime;
@@ -184,6 +222,7 @@ class DecayCalculator {
         doses: doses,
         eliminationRate: eliminationRate,
         queryTime: current,
+        absorptionMinutes: absorptionMinutes,
       );
       points.add((time: current, amount: amount));
       current = current.add(Duration(minutes: intervalMinutes));

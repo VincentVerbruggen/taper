@@ -131,6 +131,11 @@ Doses beyond 5 half-lives are ignored (< 3% remaining, negligible).
 - **PHP/Laravel analogies** — Explain Flutter/Dart concepts by comparing to PHP/Laravel/inertia js/vue/tailwind/web dev stuff
 - **No touching git** — Git belongs to the developer and is used to check changes and see what is going on.
 
+## Form Validation Rules
+- **NEVER disable save/submit buttons** as a form of validation. A grayed-out button gives the user zero feedback about what's wrong. Instead, always keep buttons enabled and validate on press — show inline `errorText` on the fields that failed.
+- Use a `_submitted` bool (or `submitted` in dialogs) that flips to `true` when the user taps save. Before that, only show errors for actively-invalid input (bad numbers, duplicates). After submission, also show "Required" on empty required fields.
+- This is like Laravel's `$errors` bag — validation errors appear after form submission, not on page load.
+
 ## Testing
 When writing new code make sure to add tests, especially UI / integrations tests. When running tests always add a sensible timeout to the runner most tests should complete in seconds.
 But over the last few changes we ran into a lot of tests that ran for minutes on end. So I want you to catch those earlier.

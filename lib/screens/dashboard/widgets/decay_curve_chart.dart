@@ -29,13 +29,19 @@ class DecayCurveChart extends StatelessWidget {
   /// Fixed height for the chart. Slightly taller than before to fit axis labels.
   final double height;
 
+  /// Optional threshold lines to draw as dashed horizontal lines.
+  /// Each entry has a name (label) and amount (Y-axis value).
+  /// Like "Daily max" at 400 mg — drawn as a reference line.
+  final List<({String name, double amount})> thresholds;
+
   const DecayCurveChart({
     super.key,
     required this.curvePoints,
     required this.color,
     this.startTime,
     this.isLive = true,
-    this.height = 120,
+    this.height = 200, // Taller chart for better readability
+    this.thresholds = const [],
   });
 
   @override
@@ -55,9 +61,13 @@ class DecayCurveChart extends StatelessWidget {
       return FlSpot(hoursFromStart, p.amount);
     }).toList();
 
-    // Find the max Y value for chart scaling. Add 10% headroom so the
-    // peak doesn't touch the top edge.
-    final maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
+    // Find the max Y value for chart scaling. Include threshold amounts so
+    // a threshold line is always visible even if doses are below it.
+    // Add 10% headroom so the peak doesn't touch the top edge.
+    var maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
+    for (final t in thresholds) {
+      if (t.amount > maxY) maxY = t.amount;
+    }
     final adjustedMaxY = maxY > 0 ? maxY * 1.1 : 1.0;
 
     final maxX = spots.last.x;
@@ -104,16 +114,39 @@ class DecayCurveChart extends StatelessWidget {
             ),
           ],
 
-          // --- Dashed vertical "now" line (only in live mode) ---
-          // Hidden when viewing past dates since "now" isn't on the chart.
+          // --- Extra lines: dashed vertical "now" + horizontal thresholds ---
           extraLinesData: ExtraLinesData(
             verticalLines: [
+              // "Now" indicator — only in live mode.
               if (clampedNowHours != null)
                 VerticalLine(
                   x: clampedNowHours,
                   color: axisColor.withAlpha(100),
                   strokeWidth: 1,
                   dashArray: [4, 4],
+                ),
+            ],
+            // Threshold lines — dashed horizontal lines with labels.
+            // Like horizontal reference lines in a data dashboard:
+            // "Daily max" at 400 mg, "Bedtime cutoff" at 200 mg.
+            horizontalLines: [
+              for (final t in thresholds)
+                HorizontalLine(
+                  y: t.amount,
+                  color: axisColor.withAlpha(120),
+                  strokeWidth: 1,
+                  dashArray: [6, 4],
+                  // Label shown at the right end of the line.
+                  label: HorizontalLineLabel(
+                    show: true,
+                    alignment: Alignment.topRight,
+                    padding: const EdgeInsets.only(right: 4, bottom: 2),
+                    style: TextStyle(
+                      color: axisColor.withAlpha(180),
+                      fontSize: 9,
+                    ),
+                    labelResolver: (_) => t.name,
+                  ),
                 ),
             ],
           ),

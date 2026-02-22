@@ -76,6 +76,13 @@ class Trackables extends Table {
   // Only used when decayModel = 'linear'; null for other models.
   // Laravel equivalent: $table->double('elimination_rate')->nullable()
   RealColumn get eliminationRate => real().nullable()();
+
+  // Absorption time in minutes. When set, doses ramp up linearly
+  // from 0 to full amount over this period before decay begins.
+  // E.g., caffeine takes ~45 min to reach peak blood levels.
+  // Nullable: null means instant absorption (existing default behavior).
+  // Laravel equivalent: $table->double('absorption_minutes')->nullable()
+  RealColumn get absorptionMinutes => real().nullable()();
 }
 
 /// Presets table — named dose shortcuts per trackable.
@@ -134,11 +141,43 @@ class DoseLogs extends Table {
   // dateTime() stores as integer (epoch seconds) in SQLite.
   // Like $table->dateTime('logged_at').
   DateTimeColumn get loggedAt => dateTime()();
+
+  // Optional name from a preset (e.g., "Espresso", "Filter coffee").
+  // Populated automatically when a dose is logged via a preset chip;
+  // null for manually entered amounts. Users can't set this directly.
+  // Laravel equivalent: $table->string('name')->nullable()
+  TextColumn get name => text().nullable()();
+}
+
+/// Thresholds table — named horizontal lines per trackable.
+///
+/// Each trackable can have multiple thresholds (e.g., "Daily max" = 400 mg,
+/// "Bedtime cutoff" = 200 mg). These appear as dashed horizontal lines on
+/// the decay curve chart and help users visualize safe/target levels.
+///
+/// Laravel equivalent:
+///   Schema::create('thresholds', function (Blueprint $table) {
+///       $table->id();
+///       $table->foreignId('trackable_id')->constrained()->cascadeOnDelete();
+///       $table->string('name');
+///       $table->double('amount');
+///   });
+class Thresholds extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // FK to trackables table. When a trackable is deleted, its thresholds go too.
+  IntColumn get trackableId => integer().references(Trackables, #id)();
+
+  // Human-readable label, e.g., "Daily max", "Bedtime cutoff".
+  TextColumn get name => text()();
+
+  // The amount value where the horizontal line is drawn on the chart.
+  RealColumn get amount => real()();
 }
 
 /// AppDatabase = the database singleton.
 /// Like DatabaseServiceProvider + config/database.php in Laravel.
-@DriftDatabase(tables: [Trackables, DoseLogs, Presets])
+@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds])
 class AppDatabase extends _$AppDatabase {
   // Default constructor uses platform-specific SQLite via drift_flutter.
   AppDatabase() : super(driftDatabase(name: 'taper'));
@@ -148,22 +187,26 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    // onCreate = fresh install. Creates all tables and seeds data.
-    // Seeds three trackables so users see visibility/main features immediately.
+    // onCreate = fresh install. Creates all tables and seeds structural data.
+    // Only seeds the 3 default trackables — demo data (presets, thresholds,
+    // dose logs) is seeded separately by seedDemoData() on first app launch.
+    // Like php artisan migrate — schema + minimal seeds only.
     onCreate: (Migrator m) async {
       await m.createAll();
 
-      // Caffeine: visible, exponential decay with 5h half-life.
+      // Caffeine: visible, exponential decay with 5h half-life and 45min absorption.
       // halfLifeHours=5.0 = caffeine's biological half-life (used for decay curve).
+      // absorptionMinutes=45 = time for caffeine to reach peak blood levels.
       await into(trackables).insert(
         TrackablesCompanion.insert(
           name: 'Caffeine',
           isMain: const Value(true),
           halfLifeHours: const Value(5.0),
+          absorptionMinutes: const Value(45.0),
           unit: const Value('mg'),
           color: trackableColorPalette[0],
           sortOrder: const Value(1),
@@ -299,8 +342,116 @@ class AppDatabase extends _$AppDatabase {
         // v6 → v7: Add presets table for named dose shortcuts.
         await m.createTable(presets);
       }
+      if (from < 8) {
+        // v7 → v8: Add absorptionMinutes column to trackables.
+        // Nullable — existing rows get NULL (instant absorption, unchanged behavior).
+        await m.addColumn(trackables, trackables.absorptionMinutes);
+      }
+      if (from < 9) {
+        // v8 → v9: Add thresholds table for named horizontal lines on charts.
+        // Each trackable can have multiple thresholds (e.g., "Daily max" = 400 mg).
+        await m.createTable(thresholds);
+      }
+      if (from < 10) {
+        // v9 → v10: Add optional name column to dose_logs.
+        // Stores the preset name (e.g., "Espresso") when a dose is logged via
+        // a preset chip. Nullable — manually entered doses have no name.
+        await m.addColumn(doseLogs, doseLogs.name);
+      }
     },
   );
+
+  // --- Demo data seeder ---
+
+  /// Seeds demo presets, thresholds, and dose logs so the app looks "used"
+  /// on first install. Called once from main.dart, gated by a SharedPreferences
+  /// flag to ensure it only runs once.
+  ///
+  /// Separated from onCreate so test databases stay clean — tests get the 3
+  /// trackables but no extra presets, thresholds, or dose logs.
+  /// Like php artisan db:seed --class=DemoSeeder.
+  Future<void> seedDemoData() async {
+    // Fetch the seeded trackables by name (IDs may vary between installs).
+    final allTrackables = await select(trackables).get();
+    final caffeine = allTrackables.where((t) => t.name == 'Caffeine').firstOrNull;
+    final water = allTrackables.where((t) => t.name == 'Water').firstOrNull;
+    final alcohol = allTrackables.where((t) => t.name == 'Alcohol').firstOrNull;
+
+    // --- Caffeine presets ---
+    // Common drink sizes for one-tap dose entry in the quick-add dialog.
+    if (caffeine != null) {
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: caffeine.id, name: 'Espresso', amount: 63, sortOrder: const Value(1),
+      ));
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: caffeine.id, name: 'Filter coffee', amount: 96, sortOrder: const Value(2),
+      ));
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: caffeine.id, name: 'Double espresso', amount: 126, sortOrder: const Value(3),
+      ));
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: caffeine.id, name: 'Energy drink', amount: 80, sortOrder: const Value(4),
+      ));
+
+      // Caffeine threshold — FDA-recommended daily limit for healthy adults.
+      await into(thresholds).insert(ThresholdsCompanion.insert(
+        trackableId: caffeine.id, name: 'Daily max', amount: 400,
+      ));
+
+      // Sample dose logs — simulate a typical day of coffee drinking.
+      // Placed "today" relative to install time so the dashboard chart shows data.
+      // name = preset name so log entries show "Espresso" instead of just "63 mg".
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      // Morning espresso at 7:15 AM
+      await into(doseLogs).insert(DoseLogsCompanion.insert(
+        trackableId: caffeine.id, amount: 63, loggedAt: today.add(const Duration(hours: 7, minutes: 15)),
+        name: const Value('Espresso'),
+      ));
+      // Mid-morning filter coffee at 10:00 AM
+      await into(doseLogs).insert(DoseLogsCompanion.insert(
+        trackableId: caffeine.id, amount: 96, loggedAt: today.add(const Duration(hours: 10)),
+        name: const Value('Filter coffee'),
+      ));
+      // After-lunch espresso at 13:30
+      await into(doseLogs).insert(DoseLogsCompanion.insert(
+        trackableId: caffeine.id, amount: 63, loggedAt: today.add(const Duration(hours: 13, minutes: 30)),
+        name: const Value('Espresso'),
+      ));
+    }
+
+    // --- Water presets + sample doses ---
+    if (water != null) {
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: water.id, name: 'Glass', amount: 250, sortOrder: const Value(1),
+      ));
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: water.id, name: 'Bottle', amount: 500, sortOrder: const Value(2),
+      ));
+
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      await into(doseLogs).insert(DoseLogsCompanion.insert(
+        trackableId: water.id, amount: 250, loggedAt: today.add(const Duration(hours: 7, minutes: 30)),
+        name: const Value('Glass'),
+      ));
+      await into(doseLogs).insert(DoseLogsCompanion.insert(
+        trackableId: water.id, amount: 500, loggedAt: today.add(const Duration(hours: 12)),
+        name: const Value('Bottle'),
+      ));
+    }
+
+    // --- Alcohol presets ---
+    // Standard drink equivalents in pure alcohol ml.
+    if (alcohol != null) {
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: alcohol.id, name: 'Beer (330ml)', amount: 13, sortOrder: const Value(1),
+      ));
+      await into(presets).insert(PresetsCompanion.insert(
+        trackableId: alcohol.id, name: 'Wine (150ml)', amount: 18, sortOrder: const Value(2),
+      ));
+    }
+  }
 
   // --- Backup utilities ---
 
@@ -346,6 +497,7 @@ class AppDatabase extends _$AppDatabase {
     double? halfLifeHours,
     String decayModel = 'none',
     double? eliminationRate,
+    double? absorptionMinutes,
   }) async {
     // Count existing trackables to pick the next color in the palette.
     final existing = await (select(trackables)
@@ -368,6 +520,7 @@ class AppDatabase extends _$AppDatabase {
         sortOrder: Value(nextSortOrder),
         decayModel: Value(decayModel),
         eliminationRate: Value(eliminationRate),
+        absorptionMinutes: Value(absorptionMinutes),
       ),
     );
   }
@@ -385,6 +538,7 @@ class AppDatabase extends _$AppDatabase {
     // This three-state pattern lets the caller explicitly clear a nullable field.
     Value<double?> halfLifeHours = const Value.absent(),
     Value<double?> eliminationRate = const Value.absent(),
+    Value<double?> absorptionMinutes = const Value.absent(),
     Value<bool> isVisible = const Value.absent(),
     // Color uses the same Value pattern: absent = don't change, Value(0xFF...) = set.
     Value<int> color = const Value.absent(),
@@ -395,6 +549,7 @@ class AppDatabase extends _$AppDatabase {
       decayModel: decayModel != null ? Value(decayModel) : const Value.absent(),
       halfLifeHours: halfLifeHours,
       eliminationRate: eliminationRate,
+      absorptionMinutes: absorptionMinutes,
       isVisible: isVisible,
       color: color,
     );
@@ -510,14 +665,16 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
-  /// Insert a new dose log.
-  /// Like: DoseLog::create(['trackable_id' => $id, 'amount' => 90, 'logged_at' => now()])
-  Future<int> insertDoseLog(int trackableId, double amount, DateTime loggedAt) {
+  /// Insert a new dose log, optionally with a preset name.
+  /// [name] = preset name (e.g., "Espresso") if logged via a preset chip, null otherwise.
+  /// Like: DoseLog::create(['trackable_id' => $id, 'amount' => 90, 'logged_at' => now(), 'name' => 'Espresso'])
+  Future<int> insertDoseLog(int trackableId, double amount, DateTime loggedAt, {String? name}) {
     return into(doseLogs).insert(
       DoseLogsCompanion.insert(
         trackableId: trackableId,
         amount: amount,
         loggedAt: loggedAt,
+        name: Value(name),
       ),
     );
   }
@@ -531,34 +688,42 @@ class AppDatabase extends _$AppDatabase {
   /// Like: DoseLog::find($id)->update([...])
   /// Same pattern as updateTrackable() above — build an update query with
   /// a where clause, then .write() the new values wrapped in a Companion.
-  Future<int> updateDoseLog(int id, int trackableId, double amount, DateTime loggedAt) {
+  /// [name] uses the Value pattern: absent = don't change, Value(null) = clear, Value('x') = set.
+  Future<int> updateDoseLog(
+    int id,
+    int trackableId,
+    double amount,
+    DateTime loggedAt, {
+    Value<String?> name = const Value.absent(),
+  }) {
     return (update(doseLogs)..where((t) => t.id.equals(id)))
         .write(DoseLogsCompanion(
           trackableId: Value(trackableId),
           amount: Value(amount),
           loggedAt: Value(loggedAt),
+          name: name,
         ));
   }
 
   // --- Preset queries ---
 
-  /// Watch presets for a trackable, sorted by sortOrder (reactive stream).
+  /// Watch presets for a trackable, sorted alphabetically by name (reactive stream).
   /// Used by the edit trackable screen's presets list and the quick-add dialog chips.
-  /// Like: Preset::where('trackable_id', $id)->orderBy('sort_order')->get()
+  /// Like: Preset::where('trackable_id', $id)->orderBy('name')->get()
   Stream<List<Preset>> watchPresets(int trackableId) {
     return (select(presets)
           ..where((t) => t.trackableId.equals(trackableId))
-          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
         .watch();
   }
 
   /// Get presets for a trackable (one-shot, not reactive).
   /// Used by callers that need presets before opening a dialog.
-  /// Like: Preset::where('trackable_id', $id)->orderBy('sort_order')->get()
+  /// Like: Preset::where('trackable_id', $id)->orderBy('name')->get()
   Future<List<Preset>> getPresets(int trackableId) {
     return (select(presets)
           ..where((t) => t.trackableId.equals(trackableId))
-          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+          ..orderBy([(t) => OrderingTerm.asc(t.name)]))
         .get();
   }
 
@@ -598,6 +763,55 @@ class AppDatabase extends _$AppDatabase {
   /// Like: Preset::destroy($id)
   Future<int> deletePreset(int id) {
     return (delete(presets)..where((t) => t.id.equals(id))).go();
+  }
+
+  // --- Threshold queries ---
+
+  /// Watch thresholds for a trackable, sorted by amount ascending (reactive stream).
+  /// Used by the card data provider and edit screen.
+  /// Like: Threshold::where('trackable_id', $id)->orderBy('amount')->get()
+  Stream<List<Threshold>> watchThresholds(int trackableId) {
+    return (select(thresholds)
+          ..where((t) => t.trackableId.equals(trackableId))
+          ..orderBy([(t) => OrderingTerm.asc(t.amount)]))
+        .watch();
+  }
+
+  /// Get thresholds for a trackable (one-shot, not reactive).
+  /// Like: Threshold::where('trackable_id', $id)->orderBy('amount')->get()
+  Future<List<Threshold>> getThresholds(int trackableId) {
+    return (select(thresholds)
+          ..where((t) => t.trackableId.equals(trackableId))
+          ..orderBy([(t) => OrderingTerm.asc(t.amount)]))
+        .get();
+  }
+
+  /// Insert a new threshold for a trackable.
+  /// Like: Threshold::create(['trackable_id' => $id, 'name' => 'Daily max', 'amount' => 400])
+  Future<int> insertThreshold(int trackableId, String name, double amount) {
+    return into(thresholds).insert(
+      ThresholdsCompanion.insert(
+        trackableId: trackableId,
+        name: name,
+        amount: amount,
+      ),
+    );
+  }
+
+  /// Update a threshold's name and/or amount.
+  /// Like: Threshold::find($id)->update([...])
+  Future<int> updateThreshold(int id, {String? name, double? amount}) {
+    final companion = ThresholdsCompanion(
+      name: name != null ? Value(name) : const Value.absent(),
+      amount: amount != null ? Value(amount) : const Value.absent(),
+    );
+    return (update(thresholds)..where((t) => t.id.equals(id))).write(companion);
+  }
+
+  /// Delete a threshold by ID.
+  /// Like: Threshold::destroy($id)
+  Future<int> deleteThreshold(int id) {
+    return (delete(thresholds)..where((t) => t.id.equals(id))).go();
   }
 
   /// Watch recent dose logs (last 50), newest first, with trackable name.

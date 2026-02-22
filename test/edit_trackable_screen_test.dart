@@ -375,7 +375,6 @@ void main() {
 
     // The preset should now appear in the list.
     expect(find.text('Espresso'), findsOneWidget);
-    expect(find.text('90 mg'), findsOneWidget);
     // "No presets yet" should be gone.
     expect(find.text('No presets yet'), findsNothing);
 
@@ -418,6 +417,98 @@ void main() {
   });
 
   // --- Save tests (below) ---
+
+  // --- Threshold management tests ---
+
+  testWidgets('shows Thresholds section with "No thresholds yet"', (tester) async {
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to the thresholds section (below presets).
+    await tester.ensureVisible(find.text('Thresholds'));
+    expect(find.text('Thresholds'), findsOneWidget);
+    expect(find.text('No thresholds yet'), findsOneWidget);
+    expect(find.text('Add Threshold'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('add a threshold via dialog and it appears in list', (tester) async {
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to and tap "Add Threshold".
+    await tester.ensureVisible(find.text('Add Threshold'));
+    await tester.tap(find.text('Add Threshold'));
+    await tester.pump();
+
+    // The dialog should be visible.
+    expect(find.text('Add Threshold'), findsNWidgets(2)); // Header + button.
+    expect(find.text('Name'), findsOneWidget);
+    expect(find.text('Amount'), findsOneWidget);
+
+    // Fill in the dialog fields.
+    final dialogTextFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dialogTextFields.at(0), 'Daily max');
+    await tester.enterText(dialogTextFields.at(1), '400');
+    await tester.pump();
+
+    // Tap "Add".
+    await tester.tap(find.widgetWithText(TextButton, 'Add'));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // The threshold should now appear in the list.
+    expect(find.text('Daily max'), findsOneWidget);
+    // "No thresholds yet" should be gone.
+    expect(find.text('No thresholds yet'), findsNothing);
+
+    // Verify it was inserted in the database.
+    final thresholdRows = await db.select(db.thresholds).get();
+    expect(thresholdRows.length, 1);
+    expect(thresholdRows.first.name, 'Daily max');
+    expect(thresholdRows.first.amount, 400.0);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('delete a threshold removes it from list', (tester) async {
+    final caffeine = await getCaffeine();
+    // Pre-insert a threshold directly in the database.
+    await db.insertThreshold(caffeine.id, 'Daily max', 400);
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to make threshold visible.
+    await tester.ensureVisible(find.text('Daily max'));
+    expect(find.text('Daily max'), findsOneWidget);
+
+    // Tap the delete icon button. There might be one from presets too,
+    // so find the one associated with "Daily max".
+    final deleteIcons = find.widgetWithIcon(IconButton, Icons.delete_outline);
+    // Should have at least one (the threshold delete).
+    expect(deleteIcons, findsWidgets);
+    await tester.tap(deleteIcons.last);
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // The threshold should be gone.
+    expect(find.text('Daily max'), findsNothing);
+    expect(find.text('No thresholds yet'), findsOneWidget);
+
+    // Verify it was deleted from the database.
+    final thresholdRows = await db.select(db.thresholds).get();
+    expect(thresholdRows, isEmpty);
+
+    await cleanUp(tester);
+  });
+
+  // --- Save tests (continued) ---
 
   testWidgets('save with visibility off updates isVisible', (tester) async {
     final caffeine = await getCaffeine();

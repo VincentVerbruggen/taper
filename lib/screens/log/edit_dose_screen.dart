@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/log/widgets/time_picker.dart';
+import 'package:taper/utils/validation.dart';
 
 /// EditDoseScreen = the form for editing an existing dose log.
 ///
@@ -38,6 +39,9 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
   // Date and time — pre-filled from the existing loggedAt timestamp.
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
+
+  /// Tracks whether the user has attempted to save.
+  bool _submitted = false;
 
   @override
   void initState() {
@@ -120,11 +124,15 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
               labelText: 'Amount',
               suffixText: _selectedTrackable?.unit ?? 'mg',
               border: const OutlineInputBorder(),
+              errorText: _submitted && _amountController.text.trim().isEmpty
+                  ? 'Required'
+                  : numericFieldError(_amountController.text),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
             ],
+            onChanged: (_) => setState(() {}),
           ),
 
           const SizedBox(height: 16),
@@ -141,17 +149,11 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
           const SizedBox(height: 24),
 
           // --- Save button ---
-          // Same ListenableBuilder pattern as LogDoseScreen to enable/disable
-          // based on the amount field's content.
-          ListenableBuilder(
-            listenable: _amountController,
-            builder: (context, child) {
-              return FilledButton.icon(
-                onPressed: _canSave() ? _saveChanges : null,
-                icon: const Icon(Icons.check),
-                label: const Text('Save Changes'),
-              );
-            },
+          // Always enabled — shows errors on press instead of silently disabling.
+          FilledButton.icon(
+            onPressed: _saveChanges,
+            icon: const Icon(Icons.check),
+            label: const Text('Save Changes'),
           ),
         ],
       ),
@@ -179,6 +181,11 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
   ///   }
   void _saveChanges() async {
     if (_saving) return;
+    if (!_canSave()) {
+      _submitted = true;
+      setState(() {});
+      return;
+    }
     _saving = true;
 
     final trackable = _selectedTrackable!;

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/screens/log/widgets/time_picker.dart';
+import 'package:taper/utils/validation.dart';
 
 /// Shows a quick-add dialog for logging a dose of a specific trackable.
 ///
@@ -30,9 +31,17 @@ Future<double?> showQuickAddDoseDialog({
   final amountController = TextEditingController();
   double? result;
 
+  // Tracks which preset was selected (if any). Set when a chip is tapped,
+  // cleared when the user manually edits the amount field. Passed to
+  // insertDoseLog() so the log entry shows "Espresso" instead of just "63 mg".
+  String? selectedPresetName;
+
   // Initialize time to now — the user can change it via the picker.
   var selectedDate = DateTime.now();
   var selectedTime = TimeOfDay.fromDateTime(selectedDate);
+
+  // Tracks whether the user has attempted to log.
+  var submitted = false;
 
   await showDialog(
     context: context,
@@ -70,6 +79,9 @@ Future<double?> showQuickAddDoseDialog({
                           amountController.selection = TextSelection.fromPosition(
                             TextPosition(offset: amountController.text.length),
                           );
+                          // Remember which preset was tapped so the dose log
+                          // stores the name (e.g., "Espresso") alongside the amount.
+                          selectedPresetName = preset.name;
                         },
                       );
                     }).toList(),
@@ -89,7 +101,17 @@ Future<double?> showQuickAddDoseDialog({
                     labelText: 'Amount',
                     suffixText: trackable.unit,
                     border: const OutlineInputBorder(),
+                    errorText: submitted && amountController.text.trim().isEmpty
+                        ? 'Required'
+                        : numericFieldError(amountController.text),
                   ),
+                  // Clear the preset name when the user manually types —
+                  // the amount no longer matches the preset exactly.
+                  // Also triggers dialog rebuild so errorText updates live.
+                  onChanged: (_) {
+                    selectedPresetName = null;
+                    setDialogState(() {});
+                  },
                   // Submit on keyboard "done" — same as tapping Log.
                   onSubmitted: (_) {
                     final amount =
@@ -97,6 +119,10 @@ Future<double?> showQuickAddDoseDialog({
                     if (amount != null && amount > 0) {
                       result = amount;
                       Navigator.pop(dialogContext);
+                    } else {
+                      // Show errors if the field is empty or invalid.
+                      submitted = true;
+                      setDialogState(() {});
                     }
                   },
                 ),
@@ -122,23 +148,21 @@ Future<double?> showQuickAddDoseDialog({
                 onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancel'),
               ),
-              // ListenableBuilder makes Log button disabled until valid.
-              ListenableBuilder(
-                listenable: amountController,
-                builder: (context, _) {
+              // Always enabled — shows errors on press instead of disabling.
+              TextButton(
+                onPressed: () {
                   final amount =
                       double.tryParse(amountController.text.trim());
-                  final isValid = amount != null && amount > 0;
-                  return TextButton(
-                    onPressed: isValid
-                        ? () {
-                            result = amount;
-                            Navigator.pop(dialogContext);
-                          }
-                        : null,
-                    child: const Text('Log'),
-                  );
+                  if (amount != null && amount > 0) {
+                    result = amount;
+                    Navigator.pop(dialogContext);
+                  } else {
+                    // Show errors if the field is empty or invalid.
+                    submitted = true;
+                    setDialogState(() {});
+                  }
                 },
+                child: const Text('Log'),
               ),
             ],
           );
@@ -158,13 +182,14 @@ Future<double?> showQuickAddDoseDialog({
       selectedTime.hour,
       selectedTime.minute,
     );
-    await db.insertDoseLog(trackable.id, amount, loggedAt);
+    await db.insertDoseLog(trackable.id, amount, loggedAt, name: selectedPresetName);
 
     // Show SnackBar using the scaffold context (falls back to the provided context).
     final snackContext = scaffoldContext ?? context;
     if (snackContext.mounted) {
       ScaffoldMessenger.of(snackContext).showSnackBar(
         SnackBar(
+          showCloseIcon: true, // Let users dismiss the snackbar manually
           content: Text(
             'Logged ${amount.toStringAsFixed(0)} ${trackable.unit} ${trackable.name}',
           ),

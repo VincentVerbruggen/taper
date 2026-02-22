@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
+import 'package:taper/screens/log/add_dose_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
 import 'package:taper/utils/day_boundary.dart';
@@ -214,28 +215,54 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     final m = dose.loggedAt.minute.toString().padLeft(2, '0');
     final time = '$h:$m';
 
-    return Dismissible(
-      key: ValueKey(dose.id),
-      direction: DismissDirection.endToStart,
-      background: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          color: Theme.of(context).colorScheme.error,
-          child: Icon(
-            Icons.delete_outline,
-            color: Theme.of(context).colorScheme.onError,
+    // Unified card pattern matching log_dose_screen.dart:
+    // Padding > Dismissible > Card(shape: RoundedRectangleBorder(12)) > InkWell > ListTile
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2.0),
+      child: Dismissible(
+        key: ValueKey(dose.id),
+        direction: DismissDirection.endToStart,
+        background: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Icon(
+              Icons.delete_outline,
+              color: Theme.of(context).colorScheme.onErrorContainer,
+            ),
           ),
         ),
-      ),
-      onDismissed: (_) => _deleteDoseWithUndo(dose, trackable),
-      child: Card.outlined(
-        child: ListTile(
-          // "90 mg at 2:45 PM"
-          title: Text('${dose.amount.toStringAsFixed(0)} ${trackable.unit}'),
-          subtitle: Text(time),
-          onTap: () => _editDose(dose, trackable),
+        onDismissed: (_) => _deleteDoseWithUndo(dose, trackable),
+        child: Card(
+          shape: shape,
+          clipBehavior: Clip.antiAlias, // clips ink to rounded corners
+          child: InkWell(
+            customBorder: shape,
+            onTap: () => _editDose(dose, trackable),
+            child: ListTile(
+              // Show preset name when available (e.g., "Espresso"),
+              // fall back to raw amount (e.g., "63 mg").
+              title: Text(
+                dose.name != null
+                    ? dose.name!
+                    : '${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
+              ),
+              subtitle: Text(time),
+              // Copy button: opens AddDoseScreen pre-filled with this dose's
+              // trackable + amount, but with current time.
+              trailing: IconButton(
+                icon: const Icon(Icons.copy, size: 20),
+                tooltip: 'Copy dose',
+                onPressed: () => _copyDose(dose),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -251,14 +278,31 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        showCloseIcon: true, // Let users dismiss the snackbar manually
         content: Text(
           'Deleted ${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
         ),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
-            db.insertDoseLog(dose.trackableId, dose.amount, dose.loggedAt);
+            // Re-insert with the same trackable, amount, timestamp, and preset name.
+            db.insertDoseLog(dose.trackableId, dose.amount, dose.loggedAt, name: dose.name);
           },
+        ),
+      ),
+    );
+  }
+
+  /// Copy a dose: opens AddDoseScreen pre-filled with this dose's trackable + amount.
+  /// Time defaults to now — like duplicating a row but with a fresh timestamp.
+  void _copyDose(DoseLog dose) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddDoseScreen(
+          initialTrackableId: dose.trackableId,
+          initialAmount: dose.amount,
+          initialName: dose.name,
         ),
       ),
     );

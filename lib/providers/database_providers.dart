@@ -152,6 +152,17 @@ final presetsProvider = StreamProvider.family<List<Preset>, int>((ref, trackable
   return db.watchPresets(trackableId);
 });
 
+/// Reactive stream of thresholds for a specific trackable, keyed by trackable ID.
+///
+/// StreamProvider.family creates a separate provider per trackable ID.
+/// Used by the edit trackable screen to manage thresholds.
+///
+/// Like: Threshold::where('trackable_id', $id)->get()
+final thresholdsProvider = StreamProvider.family<List<Threshold>, int>((ref, trackableId) {
+  final db = ref.watch(databaseProvider);
+  return db.watchThresholds(trackableId);
+});
+
 /// Provides the trackable ID from the most recent dose log (across all trackables).
 /// Used by the log form to auto-select the last-used trackable instead of
 /// the old isMain flag. Returns null if no doses have ever been logged.
@@ -240,6 +251,10 @@ class TrackableCardData {
   /// null if no doses ever logged.
   final DoseLog? lastDose;
 
+  /// Threshold lines to draw on the chart (name + amount pairs).
+  /// Each one appears as a dashed horizontal line.
+  final List<Threshold> thresholds;
+
   TrackableCardData({
     required this.trackable,
     required this.activeAmount,
@@ -247,6 +262,7 @@ class TrackableCardData {
     required this.curvePoints,
     required this.dayBoundaryTime,
     required this.lastDose,
+    required this.thresholds,
   });
 }
 
@@ -268,6 +284,7 @@ final trackableCardDataProvider =
   // Watch the selected date for historical views.
   // null = today/live; non-null = viewing a past day.
   final selectedDate = ref.watch(selectedDateProvider);
+
   final now = DateTime.now();
 
   // When viewing a past date, use that date's boundary; otherwise use today.
@@ -305,16 +322,19 @@ final trackableCardDataProvider =
         DecayModel.none => boundary,
       };
 
-      // Watch two streams: all relevant doses + the most recent dose (for Repeat Last).
+      // Watch three streams: all relevant doses, most recent dose (for Repeat Last),
+      // and thresholds (for horizontal chart lines).
       final dosesStream = db.watchDosesSince(trackableId, dosesSince);
       final lastDoseStream = db.watchLastDose(trackableId);
+      final thresholdsStream = db.watchThresholds(trackableId);
 
-      // Combine both streams. When either emits, recalculate the card data.
+      // Combine all three streams. When any emits, recalculate the card data.
       // Like Livewire's computed properties that depend on multiple queries —
-      // when either source changes, the whole card re-renders.
-      return _combineStreams(dosesStream, lastDoseStream).map((combined) {
+      // when any source changes, the whole card re-renders.
+      return _combineStreams(dosesStream, lastDoseStream, thresholdsStream).map((combined) {
         final allDoses = combined.$1;
         final lastDose = combined.$2;
+        final thresholdsList = combined.$3;
 
         // Filter doses to just "today" (since day boundary) for the raw total.
         final todayDoses =
@@ -329,12 +349,14 @@ final trackableCardDataProvider =
               doses: allDoses,
               halfLifeHours: trackable.halfLifeHours!,
               queryTime: queryTime,
+              absorptionMinutes: trackable.absorptionMinutes,
             ),
             DecayCalculator.generateCurve(
               doses: allDoses,
               halfLifeHours: trackable.halfLifeHours!,
               startTime: boundary,
               endTime: nextBoundary,
+              absorptionMinutes: trackable.absorptionMinutes,
             ),
           ),
           DecayModel.linear => (
@@ -342,12 +364,14 @@ final trackableCardDataProvider =
               doses: allDoses,
               eliminationRate: trackable.eliminationRate!,
               queryTime: queryTime,
+              absorptionMinutes: trackable.absorptionMinutes,
             ),
             DecayCalculator.generateLinearCurve(
               doses: allDoses,
               eliminationRate: trackable.eliminationRate!,
               startTime: boundary,
               endTime: nextBoundary,
+              absorptionMinutes: trackable.absorptionMinutes,
             ),
           ),
           DecayModel.none => (0.0, <({DateTime time, double amount})>[]),
@@ -360,40 +384,44 @@ final trackableCardDataProvider =
           curvePoints: curvePoints,
           dayBoundaryTime: boundary,
           lastDose: lastDose,
+          thresholds: thresholdsList,
         );
       });
     },
   );
 });
 
-/// Combines two streams into a single stream of tuples.
+/// Combines three streams into a single stream of 3-tuples.
 ///
-/// Emits whenever EITHER stream emits, using the latest value from the other.
-/// Like JavaScript's combineLatest from RxJS — waits for both to emit at
-/// least once, then re-emits whenever either changes.
+/// Emits whenever ANY stream emits, using the latest values from the others.
+/// Like JavaScript's combineLatest from RxJS — waits for all three to emit at
+/// least once, then re-emits whenever any changes.
 ///
 /// We need this because Dart doesn't have a built-in combineLatest.
-Stream<(List<DoseLog>, DoseLog?)> _combineStreams(
+Stream<(List<DoseLog>, DoseLog?, List<Threshold>)> _combineStreams(
   Stream<List<DoseLog>> dosesStream,
   Stream<DoseLog?> lastDoseStream,
+  Stream<List<Threshold>> thresholdsStream,
 ) {
-  // Use a StreamController to manually merge the two streams.
-  // Like creating a custom Livewire event listener that watches two sources.
-  late StreamController<(List<DoseLog>, DoseLog?)> controller;
+  // Use a StreamController to manually merge the three streams.
+  // Like creating a custom Livewire event listener that watches multiple sources.
+  late StreamController<(List<DoseLog>, DoseLog?, List<Threshold>)> controller;
   List<DoseLog>? latestDoses;
   DoseLog? latestLastDose;
   bool lastDoseReceived = false;
+  List<Threshold>? latestThresholds;
   StreamSubscription? dosesSub;
   StreamSubscription? lastDoseSub;
+  StreamSubscription? thresholdsSub;
 
   void tryEmit() {
-    // Only emit once both streams have sent at least one value.
-    if (latestDoses != null && lastDoseReceived) {
-      controller.add((latestDoses!, latestLastDose));
+    // Only emit once all three streams have sent at least one value.
+    if (latestDoses != null && lastDoseReceived && latestThresholds != null) {
+      controller.add((latestDoses!, latestLastDose, latestThresholds!));
     }
   }
 
-  controller = StreamController<(List<DoseLog>, DoseLog?)>(
+  controller = StreamController<(List<DoseLog>, DoseLog?, List<Threshold>)>(
     onListen: () {
       dosesSub = dosesStream.listen(
         (doses) {
@@ -410,10 +438,18 @@ Stream<(List<DoseLog>, DoseLog?)> _combineStreams(
         },
         onError: controller.addError,
       );
+      thresholdsSub = thresholdsStream.listen(
+        (thresholds) {
+          latestThresholds = thresholds;
+          tryEmit();
+        },
+        onError: controller.addError,
+      );
     },
     onCancel: () {
       dosesSub?.cancel();
       lastDoseSub?.cancel();
+      thresholdsSub?.cancel();
     },
   );
 
