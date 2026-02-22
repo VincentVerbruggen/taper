@@ -201,6 +201,54 @@ class DecayCalculator {
     });
   }
 
+  /// Generate a cumulative intake staircase curve over the day.
+  ///
+  /// At each 5-minute sample, sums the amounts of all doses logged at or
+  /// before that time. This creates a "staircase" that jumps up with each
+  /// dose and never comes down — showing total consumed, not decayed amount.
+  ///
+  /// Only includes doses within [startTime, endTime) so yesterday's leftover
+  /// caffeine (still decaying) doesn't inflate today's intake total.
+  ///
+  /// Uses an O(n) sweep: sorts doses by time, then advances a pointer as we
+  /// walk through the 5-minute samples. Like a merge-join in SQL — both lists
+  /// are sorted, so we only scan each dose once.
+  static List<({DateTime time, double amount})> generateCumulativeCurve({
+    required List<DoseLog> doses,
+    required DateTime startTime,
+    required DateTime endTime,
+    int intervalMinutes = 5,
+  }) {
+    // Filter to only doses within the day boundary window, then sort by time.
+    // This ensures yesterday's doses (which are in allDoses for decay purposes)
+    // don't count toward today's cumulative total.
+    final todayDoses = doses
+        .where((d) =>
+            !d.loggedAt.isBefore(startTime) && d.loggedAt.isBefore(endTime))
+        .toList()
+      ..sort((a, b) => a.loggedAt.compareTo(b.loggedAt));
+
+    final points = <({DateTime time, double amount})>[];
+    var current = startTime;
+    var doseIndex = 0;
+    var cumulativeAmount = 0.0;
+
+    while (!current.isAfter(endTime)) {
+      // Advance the dose pointer: add any doses logged at or before this sample.
+      // Because both lists are sorted (samples by time, doses by loggedAt),
+      // each dose is only visited once — O(n) total across all samples.
+      while (doseIndex < todayDoses.length &&
+          !todayDoses[doseIndex].loggedAt.isAfter(current)) {
+        cumulativeAmount += todayDoses[doseIndex].amount;
+        doseIndex++;
+      }
+      points.add((time: current, amount: cumulativeAmount));
+      current = current.add(Duration(minutes: intervalMinutes));
+    }
+
+    return points;
+  }
+
   /// Generate chart data points using linear decay, sampled over time.
   ///
   /// Same 5-minute interval pattern as generateCurve() but using linear math.

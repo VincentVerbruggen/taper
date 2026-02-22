@@ -144,9 +144,9 @@ void main() {
 
     // Caffeine is visible by default — switch should be on.
     expect(find.text('Visible in log form'), findsOneWidget);
-    // The SwitchListTile should exist.
-    final switchTile = find.byType(SwitchListTile);
-    expect(switchTile, findsOneWidget);
+    // Find the visibility SwitchListTile specifically (not the cumulative toggle).
+    final visibilitySwitch = find.widgetWithText(SwitchListTile, 'Visible in log form');
+    expect(visibilitySwitch, findsOneWidget);
 
     await cleanUp(tester);
   });
@@ -156,10 +156,10 @@ void main() {
     await tester.pumpWidget(buildTestWidget(alcohol));
     await pumpAndWait(tester);
 
-    // Alcohol is hidden (isVisible = false) — switch should be off.
-    final switchWidget = tester.widget<SwitchListTile>(
-      find.byType(SwitchListTile),
-    );
+    // Alcohol is hidden (isVisible = false) — the visibility switch should be off.
+    // Use text matcher to find the specific SwitchListTile (not the cumulative toggle).
+    final visibilitySwitch = find.widgetWithText(SwitchListTile, 'Visible in log form');
+    final switchWidget = tester.widget<SwitchListTile>(visibilitySwitch);
     expect(switchWidget.value, false);
 
     await cleanUp(tester);
@@ -516,9 +516,10 @@ void main() {
     await pumpAndWait(tester);
 
     // Scroll to and toggle visibility off.
-    // The presets section pushes the switch off-screen in the test viewport.
-    await tester.ensureVisible(find.byType(SwitchListTile));
-    await tester.tap(find.byType(SwitchListTile));
+    // Find the specific visibility SwitchListTile (not the cumulative toggle).
+    final visibilitySwitch = find.widgetWithText(SwitchListTile, 'Visible in log form');
+    await tester.ensureVisible(visibilitySwitch);
+    await tester.tap(visibilitySwitch);
     await tester.pump();
 
     // Save.
@@ -531,6 +532,62 @@ void main() {
     final trackables = await db.select(db.trackables).get();
     final caffeine2 = trackables.firstWhere((s) => s.name == 'Caffeine');
     expect(caffeine2.isVisible, false);
+
+    await cleanUp(tester);
+  });
+
+  // --- Cumulative intake toggle tests ---
+
+  testWidgets('cumulative toggle visible for trackable with decay model', (tester) async {
+    // Caffeine has exponential decay, so the cumulative toggle should appear.
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to make the toggle visible (it's below the absorption field).
+    final cumulativeSwitch = find.widgetWithText(SwitchListTile, 'Show cumulative intake');
+    await tester.ensureVisible(cumulativeSwitch);
+    expect(cumulativeSwitch, findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('cumulative toggle hidden for trackable without decay model', (tester) async {
+    // Water has decay model = none, so the cumulative toggle should not appear.
+    final water = await getWater();
+    await tester.pumpWidget(buildTestWidget(water));
+    await pumpAndWait(tester);
+
+    expect(find.text('Show cumulative intake'), findsNothing);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('cumulative toggle defaults to off and saves correctly', (tester) async {
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // The toggle should default to off (showCumulativeLine = false for seeded data).
+    final cumulativeSwitch = find.widgetWithText(SwitchListTile, 'Show cumulative intake');
+    await tester.ensureVisible(cumulativeSwitch);
+    final switchWidget = tester.widget<SwitchListTile>(cumulativeSwitch);
+    expect(switchWidget.value, false);
+
+    // Toggle it on.
+    await tester.tap(cumulativeSwitch);
+    await tester.pump();
+
+    // Save changes.
+    await tester.ensureVisible(find.text('Save Changes'));
+    await tester.tap(find.text('Save Changes'));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // Verify the flag was persisted in the database.
+    final trackables = await db.select(db.trackables).get();
+    final updated = trackables.firstWhere((t) => t.name == 'Caffeine');
+    expect(updated.showCumulativeLine, true);
 
     await cleanUp(tester);
   });

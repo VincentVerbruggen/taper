@@ -83,6 +83,13 @@ class Trackables extends Table {
   // Nullable: null means instant absorption (existing default behavior).
   // Laravel equivalent: $table->double('absorption_minutes')->nullable()
   RealColumn get absorptionMinutes => real().nullable()();
+
+  // Whether to overlay a cumulative intake staircase line on the decay chart.
+  // When true, a second line shows total consumed throughout the day (goes up
+  // with each dose, never comes down). Only meaningful when decay model != none.
+  // Laravel equivalent: $table->boolean('show_cumulative_line')->default(false)
+  BoolColumn get showCumulativeLine =>
+      boolean().withDefault(const Constant(false))();
 }
 
 /// Presets table — named dose shortcuts per trackable.
@@ -187,7 +194,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -357,6 +364,12 @@ class AppDatabase extends _$AppDatabase {
         // Stores the preset name (e.g., "Espresso") when a dose is logged via
         // a preset chip. Nullable — manually entered doses have no name.
         await m.addColumn(doseLogs, doseLogs.name);
+      }
+      if (from < 11) {
+        // v10 → v11: Add showCumulativeLine toggle to trackables.
+        // When enabled, the dashboard chart overlays a cumulative intake
+        // staircase line alongside the decay curve.
+        await m.addColumn(trackables, trackables.showCumulativeLine);
       }
     },
   );
@@ -542,6 +555,7 @@ class AppDatabase extends _$AppDatabase {
     Value<bool> isVisible = const Value.absent(),
     // Color uses the same Value pattern: absent = don't change, Value(0xFF...) = set.
     Value<int> color = const Value.absent(),
+    Value<bool> showCumulativeLine = const Value.absent(),
   }) {
     final companion = TrackablesCompanion(
       name: name != null ? Value(name) : const Value.absent(),
@@ -552,6 +566,7 @@ class AppDatabase extends _$AppDatabase {
       absorptionMinutes: absorptionMinutes,
       isVisible: isVisible,
       color: color,
+      showCumulativeLine: showCumulativeLine,
     );
     return (update(trackables)..where((t) => t.id.equals(id)))
         .write(companion);

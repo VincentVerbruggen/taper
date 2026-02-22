@@ -460,6 +460,121 @@ void main() {
     });
   });
 
+  // --- Cumulative intake staircase tests ---
+  // These test the generateCumulativeCurve method that sums dose amounts
+  // as a staircase (goes up with each dose, never comes down).
+
+  group('generateCumulativeCurve', () {
+    test('staircase jumps at each dose', () {
+      // Two doses: 90mg at 8am and 90mg at 10am.
+      // Cumulative: 0 before 8am → 90 after 8am → 180 after 10am.
+      final start = DateTime(2026, 2, 21, 5, 0); // Day boundary
+      final end = DateTime(2026, 2, 22, 5, 0); // Next boundary
+      final doses = [
+        makeDose(90, DateTime(2026, 2, 21, 8, 0)),
+        makeDose(90, DateTime(2026, 2, 21, 10, 0)),
+      ];
+
+      final points = DecayCalculator.generateCumulativeCurve(
+        doses: doses,
+        startTime: start,
+        endTime: end,
+      );
+
+      // Before first dose (at 5am), should be 0.
+      expect(points.first.amount, 0.0);
+
+      // Find the point at 8:00 — should be 90 (first dose included).
+      final at8am = points.firstWhere(
+        (p) => p.time == DateTime(2026, 2, 21, 8, 0),
+      );
+      expect(at8am.amount, 90.0);
+
+      // Find the point at 10:00 — should be 180 (both doses included).
+      final at10am = points.firstWhere(
+        (p) => p.time == DateTime(2026, 2, 21, 10, 0),
+      );
+      expect(at10am.amount, 180.0);
+
+      // Point at end of day should still be 180 (never decreases).
+      expect(points.last.amount, 180.0);
+    });
+
+    test('empty doses produces all-zero curve', () {
+      final start = DateTime(2026, 2, 21, 5, 0);
+      final end = DateTime(2026, 2, 21, 9, 0);
+
+      final points = DecayCalculator.generateCumulativeCurve(
+        doses: [],
+        startTime: start,
+        endTime: end,
+      );
+
+      for (final point in points) {
+        expect(point.amount, 0.0);
+      }
+    });
+
+    test('doses outside window are excluded', () {
+      // Dose at 4am is before the 5am boundary — should not count.
+      final start = DateTime(2026, 2, 21, 5, 0);
+      final end = DateTime(2026, 2, 22, 5, 0);
+      final doses = [
+        makeDose(100, DateTime(2026, 2, 21, 4, 0)), // Before start
+        makeDose(50, DateTime(2026, 2, 22, 6, 0)), // After end
+        makeDose(90, DateTime(2026, 2, 21, 8, 0)), // Within window
+      ];
+
+      final points = DecayCalculator.generateCumulativeCurve(
+        doses: doses,
+        startTime: start,
+        endTime: end,
+      );
+
+      // Only the 90mg dose within the window counts.
+      expect(points.last.amount, 90.0);
+    });
+
+    test('produces correct number of points', () {
+      // 1 hour window with 5-minute intervals = 13 points.
+      final start = DateTime(2026, 2, 21, 8, 0);
+      final end = DateTime(2026, 2, 21, 9, 0);
+
+      final points = DecayCalculator.generateCumulativeCurve(
+        doses: [makeDose(100, start)],
+        startTime: start,
+        endTime: end,
+      );
+
+      expect(points.length, 13);
+    });
+
+    test('staircase never decreases', () {
+      // Every point should be >= the previous point.
+      final start = DateTime(2026, 2, 21, 5, 0);
+      final end = DateTime(2026, 2, 22, 5, 0);
+      final doses = [
+        makeDose(90, DateTime(2026, 2, 21, 8, 0)),
+        makeDose(63, DateTime(2026, 2, 21, 10, 30)),
+        makeDose(90, DateTime(2026, 2, 21, 14, 0)),
+      ];
+
+      final points = DecayCalculator.generateCumulativeCurve(
+        doses: doses,
+        startTime: start,
+        endTime: end,
+      );
+
+      for (var i = 1; i < points.length; i++) {
+        expect(
+          points[i].amount,
+          greaterThanOrEqualTo(points[i - 1].amount),
+          reason: 'Cumulative curve should never decrease at index $i',
+        );
+      }
+    });
+  });
+
   group('generateLinearCurve', () {
     test('produces correct number of points', () {
       final start = DateTime(2026, 2, 21, 20, 0);

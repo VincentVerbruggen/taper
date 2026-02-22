@@ -136,6 +136,20 @@ class $TrackablesTable extends Trackables
         type: DriftSqlType.double,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _showCumulativeLineMeta =
+      const VerificationMeta('showCumulativeLine');
+  @override
+  late final GeneratedColumn<bool> showCumulativeLine = GeneratedColumn<bool>(
+    'show_cumulative_line',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("show_cumulative_line" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -149,6 +163,7 @@ class $TrackablesTable extends Trackables
     decayModel,
     eliminationRate,
     absorptionMinutes,
+    showCumulativeLine,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -238,6 +253,15 @@ class $TrackablesTable extends Trackables
         ),
       );
     }
+    if (data.containsKey('show_cumulative_line')) {
+      context.handle(
+        _showCumulativeLineMeta,
+        showCumulativeLine.isAcceptableOrUnknown(
+          data['show_cumulative_line']!,
+          _showCumulativeLineMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -291,6 +315,10 @@ class $TrackablesTable extends Trackables
         DriftSqlType.double,
         data['${effectivePrefix}absorption_minutes'],
       ),
+      showCumulativeLine: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}show_cumulative_line'],
+      )!,
     );
   }
 
@@ -312,6 +340,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
   final String decayModel;
   final double? eliminationRate;
   final double? absorptionMinutes;
+  final bool showCumulativeLine;
   const Trackable({
     required this.id,
     required this.name,
@@ -324,6 +353,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     required this.decayModel,
     this.eliminationRate,
     this.absorptionMinutes,
+    required this.showCumulativeLine,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -345,6 +375,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     if (!nullToAbsent || absorptionMinutes != null) {
       map['absorption_minutes'] = Variable<double>(absorptionMinutes);
     }
+    map['show_cumulative_line'] = Variable<bool>(showCumulativeLine);
     return map;
   }
 
@@ -367,6 +398,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       absorptionMinutes: absorptionMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(absorptionMinutes),
+      showCumulativeLine: Value(showCumulativeLine),
     );
   }
 
@@ -389,6 +421,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       absorptionMinutes: serializer.fromJson<double?>(
         json['absorptionMinutes'],
       ),
+      showCumulativeLine: serializer.fromJson<bool>(json['showCumulativeLine']),
     );
   }
   @override
@@ -406,6 +439,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       'decayModel': serializer.toJson<String>(decayModel),
       'eliminationRate': serializer.toJson<double?>(eliminationRate),
       'absorptionMinutes': serializer.toJson<double?>(absorptionMinutes),
+      'showCumulativeLine': serializer.toJson<bool>(showCumulativeLine),
     };
   }
 
@@ -421,6 +455,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     String? decayModel,
     Value<double?> eliminationRate = const Value.absent(),
     Value<double?> absorptionMinutes = const Value.absent(),
+    bool? showCumulativeLine,
   }) => Trackable(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -439,6 +474,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     absorptionMinutes: absorptionMinutes.present
         ? absorptionMinutes.value
         : this.absorptionMinutes,
+    showCumulativeLine: showCumulativeLine ?? this.showCumulativeLine,
   );
   Trackable copyWithCompanion(TrackablesCompanion data) {
     return Trackable(
@@ -461,6 +497,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       absorptionMinutes: data.absorptionMinutes.present
           ? data.absorptionMinutes.value
           : this.absorptionMinutes,
+      showCumulativeLine: data.showCumulativeLine.present
+          ? data.showCumulativeLine.value
+          : this.showCumulativeLine,
     );
   }
 
@@ -477,7 +516,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           ..write('sortOrder: $sortOrder, ')
           ..write('decayModel: $decayModel, ')
           ..write('eliminationRate: $eliminationRate, ')
-          ..write('absorptionMinutes: $absorptionMinutes')
+          ..write('absorptionMinutes: $absorptionMinutes, ')
+          ..write('showCumulativeLine: $showCumulativeLine')
           ..write(')'))
         .toString();
   }
@@ -495,6 +535,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     decayModel,
     eliminationRate,
     absorptionMinutes,
+    showCumulativeLine,
   );
   @override
   bool operator ==(Object other) =>
@@ -510,7 +551,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           other.sortOrder == this.sortOrder &&
           other.decayModel == this.decayModel &&
           other.eliminationRate == this.eliminationRate &&
-          other.absorptionMinutes == this.absorptionMinutes);
+          other.absorptionMinutes == this.absorptionMinutes &&
+          other.showCumulativeLine == this.showCumulativeLine);
 }
 
 class TrackablesCompanion extends UpdateCompanion<Trackable> {
@@ -525,6 +567,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
   final Value<String> decayModel;
   final Value<double?> eliminationRate;
   final Value<double?> absorptionMinutes;
+  final Value<bool> showCumulativeLine;
   const TrackablesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -537,6 +580,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.decayModel = const Value.absent(),
     this.eliminationRate = const Value.absent(),
     this.absorptionMinutes = const Value.absent(),
+    this.showCumulativeLine = const Value.absent(),
   });
   TrackablesCompanion.insert({
     this.id = const Value.absent(),
@@ -550,6 +594,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.decayModel = const Value.absent(),
     this.eliminationRate = const Value.absent(),
     this.absorptionMinutes = const Value.absent(),
+    this.showCumulativeLine = const Value.absent(),
   }) : name = Value(name),
        color = Value(color);
   static Insertable<Trackable> custom({
@@ -564,6 +609,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Expression<String>? decayModel,
     Expression<double>? eliminationRate,
     Expression<double>? absorptionMinutes,
+    Expression<bool>? showCumulativeLine,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -577,6 +623,8 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       if (decayModel != null) 'decay_model': decayModel,
       if (eliminationRate != null) 'elimination_rate': eliminationRate,
       if (absorptionMinutes != null) 'absorption_minutes': absorptionMinutes,
+      if (showCumulativeLine != null)
+        'show_cumulative_line': showCumulativeLine,
     });
   }
 
@@ -592,6 +640,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Value<String>? decayModel,
     Value<double?>? eliminationRate,
     Value<double?>? absorptionMinutes,
+    Value<bool>? showCumulativeLine,
   }) {
     return TrackablesCompanion(
       id: id ?? this.id,
@@ -605,6 +654,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       decayModel: decayModel ?? this.decayModel,
       eliminationRate: eliminationRate ?? this.eliminationRate,
       absorptionMinutes: absorptionMinutes ?? this.absorptionMinutes,
+      showCumulativeLine: showCumulativeLine ?? this.showCumulativeLine,
     );
   }
 
@@ -644,6 +694,9 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     if (absorptionMinutes.present) {
       map['absorption_minutes'] = Variable<double>(absorptionMinutes.value);
     }
+    if (showCumulativeLine.present) {
+      map['show_cumulative_line'] = Variable<bool>(showCumulativeLine.value);
+    }
     return map;
   }
 
@@ -660,7 +713,8 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
           ..write('sortOrder: $sortOrder, ')
           ..write('decayModel: $decayModel, ')
           ..write('eliminationRate: $eliminationRate, ')
-          ..write('absorptionMinutes: $absorptionMinutes')
+          ..write('absorptionMinutes: $absorptionMinutes, ')
+          ..write('showCumulativeLine: $showCumulativeLine')
           ..write(')'))
         .toString();
   }
@@ -1709,6 +1763,7 @@ typedef $$TrackablesTableCreateCompanionBuilder =
       Value<String> decayModel,
       Value<double?> eliminationRate,
       Value<double?> absorptionMinutes,
+      Value<bool> showCumulativeLine,
     });
 typedef $$TrackablesTableUpdateCompanionBuilder =
     TrackablesCompanion Function({
@@ -1723,6 +1778,7 @@ typedef $$TrackablesTableUpdateCompanionBuilder =
       Value<String> decayModel,
       Value<double?> eliminationRate,
       Value<double?> absorptionMinutes,
+      Value<bool> showCumulativeLine,
     });
 
 final class $$TrackablesTableReferences
@@ -1850,6 +1906,11 @@ class $$TrackablesTableFilterComposer
 
   ColumnFilters<double> get absorptionMinutes => $composableBuilder(
     column: $table.absorptionMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get showCumulativeLine => $composableBuilder(
+    column: $table.showCumulativeLine,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1992,6 +2053,11 @@ class $$TrackablesTableOrderingComposer
     column: $table.absorptionMinutes,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get showCumulativeLine => $composableBuilder(
+    column: $table.showCumulativeLine,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TrackablesTableAnnotationComposer
@@ -2041,6 +2107,11 @@ class $$TrackablesTableAnnotationComposer
 
   GeneratedColumn<double> get absorptionMinutes => $composableBuilder(
     column: $table.absorptionMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get showCumulativeLine => $composableBuilder(
+    column: $table.showCumulativeLine,
     builder: (column) => column,
   );
 
@@ -2163,6 +2234,7 @@ class $$TrackablesTableTableManager
                 Value<String> decayModel = const Value.absent(),
                 Value<double?> eliminationRate = const Value.absent(),
                 Value<double?> absorptionMinutes = const Value.absent(),
+                Value<bool> showCumulativeLine = const Value.absent(),
               }) => TrackablesCompanion(
                 id: id,
                 name: name,
@@ -2175,6 +2247,7 @@ class $$TrackablesTableTableManager
                 decayModel: decayModel,
                 eliminationRate: eliminationRate,
                 absorptionMinutes: absorptionMinutes,
+                showCumulativeLine: showCumulativeLine,
               ),
           createCompanionCallback:
               ({
@@ -2189,6 +2262,7 @@ class $$TrackablesTableTableManager
                 Value<String> decayModel = const Value.absent(),
                 Value<double?> eliminationRate = const Value.absent(),
                 Value<double?> absorptionMinutes = const Value.absent(),
+                Value<bool> showCumulativeLine = const Value.absent(),
               }) => TrackablesCompanion.insert(
                 id: id,
                 name: name,
@@ -2201,6 +2275,7 @@ class $$TrackablesTableTableManager
                 decayModel: decayModel,
                 eliminationRate: eliminationRate,
                 absorptionMinutes: absorptionMinutes,
+                showCumulativeLine: showCumulativeLine,
               ),
           withReferenceMapper: (p0) => p0
               .map(

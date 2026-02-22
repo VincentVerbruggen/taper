@@ -255,6 +255,11 @@ class TrackableCardData {
   /// Each one appears as a dashed horizontal line.
   final List<Threshold> thresholds;
 
+  /// Cumulative intake staircase data points.
+  /// Goes up with each dose, never comes down — shows total consumed today.
+  /// Empty when the toggle is off or decay model is "none".
+  final List<({DateTime time, double amount})> cumulativePoints;
+
   TrackableCardData({
     required this.trackable,
     required this.activeAmount,
@@ -263,6 +268,7 @@ class TrackableCardData {
     required this.dayBoundaryTime,
     required this.lastDose,
     required this.thresholds,
+    required this.cumulativePoints,
   });
 }
 
@@ -377,6 +383,19 @@ final trackableCardDataProvider =
           DecayModel.none => (0.0, <({DateTime time, double amount})>[]),
         };
 
+        // Generate cumulative intake staircase when the toggle is on and
+        // the trackable has a decay model. Uses todayDoses only — yesterday's
+        // leftover caffeine shows on the decay curve but doesn't count as
+        // today's intake. Empty list when off or no decay model.
+        final cumulativePoints =
+            (trackable.showCumulativeLine && model != DecayModel.none)
+                ? DecayCalculator.generateCumulativeCurve(
+                    doses: todayDoses,
+                    startTime: boundary,
+                    endTime: nextBoundary,
+                  )
+                : <({DateTime time, double amount})>[];
+
         return TrackableCardData(
           trackable: trackable,
           activeAmount: activeAmount,
@@ -385,6 +404,7 @@ final trackableCardDataProvider =
           dayBoundaryTime: boundary,
           lastDose: lastDose,
           thresholds: thresholdsList,
+          cumulativePoints: cumulativePoints,
         );
       });
     },

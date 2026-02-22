@@ -34,6 +34,11 @@ class DecayCurveChart extends StatelessWidget {
   /// Like "Daily max" at 400 mg — drawn as a reference line.
   final List<({String name, double amount})> thresholds;
 
+  /// Optional cumulative intake staircase data points.
+  /// When non-empty, a second line is drawn showing total consumed over time.
+  /// Sharp steps (not curved) — each dose adds a vertical jump.
+  final List<({DateTime time, double amount})> cumulativePoints;
+
   const DecayCurveChart({
     super.key,
     required this.curvePoints,
@@ -42,6 +47,7 @@ class DecayCurveChart extends StatelessWidget {
     this.isLive = true,
     this.height = 200, // Taller chart for better readability
     this.thresholds = const [],
+    this.cumulativePoints = const [],
   });
 
   @override
@@ -61,10 +67,20 @@ class DecayCurveChart extends StatelessWidget {
       return FlSpot(hoursFromStart, p.amount);
     }).toList();
 
-    // Find the max Y value for chart scaling. Include threshold amounts so
-    // a threshold line is always visible even if doses are below it.
-    // Add 10% headroom so the peak doesn't touch the top edge.
+    // Convert cumulative points to FlSpot list using the same X-axis reference.
+    // Empty list when the cumulative toggle is off.
+    final cumulativeSpots = cumulativePoints.map((p) {
+      final hoursFromStart =
+          p.time.difference(chartStartTime).inMinutes / 60.0;
+      return FlSpot(hoursFromStart, p.amount);
+    }).toList();
+
+    // Find the max Y value for chart scaling. Include threshold amounts and
+    // cumulative line so everything is visible. Add 10% headroom.
     var maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
+    for (final s in cumulativeSpots) {
+      if (s.y > maxY) maxY = s.y;
+    }
     for (final t in thresholds) {
       if (t.amount > maxY) maxY = t.amount;
     }
@@ -96,8 +112,9 @@ class DecayCurveChart extends StatelessWidget {
           minY: 0,
           maxY: adjustedMaxY,
 
-          // --- The decay curve line ---
+          // --- The decay curve line + optional cumulative line ---
           lineBarsData: [
+            // Primary line: the active/decayed amount (smooth curve).
             LineChartBarData(
               spots: spots,
               isCurved: true,
@@ -112,6 +129,19 @@ class DecayCurveChart extends StatelessWidget {
                 color: color.withAlpha(40),
               ),
             ),
+            // Secondary line: cumulative intake staircase (dashed, muted).
+            // isCurved=false gives sharp steps that honestly show discrete doses.
+            // Only added when cumulativeSpots is non-empty (toggle is on).
+            if (cumulativeSpots.isNotEmpty)
+              LineChartBarData(
+                spots: cumulativeSpots,
+                isCurved: false, // Sharp staircase — no interpolation
+                color: color.withAlpha(120), // Muted so it doesn't overpower the decay line
+                barWidth: 2,
+                dotData: const FlDotData(show: false),
+                dashArray: [6, 4], // Dashed to visually distinguish from the solid decay line
+                belowBarData: BarAreaData(show: false), // No fill below — keeps it clean
+              ),
           ],
 
           // --- Extra lines: dashed vertical "now" + horizontal thresholds ---
@@ -200,6 +230,7 @@ class DecayCurveChart extends StatelessWidget {
 
           // --- Touch scrubbing / tooltip ---
           // Shows the amount and time at the touched position.
+          // When cumulative line is shown, labels become "Active: X" and "Total: X".
           // Like Chart.js tooltip plugin with mode: 'index'.
           lineTouchData: LineTouchData(
             handleBuiltInTouches: true,
@@ -207,7 +238,14 @@ class DecayCurveChart extends StatelessWidget {
               getTooltipColor: (_) =>
                   Theme.of(context).colorScheme.surfaceContainerHighest,
               getTooltipItems: (spots) {
-                return spots.map((spot) {
+                // When two lines are present, label them "Active" and "Total".
+                final hasTwo = cumulativeSpots.isNotEmpty && spots.length == 2;
+                final labels = hasTwo
+                    ? ['Active', 'Total']
+                    : [null]; // null = no label prefix (single line)
+                return spots.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final spot = entry.value;
                   // Convert X (hours from start) back to clock time.
                   final spotTime = chartStartTime.add(
                     Duration(minutes: (spot.x * 60).round()),
@@ -216,10 +254,18 @@ class DecayCurveChart extends StatelessWidget {
                   final minute = spotTime.minute;
                   // 24h NATO format: "14:30" instead of "2:30 PM".
                   final timeStr = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+                  final label = index < labels.length ? labels[index] : null;
+                  final valueStr = label != null
+                      ? '$label: ${spot.y.toStringAsFixed(1)}'
+                      : spot.y.toStringAsFixed(1);
+                  // Only show time on the first (Active) line to avoid duplication.
+                  final text = index == 0
+                      ? '$valueStr\n$timeStr'
+                      : valueStr;
                   return LineTooltipItem(
-                    '${spot.y.toStringAsFixed(1)}\n$timeStr',
+                    text,
                     TextStyle(
-                      color: color,
+                      color: spot.bar.color ?? color,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),

@@ -144,6 +144,8 @@ class TrackableCard extends ConsumerWidget {
                   thresholds: data.thresholds
                       .map((t) => (name: t.name, amount: t.amount))
                       .toList(),
+                  // Cumulative intake staircase (empty when toggle is off).
+                  cumulativePoints: data.cumulativePoints,
                 ),
               ],
 
