@@ -302,6 +302,22 @@ class AppDatabase extends _$AppDatabase {
     },
   );
 
+  // --- Backup utilities ---
+
+  /// Flush the WAL (Write-Ahead Log) into the main .sqlite file.
+  ///
+  /// SQLite uses WAL mode by default — writes go to a separate -wal file
+  /// before being merged into the main file. If we copy taper.sqlite without
+  /// checkpointing first, the copy might be missing recent writes.
+  ///
+  /// TRUNCATE mode = flush everything AND delete the WAL file afterward.
+  /// Like running `OPTIMIZE TABLE` before a mysqldump in MySQL.
+  ///
+  /// Must be called before any file copy operation (export, auto-backup).
+  Future<void> checkpointWal() async {
+    await customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+  }
+
   // --- Trackable queries ---
 
   /// Watch all trackables sorted by user-controlled sortOrder (reactive stream).

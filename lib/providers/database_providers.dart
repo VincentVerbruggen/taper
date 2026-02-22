@@ -43,6 +43,32 @@ class PinnedTrackableIdNotifier extends Notifier<int?> {
   void unpin() => state = null;
 }
 
+/// Generation counter that forces the databaseProvider to rebuild.
+///
+/// After a database import, the old Drift connection is stale (it holds a
+/// file descriptor to the pre-import data). Incrementing this counter
+/// invalidates databaseProvider, which creates a fresh AppDatabase() that
+/// opens the newly imported file.
+///
+/// Like a cache-buster version number: /app.js?v=2 forces the browser
+/// to re-fetch instead of using the cached copy.
+///
+/// All downstream providers (trackablesProvider, doseLogsProvider, etc.)
+/// ref.watch(databaseProvider), so they automatically cascade-refresh.
+final databaseGenerationProvider =
+    NotifierProvider<DatabaseGenerationNotifier, int>(
+  DatabaseGenerationNotifier.new,
+);
+
+class DatabaseGenerationNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  /// Increment to force a fresh database connection.
+  /// Call this after importing a database file.
+  void increment() => state++;
+}
+
 /// databaseProvider = the app's database singleton.
 ///
 /// Like Laravel's `$app->singleton()`:
@@ -50,7 +76,14 @@ class PinnedTrackableIdNotifier extends Notifier<int?> {
 ///
 /// Once created, it lives forever. Every widget that needs the database
 /// calls ref.read(databaseProvider) or ref.watch(databaseProvider).
+///
+/// Watches databaseGenerationProvider — when the generation changes (after
+/// an import), this provider is invalidated and a fresh connection is opened.
 final databaseProvider = Provider<AppDatabase>((ref) {
+  // Watch the generation counter — when it changes after an import,
+  // this provider is recreated with a fresh DB connection.
+  ref.watch(databaseGenerationProvider);
+
   final db = AppDatabase();
 
   // ref.onDispose = cleanup when provider is destroyed.

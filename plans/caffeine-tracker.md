@@ -173,19 +173,23 @@ No swipe-to-delete anywhere. All delete actions use a **delete button with a con
 - Updates in real-time as decay values change.
 - Only one trackable pinned at a time.
 
-### Milestone 7: Polish ← NEXT
-- [ ] Swipe-to-delete on dose log entries (with undo snackbar)
-- [ ] Swipe-to-delete on trackable log screen entries
-- [ ] Date picker on dashboard to view historical days
-- [ ] Multi-trackable combined chart (different colored lines, overlay view)
-- [ ] Color picker in trackable edit screen (currently auto-assigned only)
-- [ ] Improve time picker UX in dose forms
-- [ ] Empty state improvements (better onboarding hints)
-- [ ] Error handling polish (snackbars for failed saves, network issues)
+### Milestone 7: Polish ✅
+- [x] Swipe-to-delete on dose log entries (with undo snackbar)
+- [x] Swipe-to-delete on trackable log screen entries
+- [x] Date picker on dashboard to view historical days
+- [x] Color picker in trackable edit screen
 
-### Milestone 8: Settings & UX Cleanup
-- **Rename "Trackables" tab to "Settings"** — softer name, leaves room for app-wide settings.
-- **Day boundary setting:** Let users configure the hour that defines "start of day" (default 5:00 AM). Stored as a user preference.
+### Milestone 8: UX & Settings ← NEXT
+- [ ] **Dismiss action on snackbars** — all snackbars should have a dismiss/close button
+- [ ] **Larger decay graph** — make charts taller, maybe even taller than wide, so the curve is easier to read
+- [ ] **Copy dose** — add a copy button to dose log entries that opens the add dose screen pre-filled with that dose's trackable, amount, and current time. Quick way to repeat a past dose.
+- [ ] **Copy trackable** — add a copy/duplicate button to trackables that creates a new trackable pre-filled with the original's settings (unit, decay model, half-life, etc.) but with a "Copy of X" name
+- [ ] **Unify list design** — use the log overview design (the nicer one) as the template for all lists. For the trackables list specifically: keep reorder handles, keep pin, but make tap/press open the edit screen directly (instead of navigating elsewhere)
+- [ ] **Merge trackables into settings tab** — remove the standalone Trackables tab. The Settings tab now shows the trackable list first (with reorder, pin, tap-to-edit), followed by a "Settings" header with the rest of the settings below it. Fewer tabs, cleaner navigation.
+- [ ] **Day boundary setting** — let users configure the hour that defines "start of day" (default 5:00 AM). Stored as a user preference.
+- [ ] **Dark mode toggle** — light / dark / auto (system default) theme toggle in settings. Currently dark-only.
+- [ ] **Absorption speed field** — optional `absorptionMinutes` on trackables. Models time to peak effect (e.g., caffeine ~45 min). Decay curve ramps up over this period before decaying.
+- [ ] **Thresholds per trackable** — multiple named thresholds (e.g., "Healthy daily limit" = 400mg caffeine, "Sleep cutoff" = 200mg). Each has a `name`, `amount`, and optional `rollingAverageDays` for rolling average comparison. Show as horizontal lines on the decay chart and indicators on dashboard card stats.
 
 ### Milestone 9: Taper Plans
 
@@ -227,7 +231,20 @@ A dedicated screen (accessible from the trackable card or log screen) showing th
 - **Today marker:** Vertical line or highlight showing where you are in the plan
 - Clear visual of days you were on/under/over target. Good days vs. bad days at a glance.
 
-### Milestone 10: Data Export & Backup
+### Milestone 10: Reminders & Medication Tracking
+
+Reminder system that works for two use cases: taper plan adherence and medication schedules.
+
+#### Scheduled Reminders (Medication Mode)
+- **Per-trackable alarm** — set a recurring time-of-day reminder for a trackable (e.g., "Take thyroid meds at 8:00 AM daily"). Uses local notifications.
+- **One-time reminder** — set a single reminder for a specific date/time (e.g., "Take second dose at 2 PM today"). Auto-clears after firing.
+- **Nag mode ("remind until done")** — set an interval in minutes (e.g., every 15 min). The reminder repeats until a dose is actually logged for that trackable. Useful for medications you absolutely can't forget. Stops nagging once you log it.
+
+#### Taper Plan Integration
+- When a trackable has an active taper plan, optionally attach reminders to help pace doses throughout the day (e.g., "You have 200mg budget left, consider your next dose at 2 PM").
+- Could suggest dose timing based on the taper target and your usual pattern.
+
+### Milestone 11: Data Export & Backup
 
 Two export features for different use cases, accessible from the Settings screen.
 
@@ -240,16 +257,51 @@ Two export features for different use cases, accessible from the Settings screen
 - Export trackables and dose logs as CSV files (one per table, or a single zip). Human-readable, openable in Excel/Google Sheets, useful for analysis or sharing with a doctor.
 - **Export only** — no CSV import. Reconstructing foreign keys and validating data from CSV is a lot of code for a feature nobody will use. If you need to restore, use the SQLite backup.
 
+### Milestone 12: Onboarding & First-Run Experience
+
+The "make it feel like a real app" milestone. Runs on first launch (or when the user has no trackables).
+
+#### Startup Wizard
+A multi-step welcome flow that guides new users through initial setup:
+1. **Welcome screen** — brief intro to what Taper does.
+2. **Pick your trackables** — a grid/list of common trackables with pre-filled settings. User taps to select which ones they want. Examples:
+   - Caffeine (mg, exponential, 5h half-life)
+   - Alcohol (ml, linear, 9 ml/hr elimination)
+   - Nicotine (mg, exponential, 2h half-life)
+   - Water (ml, no decay)
+   - Common medications (ibuprofen, melatonin, etc.)
+   - Option to add a custom trackable right from the wizard
+3. **Analytics opt-in** — ask the user if they're OK with anonymous crash reporting and usage analytics. Clear, honest language about what's collected (aggregate feature usage, crash reports) and what's not (no PII, no tracking). Respect the choice — default to off.
+4. **Done** — drop into the dashboard with their selected trackables ready to go.
+
+#### Analytics & Crash Reporting
+Integrated into the onboarding opt-in but also toggleable later from Settings.
+- **Crash reports** — catch and report unhandled exceptions so bugs in production are visible. Look at something like Sentry or Firebase Crashlytics.
+- **Anonymous usage analytics** — track which features are used (e.g., how many people use taper plans, linear vs. exponential decay, etc.) to guide development priorities. Must be:
+  - Opt-in or at minimum clearly disclosed
+  - No PII, no tracking IDs tied to identity
+  - Aggregate counts only, not individual behavior
+- Investigate options: Firebase Analytics (heavy, Google), PostHog (self-hostable), Aptabase (privacy-first, built for mobile), or simple custom endpoint.
+
+#### Empty State Improvements
+When a user has no trackables or no doses logged yet, show helpful hints instead of blank screens — "Tap + to add your first trackable", "Log your first dose to see your decay curve", etc. These complement the wizard for users who skip it or delete all their data.
+
 ---
 
 ## Parked Ideas
 
 Ideas that are good but not scheduled yet. Revisit when the core milestones are done.
 
-- **Trackable presets/templates:** When adding a new trackable, offer a "pick from template" option with common trackables and their half-lives pre-filled (caffeine ~5h, alcohol ~4h, nicotine ~2h, etc.). Good candidate for a first-run wizard if the app ever gets other users.
+- **Multi-trackable combined chart:** Overlay multiple trackables on one chart with different colored lines. Might be too noisy to be useful — revisit if the single-trackable cards feel limiting.
 - **Home screen widget:** Glanceable current levels without opening the app. Complements the notification for a less intrusive always-visible option.
 - **Non-linear taper curves:** Step-down schedules (reduce by X every N days), exponential curves, or custom schedules. Builds on the linear taper in Milestone 9.
 - **Interaction warnings:** Flag when two active trackables have known interactions (e.g., caffeine + certain medications). Requires a data source for interactions.
 - **Planned consumption days:** From the trackable log screen (grouped by day), copy a day's consumption pattern as a "plan" for tomorrow. E.g., you drank 5 coffees today at 8am, 10am, 12pm, 2pm, 4pm — tap "copy as plan" and those become scheduled doses for tomorrow. Then manually tweak amounts or timings to inch closer to your taper target. Ties into Milestone 9 (taper plans) — instead of just a daily total target, you get a concrete dose-by-dose schedule to follow. Think of it like duplicating a row in a spreadsheet and editing the copy.
 - **Quick-add presets per trackable:** Define named shortcuts for common doses — e.g., "Office coffee" = 90mg, "Home coffee" = 120mg, "Glass of wine" = 150ml, "Pint of beer" = 500ml, "Water bottle" = 750ml. Stored as a list on the trackable. These show up as quick-tap buttons on the dashboard card and in the persistent notification, replacing the single "repeat last" with a row of your most common doses. Think of it like saved addresses in a delivery app — one tap instead of typing the same amount every time.
 - **Logging reminder vibration:** When the persistent notification is active, the app checks the trackable's `reminderIntervalMinutes` field. If set (e.g., 40 for alcohol) and no dose has been logged within that interval, the phone vibrates as a nudge — "hey, did you forget to log that last drink?" The interval is a property of the trackable (like half-life or unit), so each trackable gets its own sensible default. Null means no reminders. Useful for party mode where you're likely to forget.
+- **Trackable types (far future):** Right now all trackables are implicitly "decaying" (exponential/linear) or "amount" (no decay, like water). Formalize this into a `type` field with distinct dashboard visualizations:
+  - **Decaying** — what caffeine/alcohol already are. Decay curve chart.
+  - **Amount** — what water already is. Running total, maybe a fill-up bar chart.
+  - **Count** — for things you just count (e.g., cigarettes, drinks). Dashboard shows a tally/counter visualization instead of a curve.
+  - **Yes/No** — binary tracking (e.g., "Did I take my multivitamin today?"). Dashboard shows a simple check/X indicator, streak calendar, or habit-tracker grid.
+  Each type gets its own card layout and chart style on the dashboard. This turns Taper from a pharmacokinetics app into a more general-purpose health tracker while keeping the decay curves as the core differentiator.
