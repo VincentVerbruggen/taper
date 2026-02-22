@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/trackables/add_taper_plan_screen.dart';
 import 'package:taper/screens/trackables/widgets/color_palette_selector.dart';
 import 'package:taper/utils/validation.dart';
 
@@ -170,6 +171,14 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             // Named horizontal reference lines for the decay chart (e.g.,
             // "Daily max" = 400 mg). Like thresholds/limits in a monitoring dashboard.
             _buildThresholdsSection(),
+
+            const SizedBox(height: 24),
+
+            // --- Taper plans section ---
+            // Gradual reduction schedules. Shows plan history with status labels,
+            // retry (copies params to new plan), and delete.
+            // Like a "has-many" relationship section showing order history.
+            _buildTaperPlansSection(),
 
             const SizedBox(height: 16),
 
@@ -707,6 +716,157 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
           label: const Text('Add Threshold'),
         ),
       ],
+    );
+  }
+
+  /// Builds the taper plans management section: header, plan list, and "New Taper Plan" button.
+  ///
+  /// Watches taperPlansProvider reactively — adding/deleting a plan in the DB
+  /// immediately updates this list. Shows status labels:
+  ///   - "Active" = isActive && !ended
+  ///   - "Completed" = isActive && ended (still active, past end date)
+  ///   - "Superseded" = !isActive (replaced by a newer plan)
+  ///
+  /// Like an order history section in a customer edit form.
+  Widget _buildTaperPlansSection() {
+    final plansAsync = ref.watch(taperPlansProvider(widget.trackable.id));
+    final unit = _unitController.text.trim().isEmpty
+        ? 'mg'
+        : _unitController.text.trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Taper Plans',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+
+        // Show the list of existing plans (or "No taper plans yet" if empty).
+        plansAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (e, s) => Text('Error loading taper plans: $e'),
+          data: (plansList) {
+            if (plansList.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'No taper plans yet',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              );
+            }
+            // Each plan = a Card with title ("400 → 100 mg"), subtitle (dates + status),
+            // and trailing icons for Retry and Delete.
+            return Column(
+              children: plansList.map((plan) {
+                final status = _taperPlanStatus(plan);
+                final shape = RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                );
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 2.0),
+                  child: Card(
+                    shape: shape,
+                    clipBehavior: Clip.antiAlias,
+                    child: ListTile(
+                      // "400 → 100 mg" — start and target amounts.
+                      title: Text(
+                        '${plan.startAmount.toStringAsFixed(0)} → ${plan.targetAmount.toStringAsFixed(0)} $unit',
+                      ),
+                      // Date range + status chip. Format: "Feb 1 – Mar 15 · Active"
+                      subtitle: Text(
+                        '${_formatDate(plan.startDate)} – ${_formatDate(plan.endDate)} · $status',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Retry: copies this plan's params into a new plan form.
+                          // Like duplicating an order with updated dates.
+                          IconButton(
+                            icon: const Icon(Icons.replay, size: 20),
+                            tooltip: 'Retry with same settings',
+                            onPressed: () => _retryTaperPlan(plan),
+                          ),
+                          // Delete: removes the plan.
+                          IconButton(
+                            icon: Icon(
+                              Icons.delete_outline,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            tooltip: 'Delete plan',
+                            onPressed: () {
+                              ref.read(databaseProvider).deleteTaperPlan(plan.id);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+
+        // "New Taper Plan" button — navigates to the creation form.
+        TextButton.icon(
+          onPressed: () => _addTaperPlan(),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('New Taper Plan'),
+        ),
+      ],
+    );
+  }
+
+  /// Determines the status label for a taper plan.
+  ///
+  /// - Active: isActive == true (could be before start, in progress, or maintenance)
+  /// - Completed: isActive == false AND endDate is in the past
+  /// - Superseded: isActive == false AND endDate is NOT in the past
+  ///   (replaced by a newer plan before it finished)
+  String _taperPlanStatus(TaperPlan plan) {
+    if (plan.isActive) return 'Active';
+    // If inactive, check if the plan ran to completion or was superseded early.
+    if (plan.endDate.isBefore(DateTime.now())) return 'Completed';
+    return 'Superseded';
+  }
+
+  /// Format a date as "Feb 1" or "Mar 15" for compact display in plan cards.
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}';
+  }
+
+  /// Navigate to AddTaperPlanScreen pre-filled with an old plan's amounts (Retry flow).
+  /// Like duplicating a record in a CRUD list.
+  void _retryTaperPlan(TaperPlan plan) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddTaperPlanScreen(
+          trackable: widget.trackable,
+          initialStartAmount: plan.startAmount,
+          initialTargetAmount: plan.targetAmount,
+        ),
+      ),
+    );
+  }
+
+  /// Navigate to AddTaperPlanScreen with empty defaults.
+  void _addTaperPlan() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddTaperPlanScreen(trackable: widget.trackable),
+      ),
     );
   }
 

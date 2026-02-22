@@ -1731,6 +1731,479 @@ class ThresholdsCompanion extends UpdateCompanion<Threshold> {
   }
 }
 
+class $TaperPlansTable extends TaperPlans
+    with TableInfo<$TaperPlansTable, TaperPlan> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TaperPlansTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _trackableIdMeta = const VerificationMeta(
+    'trackableId',
+  );
+  @override
+  late final GeneratedColumn<int> trackableId = GeneratedColumn<int>(
+    'trackable_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES trackables (id)',
+    ),
+  );
+  static const VerificationMeta _startAmountMeta = const VerificationMeta(
+    'startAmount',
+  );
+  @override
+  late final GeneratedColumn<double> startAmount = GeneratedColumn<double>(
+    'start_amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetAmountMeta = const VerificationMeta(
+    'targetAmount',
+  );
+  @override
+  late final GeneratedColumn<double> targetAmount = GeneratedColumn<double>(
+    'target_amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startDateMeta = const VerificationMeta(
+    'startDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startDate = GeneratedColumn<DateTime>(
+    'start_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endDateMeta = const VerificationMeta(
+    'endDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> endDate = GeneratedColumn<DateTime>(
+    'end_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isActiveMeta = const VerificationMeta(
+    'isActive',
+  );
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+    'is_active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    trackableId,
+    startAmount,
+    targetAmount,
+    startDate,
+    endDate,
+    isActive,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'taper_plans';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TaperPlan> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('trackable_id')) {
+      context.handle(
+        _trackableIdMeta,
+        trackableId.isAcceptableOrUnknown(
+          data['trackable_id']!,
+          _trackableIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_trackableIdMeta);
+    }
+    if (data.containsKey('start_amount')) {
+      context.handle(
+        _startAmountMeta,
+        startAmount.isAcceptableOrUnknown(
+          data['start_amount']!,
+          _startAmountMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_startAmountMeta);
+    }
+    if (data.containsKey('target_amount')) {
+      context.handle(
+        _targetAmountMeta,
+        targetAmount.isAcceptableOrUnknown(
+          data['target_amount']!,
+          _targetAmountMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_targetAmountMeta);
+    }
+    if (data.containsKey('start_date')) {
+      context.handle(
+        _startDateMeta,
+        startDate.isAcceptableOrUnknown(data['start_date']!, _startDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startDateMeta);
+    }
+    if (data.containsKey('end_date')) {
+      context.handle(
+        _endDateMeta,
+        endDate.isAcceptableOrUnknown(data['end_date']!, _endDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endDateMeta);
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(
+        _isActiveMeta,
+        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TaperPlan map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TaperPlan(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      trackableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}trackable_id'],
+      )!,
+      startAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}start_amount'],
+      )!,
+      targetAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}target_amount'],
+      )!,
+      startDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}start_date'],
+      )!,
+      endDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}end_date'],
+      )!,
+      isActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_active'],
+      )!,
+    );
+  }
+
+  @override
+  $TaperPlansTable createAlias(String alias) {
+    return $TaperPlansTable(attachedDatabase, alias);
+  }
+}
+
+class TaperPlan extends DataClass implements Insertable<TaperPlan> {
+  final int id;
+  final int trackableId;
+  final double startAmount;
+  final double targetAmount;
+  final DateTime startDate;
+  final DateTime endDate;
+  final bool isActive;
+  const TaperPlan({
+    required this.id,
+    required this.trackableId,
+    required this.startAmount,
+    required this.targetAmount,
+    required this.startDate,
+    required this.endDate,
+    required this.isActive,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['trackable_id'] = Variable<int>(trackableId);
+    map['start_amount'] = Variable<double>(startAmount);
+    map['target_amount'] = Variable<double>(targetAmount);
+    map['start_date'] = Variable<DateTime>(startDate);
+    map['end_date'] = Variable<DateTime>(endDate);
+    map['is_active'] = Variable<bool>(isActive);
+    return map;
+  }
+
+  TaperPlansCompanion toCompanion(bool nullToAbsent) {
+    return TaperPlansCompanion(
+      id: Value(id),
+      trackableId: Value(trackableId),
+      startAmount: Value(startAmount),
+      targetAmount: Value(targetAmount),
+      startDate: Value(startDate),
+      endDate: Value(endDate),
+      isActive: Value(isActive),
+    );
+  }
+
+  factory TaperPlan.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TaperPlan(
+      id: serializer.fromJson<int>(json['id']),
+      trackableId: serializer.fromJson<int>(json['trackableId']),
+      startAmount: serializer.fromJson<double>(json['startAmount']),
+      targetAmount: serializer.fromJson<double>(json['targetAmount']),
+      startDate: serializer.fromJson<DateTime>(json['startDate']),
+      endDate: serializer.fromJson<DateTime>(json['endDate']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'trackableId': serializer.toJson<int>(trackableId),
+      'startAmount': serializer.toJson<double>(startAmount),
+      'targetAmount': serializer.toJson<double>(targetAmount),
+      'startDate': serializer.toJson<DateTime>(startDate),
+      'endDate': serializer.toJson<DateTime>(endDate),
+      'isActive': serializer.toJson<bool>(isActive),
+    };
+  }
+
+  TaperPlan copyWith({
+    int? id,
+    int? trackableId,
+    double? startAmount,
+    double? targetAmount,
+    DateTime? startDate,
+    DateTime? endDate,
+    bool? isActive,
+  }) => TaperPlan(
+    id: id ?? this.id,
+    trackableId: trackableId ?? this.trackableId,
+    startAmount: startAmount ?? this.startAmount,
+    targetAmount: targetAmount ?? this.targetAmount,
+    startDate: startDate ?? this.startDate,
+    endDate: endDate ?? this.endDate,
+    isActive: isActive ?? this.isActive,
+  );
+  TaperPlan copyWithCompanion(TaperPlansCompanion data) {
+    return TaperPlan(
+      id: data.id.present ? data.id.value : this.id,
+      trackableId: data.trackableId.present
+          ? data.trackableId.value
+          : this.trackableId,
+      startAmount: data.startAmount.present
+          ? data.startAmount.value
+          : this.startAmount,
+      targetAmount: data.targetAmount.present
+          ? data.targetAmount.value
+          : this.targetAmount,
+      startDate: data.startDate.present ? data.startDate.value : this.startDate,
+      endDate: data.endDate.present ? data.endDate.value : this.endDate,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TaperPlan(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('startAmount: $startAmount, ')
+          ..write('targetAmount: $targetAmount, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('isActive: $isActive')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    trackableId,
+    startAmount,
+    targetAmount,
+    startDate,
+    endDate,
+    isActive,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TaperPlan &&
+          other.id == this.id &&
+          other.trackableId == this.trackableId &&
+          other.startAmount == this.startAmount &&
+          other.targetAmount == this.targetAmount &&
+          other.startDate == this.startDate &&
+          other.endDate == this.endDate &&
+          other.isActive == this.isActive);
+}
+
+class TaperPlansCompanion extends UpdateCompanion<TaperPlan> {
+  final Value<int> id;
+  final Value<int> trackableId;
+  final Value<double> startAmount;
+  final Value<double> targetAmount;
+  final Value<DateTime> startDate;
+  final Value<DateTime> endDate;
+  final Value<bool> isActive;
+  const TaperPlansCompanion({
+    this.id = const Value.absent(),
+    this.trackableId = const Value.absent(),
+    this.startAmount = const Value.absent(),
+    this.targetAmount = const Value.absent(),
+    this.startDate = const Value.absent(),
+    this.endDate = const Value.absent(),
+    this.isActive = const Value.absent(),
+  });
+  TaperPlansCompanion.insert({
+    this.id = const Value.absent(),
+    required int trackableId,
+    required double startAmount,
+    required double targetAmount,
+    required DateTime startDate,
+    required DateTime endDate,
+    this.isActive = const Value.absent(),
+  }) : trackableId = Value(trackableId),
+       startAmount = Value(startAmount),
+       targetAmount = Value(targetAmount),
+       startDate = Value(startDate),
+       endDate = Value(endDate);
+  static Insertable<TaperPlan> custom({
+    Expression<int>? id,
+    Expression<int>? trackableId,
+    Expression<double>? startAmount,
+    Expression<double>? targetAmount,
+    Expression<DateTime>? startDate,
+    Expression<DateTime>? endDate,
+    Expression<bool>? isActive,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (trackableId != null) 'trackable_id': trackableId,
+      if (startAmount != null) 'start_amount': startAmount,
+      if (targetAmount != null) 'target_amount': targetAmount,
+      if (startDate != null) 'start_date': startDate,
+      if (endDate != null) 'end_date': endDate,
+      if (isActive != null) 'is_active': isActive,
+    });
+  }
+
+  TaperPlansCompanion copyWith({
+    Value<int>? id,
+    Value<int>? trackableId,
+    Value<double>? startAmount,
+    Value<double>? targetAmount,
+    Value<DateTime>? startDate,
+    Value<DateTime>? endDate,
+    Value<bool>? isActive,
+  }) {
+    return TaperPlansCompanion(
+      id: id ?? this.id,
+      trackableId: trackableId ?? this.trackableId,
+      startAmount: startAmount ?? this.startAmount,
+      targetAmount: targetAmount ?? this.targetAmount,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      isActive: isActive ?? this.isActive,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (trackableId.present) {
+      map['trackable_id'] = Variable<int>(trackableId.value);
+    }
+    if (startAmount.present) {
+      map['start_amount'] = Variable<double>(startAmount.value);
+    }
+    if (targetAmount.present) {
+      map['target_amount'] = Variable<double>(targetAmount.value);
+    }
+    if (startDate.present) {
+      map['start_date'] = Variable<DateTime>(startDate.value);
+    }
+    if (endDate.present) {
+      map['end_date'] = Variable<DateTime>(endDate.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TaperPlansCompanion(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('startAmount: $startAmount, ')
+          ..write('targetAmount: $targetAmount, ')
+          ..write('startDate: $startDate, ')
+          ..write('endDate: $endDate, ')
+          ..write('isActive: $isActive')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1738,6 +2211,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $DoseLogsTable doseLogs = $DoseLogsTable(this);
   late final $PresetsTable presets = $PresetsTable(this);
   late final $ThresholdsTable thresholds = $ThresholdsTable(this);
+  late final $TaperPlansTable taperPlans = $TaperPlansTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1747,6 +2221,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     doseLogs,
     presets,
     thresholds,
+    taperPlans,
   ];
 }
 
@@ -1839,6 +2314,27 @@ final class $$TrackablesTableReferences
     ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_thresholdsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$TaperPlansTable, List<TaperPlan>>
+  _taperPlansRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.taperPlans,
+    aliasName: $_aliasNameGenerator(
+      db.trackables.id,
+      db.taperPlans.trackableId,
+    ),
+  );
+
+  $$TaperPlansTableProcessedTableManager get taperPlansRefs {
+    final manager = $$TaperPlansTableTableManager(
+      $_db,
+      $_db.taperPlans,
+    ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_taperPlansRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1980,6 +2476,31 @@ class $$TrackablesTableFilterComposer
           }) => $$ThresholdsTableFilterComposer(
             $db: $db,
             $table: $db.thresholds,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> taperPlansRefs(
+    Expression<bool> Function($$TaperPlansTableFilterComposer f) f,
+  ) {
+    final $$TaperPlansTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.taperPlans,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TaperPlansTableFilterComposer(
+            $db: $db,
+            $table: $db.taperPlans,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2189,6 +2710,31 @@ class $$TrackablesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> taperPlansRefs<T extends Object>(
+    Expression<T> Function($$TaperPlansTableAnnotationComposer a) f,
+  ) {
+    final $$TaperPlansTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.taperPlans,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TaperPlansTableAnnotationComposer(
+            $db: $db,
+            $table: $db.taperPlans,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TrackablesTableTableManager
@@ -2208,6 +2754,7 @@ class $$TrackablesTableTableManager
             bool doseLogsRefs,
             bool presetsRefs,
             bool thresholdsRefs,
+            bool taperPlansRefs,
           })
         > {
   $$TrackablesTableTableManager(_$AppDatabase db, $TrackablesTable table)
@@ -2290,6 +2837,7 @@ class $$TrackablesTableTableManager
                 doseLogsRefs = false,
                 presetsRefs = false,
                 thresholdsRefs = false,
+                taperPlansRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -2297,6 +2845,7 @@ class $$TrackablesTableTableManager
                     if (doseLogsRefs) db.doseLogs,
                     if (presetsRefs) db.presets,
                     if (thresholdsRefs) db.thresholds,
+                    if (taperPlansRefs) db.taperPlans,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -2364,6 +2913,27 @@ class $$TrackablesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (taperPlansRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          TaperPlan
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._taperPlansRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).taperPlansRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -2388,6 +2958,7 @@ typedef $$TrackablesTableProcessedTableManager =
         bool doseLogsRefs,
         bool presetsRefs,
         bool thresholdsRefs,
+        bool taperPlansRefs,
       })
     >;
 typedef $$DoseLogsTableCreateCompanionBuilder =
@@ -3310,6 +3881,361 @@ typedef $$ThresholdsTableProcessedTableManager =
       Threshold,
       PrefetchHooks Function({bool trackableId})
     >;
+typedef $$TaperPlansTableCreateCompanionBuilder =
+    TaperPlansCompanion Function({
+      Value<int> id,
+      required int trackableId,
+      required double startAmount,
+      required double targetAmount,
+      required DateTime startDate,
+      required DateTime endDate,
+      Value<bool> isActive,
+    });
+typedef $$TaperPlansTableUpdateCompanionBuilder =
+    TaperPlansCompanion Function({
+      Value<int> id,
+      Value<int> trackableId,
+      Value<double> startAmount,
+      Value<double> targetAmount,
+      Value<DateTime> startDate,
+      Value<DateTime> endDate,
+      Value<bool> isActive,
+    });
+
+final class $$TaperPlansTableReferences
+    extends BaseReferences<_$AppDatabase, $TaperPlansTable, TaperPlan> {
+  $$TaperPlansTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $TrackablesTable _trackableIdTable(_$AppDatabase db) =>
+      db.trackables.createAlias(
+        $_aliasNameGenerator(db.taperPlans.trackableId, db.trackables.id),
+      );
+
+  $$TrackablesTableProcessedTableManager get trackableId {
+    final $_column = $_itemColumn<int>('trackable_id')!;
+
+    final manager = $$TrackablesTableTableManager(
+      $_db,
+      $_db.trackables,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_trackableIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$TaperPlansTableFilterComposer
+    extends Composer<_$AppDatabase, $TaperPlansTable> {
+  $$TaperPlansTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get startAmount => $composableBuilder(
+    column: $table.startAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get targetAmount => $composableBuilder(
+    column: $table.targetAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TrackablesTableFilterComposer get trackableId {
+    final $$TrackablesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableFilterComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TaperPlansTableOrderingComposer
+    extends Composer<_$AppDatabase, $TaperPlansTable> {
+  $$TaperPlansTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get startAmount => $composableBuilder(
+    column: $table.startAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get targetAmount => $composableBuilder(
+    column: $table.targetAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startDate => $composableBuilder(
+    column: $table.startDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get endDate => $composableBuilder(
+    column: $table.endDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TrackablesTableOrderingComposer get trackableId {
+    final $$TrackablesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableOrderingComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TaperPlansTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TaperPlansTable> {
+  $$TaperPlansTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<double> get startAmount => $composableBuilder(
+    column: $table.startAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get targetAmount => $composableBuilder(
+    column: $table.targetAmount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get startDate =>
+      $composableBuilder(column: $table.startDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get endDate =>
+      $composableBuilder(column: $table.endDate, builder: (column) => column);
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  $$TrackablesTableAnnotationComposer get trackableId {
+    final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TaperPlansTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TaperPlansTable,
+          TaperPlan,
+          $$TaperPlansTableFilterComposer,
+          $$TaperPlansTableOrderingComposer,
+          $$TaperPlansTableAnnotationComposer,
+          $$TaperPlansTableCreateCompanionBuilder,
+          $$TaperPlansTableUpdateCompanionBuilder,
+          (TaperPlan, $$TaperPlansTableReferences),
+          TaperPlan,
+          PrefetchHooks Function({bool trackableId})
+        > {
+  $$TaperPlansTableTableManager(_$AppDatabase db, $TaperPlansTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TaperPlansTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TaperPlansTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TaperPlansTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> trackableId = const Value.absent(),
+                Value<double> startAmount = const Value.absent(),
+                Value<double> targetAmount = const Value.absent(),
+                Value<DateTime> startDate = const Value.absent(),
+                Value<DateTime> endDate = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+              }) => TaperPlansCompanion(
+                id: id,
+                trackableId: trackableId,
+                startAmount: startAmount,
+                targetAmount: targetAmount,
+                startDate: startDate,
+                endDate: endDate,
+                isActive: isActive,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int trackableId,
+                required double startAmount,
+                required double targetAmount,
+                required DateTime startDate,
+                required DateTime endDate,
+                Value<bool> isActive = const Value.absent(),
+              }) => TaperPlansCompanion.insert(
+                id: id,
+                trackableId: trackableId,
+                startAmount: startAmount,
+                targetAmount: targetAmount,
+                startDate: startDate,
+                endDate: endDate,
+                isActive: isActive,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$TaperPlansTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({trackableId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (trackableId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.trackableId,
+                                referencedTable: $$TaperPlansTableReferences
+                                    ._trackableIdTable(db),
+                                referencedColumn: $$TaperPlansTableReferences
+                                    ._trackableIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$TaperPlansTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TaperPlansTable,
+      TaperPlan,
+      $$TaperPlansTableFilterComposer,
+      $$TaperPlansTableOrderingComposer,
+      $$TaperPlansTableAnnotationComposer,
+      $$TaperPlansTableCreateCompanionBuilder,
+      $$TaperPlansTableUpdateCompanionBuilder,
+      (TaperPlan, $$TaperPlansTableReferences),
+      TaperPlan,
+      PrefetchHooks Function({bool trackableId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3322,4 +4248,6 @@ class $AppDatabaseManager {
       $$PresetsTableTableManager(_db, _db.presets);
   $$ThresholdsTableTableManager get thresholds =>
       $$ThresholdsTableTableManager(_db, _db.thresholds);
+  $$TaperPlansTableTableManager get taperPlans =>
+      $$TaperPlansTableTableManager(_db, _db.taperPlans);
 }

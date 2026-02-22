@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/dashboard/taper_progress_screen.dart';
 import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/screens/dashboard/widgets/decay_curve_chart.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
@@ -141,9 +142,13 @@ class TrackableCard extends ConsumerWidget {
                   // Hide the "now" indicator when viewing past dates.
                   isLive: ref.watch(selectedDateProvider) == null,
                   // Pass threshold lines for dashed horizontal references.
-                  thresholds: data.thresholds
-                      .map((t) => (name: t.name, amount: t.amount))
-                      .toList(),
+                  // Includes the taper target if an active plan exists.
+                  thresholds: [
+                    ...data.thresholds
+                        .map((t) => (name: t.name, amount: t.amount)),
+                    if (data.taperTarget != null)
+                      (name: 'Target', amount: data.taperTarget!),
+                  ],
                   // Cumulative intake staircase (empty when toggle is off).
                   cumulativePoints: data.cumulativePoints,
                 ),
@@ -179,6 +184,15 @@ class TrackableCard extends ConsumerWidget {
                     icon: const Icon(Icons.history, size: 18),
                     label: const Text('View Log'),
                   ),
+
+                  // "Progress" — navigates to the taper plan progress chart.
+                  // Only shown when the trackable has an active taper plan.
+                  if (data.activeTaperPlan != null)
+                    TextButton.icon(
+                      onPressed: () => _viewProgress(context, data),
+                      icon: const Icon(Icons.trending_down, size: 18),
+                      label: const Text('Progress'),
+                    ),
                 ],
               ),
             ],
@@ -190,21 +204,34 @@ class TrackableCard extends ConsumerWidget {
 
   /// Builds the compact stats text for the title row.
   ///
-  /// Two formats:
-  ///   WITH half-life: "42 / 180 mg" (active / total unit)
-  ///   WITHOUT half-life: "500 ml" (total unit)
+  /// Formats:
+  ///   WITH decay: "42 / 180 mg" (active / total unit)
+  ///   WITHOUT decay: "500 ml" (total unit)
+  ///   WITH taper target: appends " (target: 350)" when an active plan exists.
+  ///
+  /// The target is the daily allowance from the taper plan — purely informational,
+  /// no color or warning when exceeding it.
   String _buildStatsText(TrackableCardData data) {
     final unit = data.trackable.unit;
     final totalStr = data.totalToday.toStringAsFixed(0);
     final hasDecay = DecayModel.fromString(data.trackable.decayModel) != DecayModel.none;
 
+    String base;
     if (hasDecay) {
       // Show "active / total unit" for trackables with decay tracking.
       final activeStr = data.activeAmount.toStringAsFixed(0);
-      return '$activeStr / $totalStr $unit';
+      base = '$activeStr / $totalStr $unit';
     } else {
-      return '$totalStr $unit';
+      base = '$totalStr $unit';
     }
+
+    // Append taper target when an active plan exists.
+    // E.g., "42 / 180 mg (target: 350)" or "500 ml (target: 350)"
+    if (data.taperTarget != null) {
+      base += ' (target: ${data.taperTarget!.toStringAsFixed(0)})';
+    }
+
+    return base;
   }
 
   /// Repeat the last dose: insert immediately, show SnackBar with undo.
@@ -265,6 +292,19 @@ class TrackableCard extends ConsumerWidget {
       context,
       MaterialPageRoute(
         builder: (_) => TrackableLogScreen(trackable: trackable),
+      ),
+    );
+  }
+
+  /// Navigate to the taper plan progress chart.
+  void _viewProgress(BuildContext context, TrackableCardData data) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TaperProgressScreen(
+          trackable: data.trackable,
+          taperPlan: data.activeTaperPlan!,
+        ),
       ),
     );
   }

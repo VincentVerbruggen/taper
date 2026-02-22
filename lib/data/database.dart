@@ -156,6 +156,52 @@ class DoseLogs extends Table {
   TextColumn get name => text().nullable()();
 }
 
+/// Taper plans table — gradual reduction schedules per trackable.
+///
+/// Each plan defines a linear ramp from startAmount to targetAmount over a
+/// date range. After endDate, the target stays flat at targetAmount
+/// (maintenance mode) until superseded by a new plan.
+///
+/// Plans are immutable once created. To adjust, create a new plan which
+/// atomically deactivates the old one (via a transaction in insertTaperPlan).
+///
+/// Only one plan per trackable can be active at a time (isActive = true).
+///
+/// Laravel equivalent:
+///   Schema::create('taper_plans', function (Blueprint $table) {
+///       $table->id();
+///       $table->foreignId('trackable_id')->constrained()->cascadeOnDelete();
+///       $table->double('start_amount');
+///       $table->double('target_amount');
+///       $table->dateTime('start_date');
+///       $table->dateTime('end_date');
+///       $table->boolean('is_active')->default(true);
+///   });
+class TaperPlans extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // FK to trackables table. When a trackable is deleted, its plans go too.
+  IntColumn get trackableId => integer().references(Trackables, #id)();
+
+  // Daily target on day 1 of the taper (e.g., 400 mg).
+  RealColumn get startAmount => real()();
+
+  // Daily target on the final day / maintenance (e.g., 100 mg).
+  RealColumn get targetAmount => real()();
+
+  // First day boundary of the taper schedule.
+  // Stored as epoch seconds (SQLite integer) via Drift's dateTime().
+  DateTimeColumn get startDate => dateTime()();
+
+  // Last day boundary of the taper schedule.
+  DateTimeColumn get endDate => dateTime()();
+
+  // Only one active plan per trackable at a time.
+  // When a new plan is created, the old one gets deactivated in a transaction.
+  // Default true — new plans start active.
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+}
+
 /// Thresholds table — named horizontal lines per trackable.
 ///
 /// Each trackable can have multiple thresholds (e.g., "Daily max" = 400 mg,
@@ -184,7 +230,7 @@ class Thresholds extends Table {
 
 /// AppDatabase = the database singleton.
 /// Like DatabaseServiceProvider + config/database.php in Laravel.
-@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds])
+@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds, TaperPlans])
 class AppDatabase extends _$AppDatabase {
   // Default constructor uses platform-specific SQLite via drift_flutter.
   AppDatabase() : super(driftDatabase(name: 'taper'));
@@ -194,7 +240,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -370,6 +416,11 @@ class AppDatabase extends _$AppDatabase {
         // When enabled, the dashboard chart overlays a cumulative intake
         // staircase line alongside the decay curve.
         await m.addColumn(trackables, trackables.showCumulativeLine);
+      }
+      if (from < 12) {
+        // v11 → v12: Add taper_plans table for gradual reduction schedules.
+        // Each plan defines a linear ramp from startAmount to targetAmount.
+        await m.createTable(taperPlans);
       }
     },
   );
@@ -827,6 +878,71 @@ class AppDatabase extends _$AppDatabase {
   /// Like: Threshold::destroy($id)
   Future<int> deleteThreshold(int id) {
     return (delete(thresholds)..where((t) => t.id.equals(id))).go();
+  }
+
+  // --- Taper plan queries ---
+
+  /// Watch the active taper plan for a trackable (reactive stream).
+  /// Returns null if no active plan exists.
+  /// Used by the dashboard card to show today's target.
+  /// Like: TaperPlan::where('trackable_id', $id)->where('is_active', true)->first()
+  Stream<TaperPlan?> watchActiveTaperPlan(int trackableId) {
+    return (select(taperPlans)
+          ..where((t) =>
+              t.trackableId.equals(trackableId) & t.isActive.equals(true))
+          ..limit(1))
+        .watchSingleOrNull();
+  }
+
+  /// Watch all taper plans for a trackable, newest first (reactive stream).
+  /// Used by the edit trackable screen to list plan history.
+  /// Like: TaperPlan::where('trackable_id', $id)->orderByDesc('start_date')->get()
+  Stream<List<TaperPlan>> watchTaperPlans(int trackableId) {
+    return (select(taperPlans)
+          ..where((t) => t.trackableId.equals(trackableId))
+          ..orderBy([(t) => OrderingTerm.desc(t.startDate)]))
+        .watch();
+  }
+
+  /// Insert a new taper plan, atomically deactivating any existing active plan.
+  ///
+  /// Uses a transaction so the deactivation + insertion happens atomically —
+  /// there's never a moment where two plans are active simultaneously.
+  /// Like a DB::transaction in Laravel that wraps a deactivate + insert.
+  ///
+  /// Returns the new plan's auto-increment ID.
+  Future<int> insertTaperPlan(
+    int trackableId,
+    double startAmount,
+    double targetAmount,
+    DateTime startDate,
+    DateTime endDate,
+  ) {
+    return transaction(() async {
+      // Deactivate any existing active plan for this trackable.
+      // UPDATE taper_plans SET is_active = 0 WHERE trackable_id = ? AND is_active = 1
+      await (update(taperPlans)
+            ..where((t) =>
+                t.trackableId.equals(trackableId) & t.isActive.equals(true)))
+          .write(const TaperPlansCompanion(isActive: Value(false)));
+
+      // Insert the new active plan.
+      return into(taperPlans).insert(
+        TaperPlansCompanion.insert(
+          trackableId: trackableId,
+          startAmount: startAmount,
+          targetAmount: targetAmount,
+          startDate: startDate,
+          endDate: endDate,
+        ),
+      );
+    });
+  }
+
+  /// Delete a taper plan by ID.
+  /// Like: TaperPlan::destroy($id)
+  Future<int> deleteTaperPlan(int id) {
+    return (delete(taperPlans)..where((t) => t.id.equals(id))).go();
   }
 
   /// Watch recent dose logs (last 50), newest first, with trackable name.

@@ -591,4 +591,105 @@ void main() {
 
     await cleanUp(tester);
   });
+
+  // --- Taper plans section tests ---
+
+  testWidgets('shows "No taper plans yet" for trackable without plans', (tester) async {
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to find the taper plans section.
+    final taperPlansLabel = find.text('Taper Plans');
+    await tester.ensureVisible(taperPlansLabel);
+    expect(taperPlansLabel, findsOneWidget);
+    expect(find.text('No taper plans yet'), findsOneWidget);
+    expect(find.text('New Taper Plan'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('"New Taper Plan" button is visible and navigates', (tester) async {
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to and tap "New Taper Plan".
+    final button = find.text('New Taper Plan');
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await pumpAndWait(tester);
+
+    // Should navigate to the AddTaperPlanScreen.
+    expect(find.text('New Taper Plan'), findsWidgets); // Title + button text
+    expect(find.text('Start amount'), findsOneWidget);
+    expect(find.text('Target amount'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('plan list renders after adding a plan', (tester) async {
+    final caffeine = await getCaffeine();
+    // Pre-insert a taper plan directly in the database.
+    await db.insertTaperPlan(
+      caffeine.id,
+      400,
+      100,
+      DateTime(2026, 2, 1, 5),
+      DateTime(2026, 3, 1, 5),
+    );
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to the taper plans section.
+    final taperPlansLabel = find.text('Taper Plans');
+    await tester.ensureVisible(taperPlansLabel);
+
+    // The plan should be visible with its amount range.
+    expect(find.textContaining('400'), findsWidgets);
+    expect(find.textContaining('100'), findsWidgets);
+    // "No taper plans yet" should NOT be shown.
+    expect(find.text('No taper plans yet'), findsNothing);
+    // Status should be "Active".
+    expect(find.textContaining('Active'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('delete removes plan from list', (tester) async {
+    final caffeine = await getCaffeine();
+    // Pre-insert a taper plan.
+    await db.insertTaperPlan(
+      caffeine.id,
+      400,
+      100,
+      DateTime(2026, 2, 1, 5),
+      DateTime(2026, 3, 1, 5),
+    );
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Scroll to the taper plans section.
+    final taperPlansLabel = find.text('Taper Plans');
+    await tester.ensureVisible(taperPlansLabel);
+
+    // Find and tap the delete icon for the taper plan.
+    // There should be one delete icon in the taper plans section.
+    // We need the one with Icons.delete_outline that's inside the taper plans section.
+    final deleteIcons = find.widgetWithIcon(IconButton, Icons.delete_outline);
+    // The last delete icon should be the one in the taper plan row
+    // (presets and thresholds sections come first and are empty).
+    await tester.tap(deleteIcons.last);
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // The plan should be gone.
+    expect(find.text('No taper plans yet'), findsOneWidget);
+
+    // Verify it was deleted from the database.
+    final plans = await db.select(db.taperPlans).get();
+    expect(plans, isEmpty);
+
+    await cleanUp(tester);
+  });
 }

@@ -262,7 +262,76 @@ A dedicated screen (accessible from the trackable card or log screen) showing th
 - **Today marker:** Vertical line or highlight showing where you are in the plan
 - Clear visual of days you were on/under/over target. Good days vs. bad days at a glance.
 
-### Milestone 10: Reminders & Medication Tracking
+### Milestone 10: Customizable Dashboard
+
+The dashboard currently auto-generates one card per visible trackable. This milestone makes the dashboard fully user-configurable — choose which widgets appear, what order they're in, and what type of information each one shows.
+
+#### Why
+Right now, dashboard content is tied to the trackable's `isVisible` flag — which also controls log form dropdown visibility. That's two unrelated concerns jammed into one toggle. And there's no way to add different views of the same trackable (e.g., today's decay curve AND a weekly progress chart), or to have widgets that span multiple trackables.
+
+The customizable dashboard decouples "what's on the dashboard" from "what trackables exist." A trackable is a data source; a dashboard widget is a view of that data.
+
+#### Data Model — DashboardWidget
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `int` | Auto-increment PK |
+| `type` | `String` | Widget type: `'decay_card'`, `'taper_progress'`, `'daily_totals'`, `'weekly_chart'` |
+| `trackableId` | `int?` | FK → trackables. Nullable for aggregate/multi-trackable widgets. |
+| `sortOrder` | `int` | Position on the dashboard (drag-to-reorder) |
+| `config` | `String` | JSON blob for type-specific settings |
+
+The `config` JSON holds per-widget options. Examples:
+- Decay card: `{"showCumulativeLine": true, "chartHeight": 200}`
+- Weekly chart: `{"daysBack": 7, "showAverage": true}`
+- Taper progress: `{"showDailyBars": true}`
+
+#### Widget Types
+
+**Decay Card** (what exists today) — real-time decay curve for a single trackable. Shows active amount, total today, mini chart, toolbar (repeat last, add dose, view log). Config: chart height, cumulative line toggle.
+
+**Taper Progress** — the taper plan progress chart (currently a separate screen reached via the card's "Progress" button). Shows the full taper timeline with target line, daily totals, and today marker. Pulling this onto the dashboard makes it visible at a glance instead of buried behind a tap.
+
+**Daily Totals** — bar chart of daily intake totals over the past N days for a single trackable. Good for spotting trends. Config: number of days, show average line.
+
+**Weekly Summary** — aggregate view across a trackable. Average daily intake, highest/lowest day, trend direction. Compact text widget, no chart.
+
+More types can be added later without schema changes (just add a new `type` string and a renderer).
+
+#### Dashboard Edit Screen
+
+Accessed from a button on the dashboard (e.g., a pencil icon in the header or a long-press-to-edit gesture). Shows the current widget list with:
+
+- **Drag handles** — reorder widgets (same pattern as trackable reorder).
+- **Delete button** — remove a widget from the dashboard.
+- **"Add Widget" button** — opens a picker: choose a widget type, then a trackable (if the type requires one), then configure options. Like adding a block in Notion.
+- **Tap to configure** — opens a settings sheet for that widget (chart height, toggles, etc.).
+
+#### Migration from Auto-Dashboard
+
+When the user upgrades, auto-generate `DashboardWidget` rows from existing visible trackables:
+- For each trackable with `isVisible == true`, create a `decay_card` widget.
+- Copy `showCumulativeLine` into the widget's config JSON.
+- If the trackable has an active taper plan, optionally add a `taper_progress` widget too.
+
+After migration:
+- **Remove `isVisible`'s dashboard meaning.** The `isVisible` flag stays but only controls log form dropdown visibility (renamed in the UI to "Show in log form" — which it already says). Dashboard presence is now controlled by having a widget.
+- **Remove `showCumulativeLine` from trackables table.** It lives in the widget config now.
+
+#### Default for New Trackables
+
+When a new trackable is created, auto-add a `decay_card` widget at the bottom of the dashboard. The user can remove it or rearrange it later. This keeps the "just works" experience for simple use cases — you don't have to manually configure the dashboard every time you add a trackable.
+
+#### Chart Style Experiment: Pan/Zoom with Gradient Fill
+
+Before building all the widget types, experiment with fl_chart's pan & scale features (see `line_chart_sample12.dart` in the fl_chart repo). That example shows:
+- **Gradient area fill** — yellow line with a gradient from semi-transparent at the top to transparent at the bottom. Looks more polished than our current flat `color.withAlpha(40)` fill.
+- **Horizontal pan & pinch-to-zoom** — the user can drag the chart left/right and zoom in/out. Could be great for zooming into a specific hour on a busy decay curve.
+- **Scrub tooltip with vertical line** — dashed red line + dot at the touch point with formatted date/time and value.
+
+Try this style on the existing decay curve chart first (just the gradient fill + scrub improvements, not necessarily pan/zoom yet). If it looks good, use it as the default chart style for all dashboard widgets. Pan/zoom could be optional per-widget in the config.
+
+### Milestone 11: Reminders & Medication Tracking
 
 Reminder system that works for two use cases: taper plan adherence and medication schedules.
 
@@ -275,7 +344,7 @@ Reminder system that works for two use cases: taper plan adherence and medicatio
 - When a trackable has an active taper plan, optionally attach reminders to help pace doses throughout the day (e.g., "You have 200mg budget left, consider your next dose at 2 PM").
 - Could suggest dose timing based on the taper target and your usual pattern.
 
-### Milestone 11: Data Export & Backup
+### Milestone 12: Data Export & Backup
 
 Two export features for different use cases, accessible from the Settings screen.
 
@@ -288,7 +357,7 @@ Two export features for different use cases, accessible from the Settings screen
 - Export trackables and dose logs as CSV files (one per table, or a single zip). Human-readable, openable in Excel/Google Sheets, useful for analysis or sharing with a doctor.
 - **Export only** — no CSV import. Reconstructing foreign keys and validating data from CSV is a lot of code for a feature nobody will use. If you need to restore, use the SQLite backup.
 
-### Milestone 12: Onboarding & First-Run Experience
+### Milestone 13: Onboarding & First-Run Experience
 
 The "make it feel like a real app" milestone. Runs on first launch (or when the user has no trackables).
 
