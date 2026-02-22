@@ -266,13 +266,14 @@ class _AddTaperPlanScreenState extends ConsumerState<AddTaperPlanScreen> {
   }
 
   /// Validates the target amount field.
+  /// Allows zero — tapering to zero is a valid goal (e.g., quit caffeine entirely).
   String? _targetAmountError() {
     final text = _targetAmountController.text.trim();
     if (_submitted && text.isEmpty) return 'Required';
     if (text.isEmpty) return null;
     final value = double.tryParse(text);
     if (value == null) return 'Enter a valid number';
-    if (value <= 0) return 'Must be greater than zero';
+    if (value < 0) return 'Cannot be negative';
     return null;
   }
 
@@ -290,8 +291,9 @@ class _AddTaperPlanScreenState extends ConsumerState<AddTaperPlanScreen> {
     final targetAmount = double.tryParse(_targetAmountController.text.trim());
 
     // If anything is invalid, mark as submitted so all errors show.
+    // Start must be > 0 (can't taper from nothing), target can be 0 (quit entirely).
     if (startAmount == null || startAmount <= 0 ||
-        targetAmount == null || targetAmount <= 0 ||
+        targetAmount == null || targetAmount < 0 ||
         !_endDate.isAfter(_startDate)) {
       _submitted = true;
       setState(() {});

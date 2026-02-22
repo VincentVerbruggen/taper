@@ -2,6 +2,11 @@
     <!-- Required for showing notifications on Android 13+ (API 33).
          Like adding a permission in AndroidManifest for push notifications. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required for scheduling exact alarms (reminders) on Android 12+ (API 31).
+         SCHEDULE_EXACT_ALARM requires user approval via system settings.
+         USE_EXACT_ALARM is for apps where alarms are core functionality. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"

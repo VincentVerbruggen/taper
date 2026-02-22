@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/log/add_dose_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/screens/log/log_dose_screen.dart';
@@ -12,8 +14,11 @@ import 'helpers/test_database.dart';
 
 void main() {
   late AppDatabase db;
+  late SharedPreferences prefs;
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
     db = createTestDatabase();
   });
 
@@ -27,6 +32,7 @@ void main() {
     return ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(db),
+        sharedPreferencesProvider.overrideWithValue(prefs),
       ],
       child: const MaterialApp(
         home: LogDoseScreen(),
@@ -277,6 +283,25 @@ void main() {
     expect(logs.length, 1);
     expect(logs.first.trackableId, 1);
     expect(logs.first.amount, 100.0);
+
+    await cleanUp(tester);
+  });
+
+  // --- Zero-dose display tests ---
+
+  testWidgets('zero-dose shows "Skipped" instead of amount', (tester) async {
+    // A dose with amount=0 means "I explicitly skipped this" — like a nullable
+    // boolean where null = no entry and false = skipped. The UI should show
+    // "Skipped" instead of "0 mg" to make the intent clear.
+    await db.insertDoseLog(1, 0, DateTime.now());
+
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Should show "Skipped" for zero-dose entries.
+    expect(find.text('Caffeine — Skipped'), findsOneWidget);
+    // Should NOT show "0 mg" — that would be confusing.
+    expect(find.text('Caffeine — 0 mg'), findsNothing);
 
     await cleanUp(tester);
   });

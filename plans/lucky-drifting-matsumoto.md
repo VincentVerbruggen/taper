@@ -1,169 +1,270 @@
-# Plan: Customizable Dashboard (Milestone 10)
+# Plan: Reminders & Zero-Dose Logging (Milestone 12)
 
 ## Context
 
-The dashboard currently auto-generates one card per visible trackable using `visibleTrackablesProvider`. This ties dashboard layout to the `isVisible` flag, which also controls log form dropdown visibility — two unrelated concerns. There's no way to add different views of the same trackable (e.g., decay curve AND taper progress side by side), reorder cards independently of trackable sort order, or remove a card without hiding the trackable from the log form.
+The app needs a reminders system for two use cases: medication schedules ("take thyroid meds at 8 AM") and logging gap detection ("I haven't logged coffee in 2 hours, probably forgot"). This also introduces zero-dose logging — logging `amount: 0` to explicitly record "I skipped this dose" vs. having no entry at all ("I forgot to log").
 
-This milestone decouples "what's on the dashboard" from "what trackables exist" by introducing a `DashboardWidgets` table. A trackable is a data source; a dashboard widget is a view of that data.
-
-**Scope:** 2 widget types (`decay_card` + `taper_progress`), edit mode in the dashboard header, no chart style changes.
+The edit trackable screen is already very long (1000+ lines) with inline sections for presets, thresholds, and taper plans. Adding reminders inline would make it unwieldy. So Step 1 refactors the edit screen to use **navigation tiles** that push to dedicated sub-screens — a standard mobile pattern (like iOS Settings). Reminders then gets its own screen from the start.
 
 ## Steps
 
-### Step 1: DashboardWidgets table + migration (v12 → v13)
+### Step 1: Refactor Edit Trackable — Extract Sub-Screens
+
+**Problem:** `edit_trackable_screen.dart` is ~1060 lines with `_buildPresetsSection()`, `_buildThresholdsSection()`, `_buildTaperPlansSection()`, and all their add/edit dialog methods inline.
+
+**Solution:** Replace each inline section with a summary `ListTile` that navigates to a dedicated screen. The edit screen keeps only: name, unit, color, decay model fields, visibility toggle, save/delete buttons.
+
+**File:** `lib/screens/trackables/edit_trackable_screen.dart`
+- Delete `_buildPresetsSection()`, `_showAddPresetDialog()`, `_showEditPresetDialog()` (~190 lines)
+- Delete `_buildThresholdsSection()`, `_showAddThresholdDialog()`, `_showEditThresholdDialog()` (~190 lines)
+- Delete `_buildTaperPlansSection()`, `_taperPlanStatus()`, `_formatDate()`, `_retryTaperPlan()`, `_addTaperPlan()` (~150 lines)
+- Replace with three navigation `ListTile`s between the color picker and decay model dropdown:
+
+```dart
+// --- Related data sections (click-through to sub-screens) ---
+_buildNavTile(
+  icon: Icons.bolt,
+  label: 'Presets',
+  summary: '${presets.length} presets', // from provider
+  onTap: () => Navigator.push(..., PresetsScreen(trackable: widget.trackable)),
+),
+_buildNavTile(
+  icon: Icons.horizontal_rule,
+  label: 'Thresholds',
+  summary: '${thresholds.length} thresholds',
+  onTap: () => Navigator.push(..., ThresholdsScreen(trackable: widget.trackable)),
+),
+_buildNavTile(
+  icon: Icons.trending_down,
+  label: 'Taper Plans',
+  summary: activePlan != null ? '1 active plan' : 'No active plan',
+  onTap: () => Navigator.push(..., TaperPlansScreen(trackable: widget.trackable)),
+),
+_buildNavTile(
+  icon: Icons.notifications_outlined,
+  label: 'Reminders',
+  summary: '${reminders.length} reminders', // added in Step 4
+  onTap: () => Navigator.push(..., RemindersScreen(trackable: widget.trackable)),
+),
+```
+
+Each tile: leading icon, title, subtitle with count/summary, trailing chevron icon.
+
+**New file:** `lib/screens/trackables/presets_screen.dart`
+- Receives `Trackable` via constructor
+- Full screen: `Scaffold` + `AppBar(title: 'Presets')` + FAB or AppBar action to add
+- Body: `ListView` of preset cards with edit-on-tap + swipe/button to delete
+- Move all preset dialog code here from edit_trackable_screen.dart
+- Watches `presetsProvider(trackable.id)` reactively
+
+**New file:** `lib/screens/trackables/thresholds_screen.dart`
+- Same pattern as presets screen but for thresholds
+
+**New file:** `lib/screens/trackables/taper_plans_screen.dart`
+- Same pattern, with plan status labels (Active/Completed/Superseded)
+- "New Taper Plan" pushes to existing `AddTaperPlanScreen`
+- Retry button copies params to a new plan
+
+**Tests to update:**
+- `test/edit_trackable_screen_test.dart` — update to check navigation tiles exist instead of inline sections
+- New test files for each extracted screen (can be lightweight initially)
+
+### Step 2: Database — Reminders Table + Migration v14 + CRUD
 
 **File:** `lib/data/database.dart`
 
-Add `DashboardWidgets` table class:
+Add `Reminders` table:
 ```
-id: int (PK)
-type: String ('decay_card' | 'taper_progress')
-trackableId: int? (nullable FK → trackables, cascade delete)
-sortOrder: int (default 0)
-config: String (default '{}', JSON blob for per-widget settings)
+id: int (PK, autoincrement)
+trackableId: int (FK → Trackables, cascade delete)
+type: text ('scheduled' | 'logging_gap')
+label: text (user-friendly name, e.g., "Morning dose")
+isEnabled: bool (default true)
+
+-- Scheduled reminder fields --
+scheduledTime: text? (HH:MM format)
+isRecurring: bool (default true)
+oneTimeDate: DateTime? (for one-time scheduled)
+nagEnabled: bool (default false)
+nagIntervalMinutes: int? (e.g., 15)
+
+-- Logging gap fields --
+windowStart: text? (HH:MM format)
+windowEnd: text? (HH:MM format)
+gapMinutes: int? (e.g., 120)
 ```
 
-Add to `@DriftDatabase(tables: [..., DashboardWidgets])`. Bump schema to 13.
+Add to `@DriftDatabase(tables: [..., Reminders])`. Bump schema to 14.
 
-**Migration (`if (from < 13)`):**
-1. `m.createTable(dashboardWidgets)`
-2. For each visible trackable: insert a `decay_card` widget (copy sortOrder, move `showCumulativeLine` into config JSON)
-3. For each visible trackable with an active taper plan: also insert a `taper_progress` widget (sortOrder after all cards)
+**Migration v14:**
+```dart
+if (from < 14) {
+  await m.createTable(reminders);
+}
+```
 
-**onCreate seeder update:** After inserting Caffeine/Water/Alcohol, also insert `decay_card` widgets for Caffeine (sortOrder 1) and Water (sortOrder 2). Alcohol is hidden, no widget.
+No data migration needed — fresh table, no existing data to convert.
+
+**CRUD methods:**
+- `watchReminders(int trackableId)` → `Stream<List<Reminder>>` ordered by label
+- `getReminders(int trackableId)` → `Future<List<Reminder>>` one-shot
+- `getAllEnabledReminders()` → `Future<List<Reminder>>` across all trackables (for app-start scheduling)
+- `insertReminder(trackableId, type, label, {scheduledTime, isRecurring, oneTimeDate, nagEnabled, nagIntervalMinutes, windowStart, windowEnd, gapMinutes})` → `Future<int>`
+- `updateReminder(id, {label, isEnabled, scheduledTime, ...})` → `Future<int>` using `Value<T>` pattern
+- `deleteReminder(id)` → `Future<int>`
 
 Run codegen: `dart run build_runner build --delete-conflicting-outputs`
 
-### Step 2: Database CRUD methods for dashboard widgets
+### Step 3: ReminderType Enum + Provider
 
-**File:** `lib/data/database.dart`
-
-Add to `AppDatabase`:
-- `watchDashboardWidgets()` → `Stream<List<DashboardWidget>>` ordered by sortOrder
-- `insertDashboardWidget(type, {trackableId, config})` → auto-assigns sortOrder = max + 1
-- `deleteDashboardWidget(id)`
-- `reorderDashboardWidgets(List<int> orderedIds)` → transaction, same pattern as `reorderTrackables()`
-- `updateDashboardWidgetConfig(id, config)`
-
-**Also modify `insertTrackable()`:** After inserting the trackable, call `insertDashboardWidget('decay_card', trackableId: trackableId)` so new trackables auto-appear on the dashboard.
-
-### Step 3: DashboardWidgetType enum + provider
-
-**New file:** `lib/data/dashboard_widget_type.dart`
-- Enum: `decayCard`, `taperProgress`
-- `fromString(String)` → parses DB value (`'decay_card'` / `'taper_progress'`)
-- `toDbString()` → converts back
-- `displayName` getter → human-readable labels for the add dialog
+**New file:** `lib/data/reminder_type.dart`
+- Enum: `scheduled`, `loggingGap`
+- `fromString('scheduled' | 'logging_gap')`, `toDbString()`, `displayName`
+- Same pattern as `DecayModel` and `DashboardWidgetType`
 
 **File:** `lib/providers/database_providers.dart`
-- Add `dashboardWidgetsProvider = StreamProvider<List<DashboardWidget>>` wrapping `db.watchDashboardWidgets()`
+- Add `remindersProvider = StreamProvider.family<List<Reminder>, int>` wrapping `db.watchReminders(trackableId)`
 
-### Step 4: Inline TaperProgressCard widget
+### Step 4: ReminderScheduler Service
 
-**New file:** `lib/screens/dashboard/widgets/taper_progress_card.dart`
+**New dependency:** Add `timezone` to `pubspec.yaml` (required for `zonedSchedule()`)
 
-A `ConsumerWidget` that renders the taper progress chart inline as a dashboard card. Adapts chart logic from `TaperProgressScreen` but:
-- Wrapped in a `Card` with the trackable's colored left border (matching `TrackableCard` styling)
-- Chart height 200px (not 300px)
-- No `InteractiveViewer` (card is too small for zoom/pan)
-- No `AppBar` / `Scaffold` — just the card content
-- Tapping the card pushes the full `TaperProgressScreen`
-- Handles the case where the active plan disappears (e.g., user deletes it) — show empty state
+**File:** `android/app/src/main/AndroidManifest.xml`
+- Add `<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />`
+- Add `<uses-permission android:name="android.permission.USE_EXACT_ALARM" />`
 
-Constructor: `TaperProgressCard({required int trackableId})`
+**File:** `lib/services/notification_service.dart`
+- Expose plugin: `FlutterLocalNotificationsPlugin get plugin => _plugin!;`
+- Add a second notification channel `'reminders_v1'` with `Importance.high` (heads-up banners — these are user-requested alarms, not quiet tickers)
 
-Watches: `trackablesProvider` (for trackable data), `activeTaperPlanProvider(trackableId)` (for the plan), `dayBoundaryHourProvider`, `databaseProvider` (for dose streams).
+**New file:** `lib/services/reminder_scheduler.dart`
 
-### Step 5: Rewire DashboardScreen to use dashboard widgets
+Singleton service that schedules/cancels reminder notifications via `flutter_local_notifications`.
 
-**File:** `lib/screens/dashboard_screen.dart`
+**Notification ID scheme:**
+- Existing tracking notification: ID 42 (unchanged)
+- Reminders: `10000 + reminder.id * 100 + offset`
+  - offset 0 = main scheduled notification
+  - offset 1–8 = nag notifications (pre-scheduled at intervals)
+  - offset 50 = gap notification
 
-Replace `ref.watch(visibleTrackablesProvider)` with `ref.watch(dashboardWidgetsProvider)`.
+**Key methods:**
 
-The `ListView.builder` switches on `DashboardWidgetType.fromString(widget.type)`:
-- `decayCard` → `TrackableCard(trackableId: widget.trackableId!)`
-- `taperProgress` → `TaperProgressCard(trackableId: widget.trackableId!)`
+`scheduleReminder(Reminder, Trackable)` — branches on type:
+- **Scheduled + recurring:** `zonedSchedule()` with `DateTimeComponents.time` (daily repeat)
+- **Scheduled + one-time:** `zonedSchedule()` with specific date (fires once)
+- **Scheduled + nag:** Pre-schedule up to 8 nag notifications at `nagIntervalMinutes` apart, using IDs offset 1–8. Covers up to 2 hours of nagging. Cancelled when a dose is logged.
+- **Logging gap:** Schedule notification at `lastDoseTime + gapMinutes`. If no dose today and inside window, schedule at `windowStart + gapMinutes`. If outside window, schedule for tomorrow.
 
-Update empty state text: "No dashboard widgets. Tap the edit icon to add one."
+`cancelReminder(int reminderId)` — cancel all IDs for this reminder (main + nags + gap)
 
-At this point the dashboard renders identically to before (migration seeded the same layout), but reads from the new table.
+`cancelNagNotifications(int reminderId)` — cancel only nag slots (called on dose log)
 
-### Step 6: Edit mode (toggle, reorder, delete)
+`rescheduleGapReminder(Reminder, DateTime lastDoseTime)` — cancel + reschedule gap notification
 
-**File:** `lib/screens/dashboard_screen.dart`
+`scheduleAllReminders(AppDatabase db)` — called on app start. Queries all enabled reminders, schedules each.
 
-Convert from `ConsumerWidget` to `ConsumerStatefulWidget`. Add `_isEditMode` bool (local state — resets naturally, no provider needed).
+`onDoseLogged(AppDatabase db, int trackableId, DateTime loggedAt)` — called from `insertDoseLog()`. Cancels nag notifications and reschedules gap reminders for the trackable.
 
-**Header change:** Add a pencil/check icon button to the date nav row that toggles `_isEditMode`.
+### Step 5: Reminders Screen (UI)
 
-**Edit mode rendering:** Replace `ListView.builder` with `ReorderableListView.builder`:
-- Each item shows a simplified label (drag handle + colored dot + trackable name + type label + delete X button) instead of the full card. Full cards are expensive and their interactive buttons conflict with drag gestures.
-- "Add Widget" button as the last item
-- `onReorder` → call `db.reorderDashboardWidgets(reorderedIds)`
-- Delete button → call `db.deleteDashboardWidget(widget.id)`
+**New file:** `lib/screens/trackables/reminders_screen.dart`
 
-**Normal mode:** Unchanged `ListView.builder` from Step 5.
+Full screen for managing reminders per-trackable. Receives `Trackable` via constructor.
 
-### Step 7: "Add Widget" dialog
+- `AppBar(title: 'Reminders')` with add button in actions
+- `ListView` of reminder cards, each showing:
+  - **Title:** `reminder.label`
+  - **Subtitle:** formatted schedule info:
+    - Scheduled: "Daily at 8:00 AM" or "Feb 22 at 8:00 AM" + " · Nag every 15 min" if enabled
+    - Gap: "7:00 AM – 3:30 PM · Nudge after 2h"
+  - **Trailing:** enable/disable `Switch` + delete `IconButton`
+  - **On tap:** opens edit dialog
 
-**File:** `lib/screens/dashboard_screen.dart` (method on the StatefulWidget)
+**Add Reminder dialog:**
+- Type selector: `SegmentedButton` with "Scheduled" / "Logging Gap"
+- Fields shown conditionally based on type:
 
-Two-step dialog:
-1. Pick widget type (SimpleDialog with `decay_card` and `taper_progress` options)
-2. Pick a trackable (SimpleDialog listing trackables with color dots)
-   - For `taper_progress`: filter to only trackables with an active taper plan. If none, show a SnackBar and bail.
+For Scheduled:
+- Label text field (required)
+- Time picker button (required)
+- "Repeat daily" switch (default on)
+- Date picker (shown only when not recurring)
+- "Nag until logged" switch (default off)
+- Nag interval text field (shown only when nag enabled, required)
 
-Insert via `db.insertDashboardWidget(type.toDbString(), trackableId: selected.id)`.
+For Logging Gap:
+- Label text field (required)
+- Window start time picker (required)
+- Window end time picker (required, must be after start)
+- Gap threshold text field in minutes (required)
+
+Validation follows the `_submitted` pattern. On save: `insertReminder()` → `ReminderScheduler.scheduleReminder()`.
+
+**Edit dialog:** Same form, pre-filled. On save: `updateReminder()` → `cancelReminder()` → `scheduleReminder()`.
+
+### Step 6: Wire Up — App Start + Dose Log Hook
+
+**File:** `lib/main.dart`
+- Import `timezone` and `ReminderScheduler`
+- After `NotificationService.init()`: init ReminderScheduler with the plugin
+- After demo data seeding: call `ReminderScheduler.instance.scheduleAllReminders(db)`
+
+**File:** `lib/data/database.dart` — in `insertDoseLog()`:
+- After inserting the dose, call `ReminderScheduler.instance.onDoseLogged(this, trackableId, loggedAt)`
+- This hooks into ALL dose logging paths (quick-add, add screen, notification repeat, undo restore) with a single change
+
+### Step 7: Zero-Dose Logging
+
+**File:** `lib/utils/validation.dart`
+- Add new function `numericFieldErrorAllowZero(text)` — same as `numericFieldError` but `value < 0` instead of `value <= 0`
+- Keep existing `numericFieldError` for presets/thresholds (where 0 makes no sense)
+
+**Files to update for dose forms:**
+- `lib/screens/log/add_dose_screen.dart` — use `numericFieldErrorAllowZero` for amount field
+- `lib/screens/log/edit_dose_screen.dart` — same
+- `lib/screens/shared/quick_add_dose_dialog.dart` — same
+
+**Display:** When a dose has `amount == 0`, show "Skipped" instead of "0 mg" in:
+- `lib/screens/log/log_dose_screen.dart` — dose list
+- `lib/screens/dashboard/trackable_log_screen.dart` — trackable dose history
 
 ### Step 8: Tests
 
-**Update:** `test/dashboard_screen_test.dart`
-- Tests still work because `onCreate` now seeds dashboard widgets for Caffeine + Water
-- "empty state" test: delete dashboard widgets instead of hiding trackables
-- Add: edit mode toggle shows/hides drag handles
-- Add: add widget dialog shows type options
+**New test files:**
+- `test/reminders_database_test.dart` — CRUD: insert, watch, update, delete, cascade on trackable delete, getAllEnabled
+- `test/reminders_screen_test.dart` — renders empty state, add dialog shows correct fields per type, enable/disable toggle, delete
+- `test/presets_screen_test.dart` — extracted presets screen works correctly
+- `test/thresholds_screen_test.dart` — extracted thresholds screen works correctly
 
-**New:** `test/dashboard_widgets_test.dart` (database-level)
-- Fresh DB seeds Caffeine + Water widgets
-- CRUD: insert, delete, reorder, update config
-- Auto-add on trackable creation
-- Cascade delete: delete trackable → widgets gone
-
-**New:** `test/taper_progress_card_test.dart` (widget test)
-- Renders plan summary and chart when active plan exists
-- Shows empty/fallback state when no active plan
-- Tapping navigates to full TaperProgressScreen
+**Updated test files:**
+- `test/edit_trackable_screen_test.dart` — navigation tiles appear with correct counts, tapping navigates to sub-screens
+- `test/log_dose_screen_test.dart` — zero-dose acceptance, "Skipped" display
 
 ## Files to modify/create
 
 | File | Action |
 |------|--------|
-| `lib/data/database.dart` | Modify: new table, migration v13, CRUD methods, auto-add in insertTrackable |
-| `lib/data/database.g.dart` | Regenerated by codegen |
-| `lib/data/dashboard_widget_type.dart` | **New**: enum with parse/serialize/display |
-| `lib/providers/database_providers.dart` | Modify: add `dashboardWidgetsProvider` |
-| `lib/screens/dashboard_screen.dart` | Modify: switch to ConsumerStatefulWidget, use widgets provider, edit mode, add dialog |
-| `lib/screens/dashboard/widgets/taper_progress_card.dart` | **New**: inline progress card |
-| `test/dashboard_screen_test.dart` | Modify: update for widget-based dashboard |
-| `test/dashboard_widgets_test.dart` | **New**: DB-level widget CRUD tests |
-| `test/taper_progress_card_test.dart` | **New**: widget tests for inline progress card |
-
-## Existing code to reuse
-
-- `reorderTrackables()` pattern in `database.dart` → same transaction-based reorder for widgets
-- `TrackableCard` widget → unchanged, just passed `trackableId` from widget table instead of trackable list
-- `TaperProgressScreen._buildChart()` logic → adapted (not shared) for the inline card
-- `DecayCurveChart` → used as-is inside TrackableCard
-- `trackableCardDataProvider` → unchanged, still powers TrackableCard
-- `activeTaperPlanProvider` → reused by TaperProgressCard
-- `DashboardWidget` Drift data class → auto-generated by codegen
-
-## What stays unchanged
-
-- `isVisible` on trackables — still controls log form dropdown visibility
-- `showCumulativeLine` on trackables — stays for backward compat, but dashboard reads from widget config JSON
-- `TrackableCard` widget — zero changes, still watches `trackableCardDataProvider(trackableId)`
-- `TaperProgressScreen` — unchanged full-screen view, card just navigates to it
+| `lib/screens/trackables/edit_trackable_screen.dart` | **Modify**: remove inline sections, add navigation tiles |
+| `lib/screens/trackables/presets_screen.dart` | **New**: extracted presets management screen |
+| `lib/screens/trackables/thresholds_screen.dart` | **New**: extracted thresholds management screen |
+| `lib/screens/trackables/taper_plans_screen.dart` | **New**: extracted taper plans management screen |
+| `lib/data/database.dart` | **Modify**: new Reminders table, migration v14, CRUD methods, dose log hook |
+| `lib/data/database.g.dart` | **Regenerated** by codegen |
+| `lib/data/reminder_type.dart` | **New**: enum with fromString/toDbString/displayName |
+| `lib/providers/database_providers.dart` | **Modify**: add remindersProvider |
+| `lib/services/notification_service.dart` | **Modify**: expose plugin, add reminders notification channel |
+| `lib/services/reminder_scheduler.dart` | **New**: scheduling engine (schedule, cancel, reschedule, dose log hook) |
+| `lib/screens/trackables/reminders_screen.dart` | **New**: reminders management screen |
+| `lib/main.dart` | **Modify**: init timezone + scheduler, schedule-all on start |
+| `lib/utils/validation.dart` | **Modify**: add numericFieldErrorAllowZero |
+| `lib/screens/log/add_dose_screen.dart` | **Modify**: allow amount=0 |
+| `lib/screens/log/edit_dose_screen.dart` | **Modify**: allow amount=0 |
+| `lib/screens/shared/quick_add_dose_dialog.dart` | **Modify**: allow amount=0 |
+| `lib/screens/log/log_dose_screen.dart` | **Modify**: show "Skipped" for amount=0 |
+| `lib/screens/dashboard/trackable_log_screen.dart` | **Modify**: show "Skipped" for amount=0 |
+| `pubspec.yaml` | **Modify**: add timezone dependency |
+| `android/app/src/main/AndroidManifest.xml` | **Modify**: add alarm permissions |
 
 ## Verification
 
@@ -174,12 +275,12 @@ flutter test --timeout 10s
 ```
 
 Manual testing:
-1. Fresh install → dashboard shows Caffeine + Water cards (as before)
-2. Tap edit icon → cards collapse to labels with drag handles + delete buttons
-3. Drag to reorder → order persists after toggling edit mode off
-4. Delete a widget → card disappears, trackable still exists in log form
-5. Tap "Add Widget" → pick type → pick trackable → new card appears
-6. Add a taper plan to a trackable → add a "Taper Progress" widget → inline chart renders
-7. Tap the taper progress card → full TaperProgressScreen opens
-8. Create a new trackable → decay_card auto-appears on dashboard
-9. Delete a trackable → its dashboard widgets are cascade-deleted
+1. Edit trackable → see navigation tiles for Presets, Thresholds, Taper Plans, Reminders
+2. Tap each tile → navigates to dedicated sub-screen with full CRUD
+3. Add a scheduled reminder → notification fires at the set time
+4. Add a logging gap reminder → notification fires after gap elapses
+5. Log a dose → nag notifications cancel, gap reminder reschedules
+6. Log amount=0 → shows "Skipped" in log, dismisses nag reminders
+7. Toggle reminder off → notification cancelled
+8. Delete trackable → reminders cascade-deleted
+9. Kill + restart app → all enabled reminders re-scheduled

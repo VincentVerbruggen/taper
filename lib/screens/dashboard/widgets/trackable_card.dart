@@ -102,32 +102,39 @@ class TrackableCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // --- Compact title row: name left, stats right ---
-              // "Caffeine     42 / 180 mg" (with half-life)
-              // "Water            500 ml"  (without half-life)
-              // Like a table row with name and summary in one line.
+              // --- Compact title row: name + stats left, menu pinned right ---
+              // "Caffeine  42 / 180 mg                ⋮"
               Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
                 children: [
-                  // Trackable name: takes remaining space, truncates with ellipsis.
-                  Flexible(
-                    child: Text(
-                      trackable.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  // Name + stats expand to fill available space.
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        // Trackable name: shrinks with ellipsis if space is tight.
+                        Flexible(
+                          child: Text(
+                            trackable.name,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Stats summary: doesn't shrink.
+                        Text(
+                          _buildStatsText(data),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // Stats summary: aligned right, doesn't shrink.
-                  Text(
-                    _buildStatsText(data),
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+                  // Three-dot menu pinned to the right edge.
+                  _buildOverflowMenu(context, ref, data),
                 ],
               ),
 
@@ -199,6 +206,76 @@ class TrackableCard extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// Builds the three-dot overflow menu for the card title row.
+  /// Mirrors the toolbar buttons (Repeat Last, Add Dose, View Log, Progress)
+  /// so users can access actions from the top of the card.
+  Widget _buildOverflowMenu(BuildContext context, WidgetRef ref, TrackableCardData data) {
+    return PopupMenuButton<String>(
+      icon: Icon(
+        Icons.more_vert,
+        size: 20,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      tooltip: 'More actions',
+      // Compact padding so the icon doesn't add too much height to the title row.
+      padding: EdgeInsets.zero,
+      onSelected: (value) {
+        switch (value) {
+          case 'repeat':
+            _repeatLast(context, ref, data);
+          case 'add':
+            _addDose(context, ref, data.trackable);
+          case 'log':
+            _viewLog(context, data.trackable);
+          case 'progress':
+            _viewProgress(context, data);
+        }
+      },
+      itemBuilder: (context) => [
+        // "Repeat Last" — only if there's a previous dose to repeat.
+        if (data.lastDose != null)
+          const PopupMenuItem(
+            value: 'repeat',
+            child: ListTile(
+              leading: Icon(Icons.replay),
+              title: Text('Repeat Last'),
+              visualDensity: VisualDensity.compact,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        const PopupMenuItem(
+          value: 'add',
+          child: ListTile(
+            leading: Icon(Icons.add),
+            title: Text('Add Dose'),
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'log',
+          child: ListTile(
+            leading: Icon(Icons.history),
+            title: Text('View Log'),
+            visualDensity: VisualDensity.compact,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        // "Progress" — only if there's an active taper plan.
+        if (data.activeTaperPlan != null)
+          const PopupMenuItem(
+            value: 'progress',
+            child: ListTile(
+              leading: Icon(Icons.trending_down),
+              title: Text('Progress'),
+              visualDensity: VisualDensity.compact,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+      ],
     );
   }
 

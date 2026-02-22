@@ -6,6 +6,7 @@ import 'package:taper/data/database.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/home_screen.dart';
 import 'package:taper/services/notification_service.dart';
+import 'package:taper/services/reminder_scheduler.dart';
 
 /// Global navigator key — gives the notification service access to the
 /// navigator for opening dialogs (like "Add Dose") from outside the widget tree.
@@ -35,6 +36,13 @@ void main() async {
   // (e.g., "Add Dose" quick-add dialog) from notification action callbacks.
   NotificationService.instance.navigatorKey = navigatorKey;
 
+  // Initialize the reminder scheduler with the notification plugin.
+  // Must happen after NotificationService.init() so the plugin is ready.
+  // The scheduler needs the plugin to call zonedSchedule() for time-based
+  // notifications. Also initializes timezone data (~1MB, runs once).
+  // Like registering a dependent service that needs another service's handle.
+  ReminderScheduler.instance.init(NotificationService.instance.plugin!);
+
   // Load SharedPreferences before runApp so it's available synchronously
   // in all providers. Like loading config before booting the app container.
   final prefs = await SharedPreferences.getInstance();
@@ -48,6 +56,16 @@ void main() async {
     await db.seedDemoData();
     await db.close();
     await prefs.setBool('demo_data_seeded', true);
+  }
+
+  // Schedule all enabled reminders on app start.
+  // Queries all enabled reminders from the DB and schedules notifications
+  // via zonedSchedule(). Like loading cron jobs from the database on boot.
+  // Uses a temporary DB connection (same pattern as demo data seeding).
+  {
+    final db = AppDatabase();
+    await ReminderScheduler.instance.scheduleAllReminders(db);
+    await db.close();
   }
 
   runApp(

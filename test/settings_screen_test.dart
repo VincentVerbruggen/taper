@@ -178,11 +178,11 @@ void main() {
   // Helper: scroll the Data section into view.
   // The trackable list at the top now pushes data management items off-screen.
   Future<void> scrollToDataSection(WidgetTester tester) async {
-    await tester.scrollUntilVisible(
-      find.text('Data'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
+    // Use ensureVisible which works regardless of which Scrollable is first.
+    // The outer ListView and the ReorderableListView's internal Scrollable
+    // can cause find.byType(Scrollable).first to pick the wrong one.
+    await tester.ensureVisible(find.text('Data'));
+    await tester.pump();
   }
 
   group('Data section', () {

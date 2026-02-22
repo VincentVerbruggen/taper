@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
+import 'package:taper/services/reminder_scheduler.dart';
+
 // Code generator output — run: dart run build_runner build --delete-conflicting-outputs
 part 'database.g.dart';
 
@@ -228,6 +230,86 @@ class Thresholds extends Table {
   RealColumn get amount => real()();
 }
 
+/// Reminders table — scheduled notifications per trackable.
+///
+/// Each trackable can have multiple reminders (e.g., "Morning dose" at 8 AM,
+/// "Logging gap" during 7 AM – 3 PM). Two types:
+///   - Scheduled: fire at a specific time (daily recurring or one-time)
+///   - Logging gap: fire when no dose logged within a time window
+///
+/// Laravel equivalent:
+///   Schema::create('reminders', function (Blueprint $table) {
+///       $table->id();
+///       $table->foreignId('trackable_id')->constrained()->cascadeOnDelete();
+///       $table->string('type');  // 'scheduled' | 'logging_gap'
+///       $table->string('label');
+///       $table->boolean('is_enabled')->default(true);
+///       // Scheduled fields
+///       $table->string('scheduled_time')->nullable();  // HH:MM
+///       $table->boolean('is_recurring')->default(true);
+///       $table->dateTime('one_time_date')->nullable();
+///       $table->boolean('nag_enabled')->default(false);
+///       $table->unsignedInteger('nag_interval_minutes')->nullable();
+///       // Logging gap fields
+///       $table->string('window_start')->nullable();  // HH:MM
+///       $table->string('window_end')->nullable();  // HH:MM
+///       $table->unsignedInteger('gap_minutes')->nullable();
+///   });
+class Reminders extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // FK to trackables table. When a trackable is deleted, its reminders go too.
+  IntColumn get trackableId => integer().references(Trackables, #id)();
+
+  // Reminder type: 'scheduled' or 'logging_gap'.
+  // Determines which fields are relevant and how the scheduler handles it.
+  TextColumn get type => text()();
+
+  // User-friendly name displayed in the reminders list and notification title.
+  // E.g., "Morning dose", "Afternoon check-in".
+  TextColumn get label => text()();
+
+  // Master on/off switch. Disabled reminders stay in the list but don't fire.
+  // Like a cron job that's commented out — preserved but inactive.
+  BoolColumn get isEnabled => boolean().withDefault(const Constant(true))();
+
+  // --- Scheduled reminder fields ---
+
+  // Time of day to fire, stored as "HH:MM" text (e.g., "08:00").
+  // Nullable because logging_gap reminders don't have a scheduled time.
+  TextColumn get scheduledTime => text().nullable()();
+
+  // Whether this reminder repeats daily (true) or fires once (false).
+  // One-time reminders use oneTimeDate for the specific date.
+  BoolColumn get isRecurring => boolean().withDefault(const Constant(true))();
+
+  // Specific date for one-time (non-recurring) scheduled reminders.
+  // Null for recurring reminders and logging gap reminders.
+  DateTimeColumn get oneTimeDate => dateTime().nullable()();
+
+  // Whether to send follow-up "nag" notifications at intervals until a dose
+  // is logged. Useful for medication reminders where missing a dose matters.
+  BoolColumn get nagEnabled => boolean().withDefault(const Constant(false))();
+
+  // Interval between nag notifications in minutes (e.g., 15 = nag every 15 min).
+  // Only relevant when nagEnabled = true. Null otherwise.
+  IntColumn get nagIntervalMinutes => integer().nullable()();
+
+  // --- Logging gap fields ---
+
+  // Start of the daily window during which gap detection is active.
+  // Stored as "HH:MM" text (e.g., "07:00"). Null for scheduled reminders.
+  TextColumn get windowStart => text().nullable()();
+
+  // End of the daily window. Stored as "HH:MM" text (e.g., "15:30").
+  // Gap detection only fires between windowStart and windowEnd.
+  TextColumn get windowEnd => text().nullable()();
+
+  // How many minutes of inactivity before the reminder fires.
+  // E.g., 120 = notify if no dose logged in 2 hours. Null for scheduled reminders.
+  IntColumn get gapMinutes => integer().nullable()();
+}
+
 /// Dashboard widgets table — decouples "what's on the dashboard" from trackable visibility.
 ///
 /// Each widget is a card on the dashboard that shows a view of a trackable's data.
@@ -267,7 +349,7 @@ class DashboardWidgets extends Table {
 
 /// AppDatabase = the database singleton.
 /// Like DatabaseServiceProvider + config/database.php in Laravel.
-@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds, TaperPlans, DashboardWidgets])
+@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds, TaperPlans, DashboardWidgets, Reminders])
 class AppDatabase extends _$AppDatabase {
   // Default constructor uses platform-specific SQLite via drift_flutter.
   AppDatabase() : super(driftDatabase(name: 'taper'));
@@ -277,7 +359,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -534,6 +616,12 @@ class AppDatabase extends _$AppDatabase {
             nextSort++;
           }
         }
+      }
+      if (from < 14) {
+        // v13 → v14: Add reminders table for scheduled notifications per trackable.
+        // Supports two types: scheduled (fire at specific time) and logging_gap
+        // (fire when no dose logged for a while).
+        await m.createTable(reminders);
       }
     },
   );
@@ -854,8 +942,14 @@ class AppDatabase extends _$AppDatabase {
   /// Insert a new dose log, optionally with a preset name.
   /// [name] = preset name (e.g., "Espresso") if logged via a preset chip, null otherwise.
   /// Like: DoseLog::create(['trackable_id' => $id, 'amount' => 90, 'logged_at' => now(), 'name' => 'Espresso'])
-  Future<int> insertDoseLog(int trackableId, double amount, DateTime loggedAt, {String? name}) {
-    return into(doseLogs).insert(
+  /// Insert a dose log entry and notify the reminder scheduler.
+  ///
+  /// The scheduler hook cancels nag notifications (user responded to the
+  /// reminder) and reschedules gap reminders (pushes the gap timer forward).
+  /// This single hook covers ALL dose logging paths: quick-add, add screen,
+  /// notification repeat, undo restore — like a model observer in Laravel.
+  Future<int> insertDoseLog(int trackableId, double amount, DateTime loggedAt, {String? name}) async {
+    final id = await into(doseLogs).insert(
       DoseLogsCompanion.insert(
         trackableId: trackableId,
         amount: amount,
@@ -863,6 +957,15 @@ class AppDatabase extends _$AppDatabase {
         name: Value(name),
       ),
     );
+
+    // Notify the reminder scheduler that a dose was logged.
+    // Import is deferred to avoid circular dependencies — the scheduler
+    // depends on this DB class, so we import it lazily here.
+    // This is a fire-and-forget call; we don't await it because the
+    // dose insert should complete quickly regardless of notification scheduling.
+    ReminderScheduler.instance.onDoseLogged(this, trackableId, loggedAt);
+
+    return id;
   }
 
   /// Delete a dose log by ID.
@@ -1002,6 +1105,18 @@ class AppDatabase extends _$AppDatabase {
 
   // --- Taper plan queries ---
 
+  /// One-shot query for the active taper plan for a trackable.
+  /// Returns null if no active plan exists. Always hits the DB fresh.
+  /// Used by the "Add Widget" dialog to check eligibility.
+  /// Like: TaperPlan::where('trackable_id', $id)->where('is_active', true)->first()
+  Future<TaperPlan?> getActiveTaperPlan(int trackableId) {
+    return (select(taperPlans)
+          ..where((t) =>
+              t.trackableId.equals(trackableId) & t.isActive.equals(true))
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   /// Watch the active taper plan for a trackable (reactive stream).
   /// Returns null if no active plan exists.
   /// Used by the dashboard card to show today's target.
@@ -1127,6 +1242,108 @@ class AppDatabase extends _$AppDatabase {
   Future<int> updateDashboardWidgetConfig(int id, String config) {
     return (update(dashboardWidgets)..where((t) => t.id.equals(id)))
         .write(DashboardWidgetsCompanion(config: Value(config)));
+  }
+
+  // --- Reminder queries ---
+
+  /// Watch reminders for a trackable, sorted by label (reactive stream).
+  /// Used by the reminders screen to list all reminders for a trackable.
+  /// Like: Reminder::where('trackable_id', $id)->orderBy('label')->get()
+  Stream<List<Reminder>> watchReminders(int trackableId) {
+    return (select(reminders)
+          ..where((t) => t.trackableId.equals(trackableId))
+          ..orderBy([(t) => OrderingTerm.asc(t.label)]))
+        .watch();
+  }
+
+  /// Get reminders for a trackable (one-shot, not reactive).
+  /// Like: Reminder::where('trackable_id', $id)->orderBy('label')->get()
+  Future<List<Reminder>> getReminders(int trackableId) {
+    return (select(reminders)
+          ..where((t) => t.trackableId.equals(trackableId))
+          ..orderBy([(t) => OrderingTerm.asc(t.label)]))
+        .get();
+  }
+
+  /// Get all enabled reminders across all trackables (one-shot).
+  /// Used at app start to schedule all active reminders.
+  /// Like: Reminder::where('is_enabled', true)->get()
+  Future<List<Reminder>> getAllEnabledReminders() {
+    return (select(reminders)
+          ..where((t) => t.isEnabled.equals(true)))
+        .get();
+  }
+
+  /// Insert a new reminder.
+  /// Returns the auto-increment ID of the new reminder.
+  /// Like: Reminder::create([...])
+  Future<int> insertReminder({
+    required int trackableId,
+    required String type,
+    required String label,
+    String? scheduledTime,
+    bool isRecurring = true,
+    DateTime? oneTimeDate,
+    bool nagEnabled = false,
+    int? nagIntervalMinutes,
+    String? windowStart,
+    String? windowEnd,
+    int? gapMinutes,
+  }) {
+    return into(reminders).insert(
+      RemindersCompanion.insert(
+        trackableId: trackableId,
+        type: type,
+        label: label,
+        scheduledTime: Value(scheduledTime),
+        isRecurring: Value(isRecurring),
+        oneTimeDate: Value(oneTimeDate),
+        nagEnabled: Value(nagEnabled),
+        nagIntervalMinutes: Value(nagIntervalMinutes),
+        windowStart: Value(windowStart),
+        windowEnd: Value(windowEnd),
+        gapMinutes: Value(gapMinutes),
+      ),
+    );
+  }
+
+  /// Update a reminder's fields.
+  /// Uses the Value<T> pattern so callers can distinguish "don't change"
+  /// from "set to null" from "set to a specific value".
+  /// Like: Reminder::find($id)->update([...])
+  Future<int> updateReminder(
+    int id, {
+    String? label,
+    Value<bool> isEnabled = const Value.absent(),
+    Value<String?> scheduledTime = const Value.absent(),
+    Value<bool> isRecurring = const Value.absent(),
+    Value<DateTime?> oneTimeDate = const Value.absent(),
+    Value<bool> nagEnabled = const Value.absent(),
+    Value<int?> nagIntervalMinutes = const Value.absent(),
+    Value<String?> windowStart = const Value.absent(),
+    Value<String?> windowEnd = const Value.absent(),
+    Value<int?> gapMinutes = const Value.absent(),
+  }) {
+    final companion = RemindersCompanion(
+      label: label != null ? Value(label) : const Value.absent(),
+      isEnabled: isEnabled,
+      scheduledTime: scheduledTime,
+      isRecurring: isRecurring,
+      oneTimeDate: oneTimeDate,
+      nagEnabled: nagEnabled,
+      nagIntervalMinutes: nagIntervalMinutes,
+      windowStart: windowStart,
+      windowEnd: windowEnd,
+      gapMinutes: gapMinutes,
+    );
+    return (update(reminders)..where((t) => t.id.equals(id)))
+        .write(companion);
+  }
+
+  /// Delete a reminder by ID.
+  /// Like: Reminder::destroy($id)
+  Future<int> deleteReminder(int id) {
+    return (delete(reminders)..where((t) => t.id.equals(id))).go();
   }
 
   /// Watch recent dose logs (last 50), newest first, with trackable name.

@@ -93,17 +93,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       // +1 for the edit toggle row at index 0.
       itemCount: widgets.length + 1,
       itemBuilder: (context, index) {
-        // First item = edit toggle aligned right.
+        // First item = "Dashboard" heading with edit toggle on the right.
+        // Matches the pattern used by Log, Trackables, and Settings tabs.
         if (index == 0) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'Edit dashboard',
-                onPressed: () => setState(() => _isEditMode = true),
-              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Dashboard',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'Edit dashboard',
+                  onPressed: () => setState(() => _isEditMode = true),
+                ),
+              ],
             ),
           );
         }
@@ -286,11 +293,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
 
     // For taper_progress, filter to only trackables with active taper plans.
+    // Query the DB directly (not the cached provider) so we always get fresh
+    // data — e.g., if the user just created a taper plan and came back.
     List<Trackable> eligibleTrackables;
     if (type == DashboardWidgetType.taperProgress) {
       final withPlans = <Trackable>[];
       for (final t in trackables) {
-        final plan = ref.read(activeTaperPlanProvider(t.id)).value;
+        final plan = await db.getActiveTaperPlan(t.id);
         if (plan != null) {
           withPlans.add(t);
         }

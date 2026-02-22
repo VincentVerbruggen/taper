@@ -2557,6 +2557,794 @@ class DashboardWidgetsCompanion extends UpdateCompanion<DashboardWidget> {
   }
 }
 
+class $RemindersTable extends Reminders
+    with TableInfo<$RemindersTable, Reminder> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RemindersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _trackableIdMeta = const VerificationMeta(
+    'trackableId',
+  );
+  @override
+  late final GeneratedColumn<int> trackableId = GeneratedColumn<int>(
+    'trackable_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES trackables (id)',
+    ),
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isEnabledMeta = const VerificationMeta(
+    'isEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> isEnabled = GeneratedColumn<bool>(
+    'is_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _scheduledTimeMeta = const VerificationMeta(
+    'scheduledTime',
+  );
+  @override
+  late final GeneratedColumn<String> scheduledTime = GeneratedColumn<String>(
+    'scheduled_time',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isRecurringMeta = const VerificationMeta(
+    'isRecurring',
+  );
+  @override
+  late final GeneratedColumn<bool> isRecurring = GeneratedColumn<bool>(
+    'is_recurring',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_recurring" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _oneTimeDateMeta = const VerificationMeta(
+    'oneTimeDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> oneTimeDate = GeneratedColumn<DateTime>(
+    'one_time_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nagEnabledMeta = const VerificationMeta(
+    'nagEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> nagEnabled = GeneratedColumn<bool>(
+    'nag_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("nag_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _nagIntervalMinutesMeta =
+      const VerificationMeta('nagIntervalMinutes');
+  @override
+  late final GeneratedColumn<int> nagIntervalMinutes = GeneratedColumn<int>(
+    'nag_interval_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _windowStartMeta = const VerificationMeta(
+    'windowStart',
+  );
+  @override
+  late final GeneratedColumn<String> windowStart = GeneratedColumn<String>(
+    'window_start',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _windowEndMeta = const VerificationMeta(
+    'windowEnd',
+  );
+  @override
+  late final GeneratedColumn<String> windowEnd = GeneratedColumn<String>(
+    'window_end',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _gapMinutesMeta = const VerificationMeta(
+    'gapMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> gapMinutes = GeneratedColumn<int>(
+    'gap_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    trackableId,
+    type,
+    label,
+    isEnabled,
+    scheduledTime,
+    isRecurring,
+    oneTimeDate,
+    nagEnabled,
+    nagIntervalMinutes,
+    windowStart,
+    windowEnd,
+    gapMinutes,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'reminders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Reminder> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('trackable_id')) {
+      context.handle(
+        _trackableIdMeta,
+        trackableId.isAcceptableOrUnknown(
+          data['trackable_id']!,
+          _trackableIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_trackableIdMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_labelMeta);
+    }
+    if (data.containsKey('is_enabled')) {
+      context.handle(
+        _isEnabledMeta,
+        isEnabled.isAcceptableOrUnknown(data['is_enabled']!, _isEnabledMeta),
+      );
+    }
+    if (data.containsKey('scheduled_time')) {
+      context.handle(
+        _scheduledTimeMeta,
+        scheduledTime.isAcceptableOrUnknown(
+          data['scheduled_time']!,
+          _scheduledTimeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_recurring')) {
+      context.handle(
+        _isRecurringMeta,
+        isRecurring.isAcceptableOrUnknown(
+          data['is_recurring']!,
+          _isRecurringMeta,
+        ),
+      );
+    }
+    if (data.containsKey('one_time_date')) {
+      context.handle(
+        _oneTimeDateMeta,
+        oneTimeDate.isAcceptableOrUnknown(
+          data['one_time_date']!,
+          _oneTimeDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('nag_enabled')) {
+      context.handle(
+        _nagEnabledMeta,
+        nagEnabled.isAcceptableOrUnknown(data['nag_enabled']!, _nagEnabledMeta),
+      );
+    }
+    if (data.containsKey('nag_interval_minutes')) {
+      context.handle(
+        _nagIntervalMinutesMeta,
+        nagIntervalMinutes.isAcceptableOrUnknown(
+          data['nag_interval_minutes']!,
+          _nagIntervalMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('window_start')) {
+      context.handle(
+        _windowStartMeta,
+        windowStart.isAcceptableOrUnknown(
+          data['window_start']!,
+          _windowStartMeta,
+        ),
+      );
+    }
+    if (data.containsKey('window_end')) {
+      context.handle(
+        _windowEndMeta,
+        windowEnd.isAcceptableOrUnknown(data['window_end']!, _windowEndMeta),
+      );
+    }
+    if (data.containsKey('gap_minutes')) {
+      context.handle(
+        _gapMinutesMeta,
+        gapMinutes.isAcceptableOrUnknown(data['gap_minutes']!, _gapMinutesMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Reminder map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Reminder(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      trackableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}trackable_id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
+      isEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_enabled'],
+      )!,
+      scheduledTime: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scheduled_time'],
+      ),
+      isRecurring: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_recurring'],
+      )!,
+      oneTimeDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}one_time_date'],
+      ),
+      nagEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}nag_enabled'],
+      )!,
+      nagIntervalMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}nag_interval_minutes'],
+      ),
+      windowStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}window_start'],
+      ),
+      windowEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}window_end'],
+      ),
+      gapMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}gap_minutes'],
+      ),
+    );
+  }
+
+  @override
+  $RemindersTable createAlias(String alias) {
+    return $RemindersTable(attachedDatabase, alias);
+  }
+}
+
+class Reminder extends DataClass implements Insertable<Reminder> {
+  final int id;
+  final int trackableId;
+  final String type;
+  final String label;
+  final bool isEnabled;
+  final String? scheduledTime;
+  final bool isRecurring;
+  final DateTime? oneTimeDate;
+  final bool nagEnabled;
+  final int? nagIntervalMinutes;
+  final String? windowStart;
+  final String? windowEnd;
+  final int? gapMinutes;
+  const Reminder({
+    required this.id,
+    required this.trackableId,
+    required this.type,
+    required this.label,
+    required this.isEnabled,
+    this.scheduledTime,
+    required this.isRecurring,
+    this.oneTimeDate,
+    required this.nagEnabled,
+    this.nagIntervalMinutes,
+    this.windowStart,
+    this.windowEnd,
+    this.gapMinutes,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['trackable_id'] = Variable<int>(trackableId);
+    map['type'] = Variable<String>(type);
+    map['label'] = Variable<String>(label);
+    map['is_enabled'] = Variable<bool>(isEnabled);
+    if (!nullToAbsent || scheduledTime != null) {
+      map['scheduled_time'] = Variable<String>(scheduledTime);
+    }
+    map['is_recurring'] = Variable<bool>(isRecurring);
+    if (!nullToAbsent || oneTimeDate != null) {
+      map['one_time_date'] = Variable<DateTime>(oneTimeDate);
+    }
+    map['nag_enabled'] = Variable<bool>(nagEnabled);
+    if (!nullToAbsent || nagIntervalMinutes != null) {
+      map['nag_interval_minutes'] = Variable<int>(nagIntervalMinutes);
+    }
+    if (!nullToAbsent || windowStart != null) {
+      map['window_start'] = Variable<String>(windowStart);
+    }
+    if (!nullToAbsent || windowEnd != null) {
+      map['window_end'] = Variable<String>(windowEnd);
+    }
+    if (!nullToAbsent || gapMinutes != null) {
+      map['gap_minutes'] = Variable<int>(gapMinutes);
+    }
+    return map;
+  }
+
+  RemindersCompanion toCompanion(bool nullToAbsent) {
+    return RemindersCompanion(
+      id: Value(id),
+      trackableId: Value(trackableId),
+      type: Value(type),
+      label: Value(label),
+      isEnabled: Value(isEnabled),
+      scheduledTime: scheduledTime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scheduledTime),
+      isRecurring: Value(isRecurring),
+      oneTimeDate: oneTimeDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(oneTimeDate),
+      nagEnabled: Value(nagEnabled),
+      nagIntervalMinutes: nagIntervalMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nagIntervalMinutes),
+      windowStart: windowStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(windowStart),
+      windowEnd: windowEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(windowEnd),
+      gapMinutes: gapMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(gapMinutes),
+    );
+  }
+
+  factory Reminder.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Reminder(
+      id: serializer.fromJson<int>(json['id']),
+      trackableId: serializer.fromJson<int>(json['trackableId']),
+      type: serializer.fromJson<String>(json['type']),
+      label: serializer.fromJson<String>(json['label']),
+      isEnabled: serializer.fromJson<bool>(json['isEnabled']),
+      scheduledTime: serializer.fromJson<String?>(json['scheduledTime']),
+      isRecurring: serializer.fromJson<bool>(json['isRecurring']),
+      oneTimeDate: serializer.fromJson<DateTime?>(json['oneTimeDate']),
+      nagEnabled: serializer.fromJson<bool>(json['nagEnabled']),
+      nagIntervalMinutes: serializer.fromJson<int?>(json['nagIntervalMinutes']),
+      windowStart: serializer.fromJson<String?>(json['windowStart']),
+      windowEnd: serializer.fromJson<String?>(json['windowEnd']),
+      gapMinutes: serializer.fromJson<int?>(json['gapMinutes']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'trackableId': serializer.toJson<int>(trackableId),
+      'type': serializer.toJson<String>(type),
+      'label': serializer.toJson<String>(label),
+      'isEnabled': serializer.toJson<bool>(isEnabled),
+      'scheduledTime': serializer.toJson<String?>(scheduledTime),
+      'isRecurring': serializer.toJson<bool>(isRecurring),
+      'oneTimeDate': serializer.toJson<DateTime?>(oneTimeDate),
+      'nagEnabled': serializer.toJson<bool>(nagEnabled),
+      'nagIntervalMinutes': serializer.toJson<int?>(nagIntervalMinutes),
+      'windowStart': serializer.toJson<String?>(windowStart),
+      'windowEnd': serializer.toJson<String?>(windowEnd),
+      'gapMinutes': serializer.toJson<int?>(gapMinutes),
+    };
+  }
+
+  Reminder copyWith({
+    int? id,
+    int? trackableId,
+    String? type,
+    String? label,
+    bool? isEnabled,
+    Value<String?> scheduledTime = const Value.absent(),
+    bool? isRecurring,
+    Value<DateTime?> oneTimeDate = const Value.absent(),
+    bool? nagEnabled,
+    Value<int?> nagIntervalMinutes = const Value.absent(),
+    Value<String?> windowStart = const Value.absent(),
+    Value<String?> windowEnd = const Value.absent(),
+    Value<int?> gapMinutes = const Value.absent(),
+  }) => Reminder(
+    id: id ?? this.id,
+    trackableId: trackableId ?? this.trackableId,
+    type: type ?? this.type,
+    label: label ?? this.label,
+    isEnabled: isEnabled ?? this.isEnabled,
+    scheduledTime: scheduledTime.present
+        ? scheduledTime.value
+        : this.scheduledTime,
+    isRecurring: isRecurring ?? this.isRecurring,
+    oneTimeDate: oneTimeDate.present ? oneTimeDate.value : this.oneTimeDate,
+    nagEnabled: nagEnabled ?? this.nagEnabled,
+    nagIntervalMinutes: nagIntervalMinutes.present
+        ? nagIntervalMinutes.value
+        : this.nagIntervalMinutes,
+    windowStart: windowStart.present ? windowStart.value : this.windowStart,
+    windowEnd: windowEnd.present ? windowEnd.value : this.windowEnd,
+    gapMinutes: gapMinutes.present ? gapMinutes.value : this.gapMinutes,
+  );
+  Reminder copyWithCompanion(RemindersCompanion data) {
+    return Reminder(
+      id: data.id.present ? data.id.value : this.id,
+      trackableId: data.trackableId.present
+          ? data.trackableId.value
+          : this.trackableId,
+      type: data.type.present ? data.type.value : this.type,
+      label: data.label.present ? data.label.value : this.label,
+      isEnabled: data.isEnabled.present ? data.isEnabled.value : this.isEnabled,
+      scheduledTime: data.scheduledTime.present
+          ? data.scheduledTime.value
+          : this.scheduledTime,
+      isRecurring: data.isRecurring.present
+          ? data.isRecurring.value
+          : this.isRecurring,
+      oneTimeDate: data.oneTimeDate.present
+          ? data.oneTimeDate.value
+          : this.oneTimeDate,
+      nagEnabled: data.nagEnabled.present
+          ? data.nagEnabled.value
+          : this.nagEnabled,
+      nagIntervalMinutes: data.nagIntervalMinutes.present
+          ? data.nagIntervalMinutes.value
+          : this.nagIntervalMinutes,
+      windowStart: data.windowStart.present
+          ? data.windowStart.value
+          : this.windowStart,
+      windowEnd: data.windowEnd.present ? data.windowEnd.value : this.windowEnd,
+      gapMinutes: data.gapMinutes.present
+          ? data.gapMinutes.value
+          : this.gapMinutes,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Reminder(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('type: $type, ')
+          ..write('label: $label, ')
+          ..write('isEnabled: $isEnabled, ')
+          ..write('scheduledTime: $scheduledTime, ')
+          ..write('isRecurring: $isRecurring, ')
+          ..write('oneTimeDate: $oneTimeDate, ')
+          ..write('nagEnabled: $nagEnabled, ')
+          ..write('nagIntervalMinutes: $nagIntervalMinutes, ')
+          ..write('windowStart: $windowStart, ')
+          ..write('windowEnd: $windowEnd, ')
+          ..write('gapMinutes: $gapMinutes')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    trackableId,
+    type,
+    label,
+    isEnabled,
+    scheduledTime,
+    isRecurring,
+    oneTimeDate,
+    nagEnabled,
+    nagIntervalMinutes,
+    windowStart,
+    windowEnd,
+    gapMinutes,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Reminder &&
+          other.id == this.id &&
+          other.trackableId == this.trackableId &&
+          other.type == this.type &&
+          other.label == this.label &&
+          other.isEnabled == this.isEnabled &&
+          other.scheduledTime == this.scheduledTime &&
+          other.isRecurring == this.isRecurring &&
+          other.oneTimeDate == this.oneTimeDate &&
+          other.nagEnabled == this.nagEnabled &&
+          other.nagIntervalMinutes == this.nagIntervalMinutes &&
+          other.windowStart == this.windowStart &&
+          other.windowEnd == this.windowEnd &&
+          other.gapMinutes == this.gapMinutes);
+}
+
+class RemindersCompanion extends UpdateCompanion<Reminder> {
+  final Value<int> id;
+  final Value<int> trackableId;
+  final Value<String> type;
+  final Value<String> label;
+  final Value<bool> isEnabled;
+  final Value<String?> scheduledTime;
+  final Value<bool> isRecurring;
+  final Value<DateTime?> oneTimeDate;
+  final Value<bool> nagEnabled;
+  final Value<int?> nagIntervalMinutes;
+  final Value<String?> windowStart;
+  final Value<String?> windowEnd;
+  final Value<int?> gapMinutes;
+  const RemindersCompanion({
+    this.id = const Value.absent(),
+    this.trackableId = const Value.absent(),
+    this.type = const Value.absent(),
+    this.label = const Value.absent(),
+    this.isEnabled = const Value.absent(),
+    this.scheduledTime = const Value.absent(),
+    this.isRecurring = const Value.absent(),
+    this.oneTimeDate = const Value.absent(),
+    this.nagEnabled = const Value.absent(),
+    this.nagIntervalMinutes = const Value.absent(),
+    this.windowStart = const Value.absent(),
+    this.windowEnd = const Value.absent(),
+    this.gapMinutes = const Value.absent(),
+  });
+  RemindersCompanion.insert({
+    this.id = const Value.absent(),
+    required int trackableId,
+    required String type,
+    required String label,
+    this.isEnabled = const Value.absent(),
+    this.scheduledTime = const Value.absent(),
+    this.isRecurring = const Value.absent(),
+    this.oneTimeDate = const Value.absent(),
+    this.nagEnabled = const Value.absent(),
+    this.nagIntervalMinutes = const Value.absent(),
+    this.windowStart = const Value.absent(),
+    this.windowEnd = const Value.absent(),
+    this.gapMinutes = const Value.absent(),
+  }) : trackableId = Value(trackableId),
+       type = Value(type),
+       label = Value(label);
+  static Insertable<Reminder> custom({
+    Expression<int>? id,
+    Expression<int>? trackableId,
+    Expression<String>? type,
+    Expression<String>? label,
+    Expression<bool>? isEnabled,
+    Expression<String>? scheduledTime,
+    Expression<bool>? isRecurring,
+    Expression<DateTime>? oneTimeDate,
+    Expression<bool>? nagEnabled,
+    Expression<int>? nagIntervalMinutes,
+    Expression<String>? windowStart,
+    Expression<String>? windowEnd,
+    Expression<int>? gapMinutes,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (trackableId != null) 'trackable_id': trackableId,
+      if (type != null) 'type': type,
+      if (label != null) 'label': label,
+      if (isEnabled != null) 'is_enabled': isEnabled,
+      if (scheduledTime != null) 'scheduled_time': scheduledTime,
+      if (isRecurring != null) 'is_recurring': isRecurring,
+      if (oneTimeDate != null) 'one_time_date': oneTimeDate,
+      if (nagEnabled != null) 'nag_enabled': nagEnabled,
+      if (nagIntervalMinutes != null)
+        'nag_interval_minutes': nagIntervalMinutes,
+      if (windowStart != null) 'window_start': windowStart,
+      if (windowEnd != null) 'window_end': windowEnd,
+      if (gapMinutes != null) 'gap_minutes': gapMinutes,
+    });
+  }
+
+  RemindersCompanion copyWith({
+    Value<int>? id,
+    Value<int>? trackableId,
+    Value<String>? type,
+    Value<String>? label,
+    Value<bool>? isEnabled,
+    Value<String?>? scheduledTime,
+    Value<bool>? isRecurring,
+    Value<DateTime?>? oneTimeDate,
+    Value<bool>? nagEnabled,
+    Value<int?>? nagIntervalMinutes,
+    Value<String?>? windowStart,
+    Value<String?>? windowEnd,
+    Value<int?>? gapMinutes,
+  }) {
+    return RemindersCompanion(
+      id: id ?? this.id,
+      trackableId: trackableId ?? this.trackableId,
+      type: type ?? this.type,
+      label: label ?? this.label,
+      isEnabled: isEnabled ?? this.isEnabled,
+      scheduledTime: scheduledTime ?? this.scheduledTime,
+      isRecurring: isRecurring ?? this.isRecurring,
+      oneTimeDate: oneTimeDate ?? this.oneTimeDate,
+      nagEnabled: nagEnabled ?? this.nagEnabled,
+      nagIntervalMinutes: nagIntervalMinutes ?? this.nagIntervalMinutes,
+      windowStart: windowStart ?? this.windowStart,
+      windowEnd: windowEnd ?? this.windowEnd,
+      gapMinutes: gapMinutes ?? this.gapMinutes,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (trackableId.present) {
+      map['trackable_id'] = Variable<int>(trackableId.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (isEnabled.present) {
+      map['is_enabled'] = Variable<bool>(isEnabled.value);
+    }
+    if (scheduledTime.present) {
+      map['scheduled_time'] = Variable<String>(scheduledTime.value);
+    }
+    if (isRecurring.present) {
+      map['is_recurring'] = Variable<bool>(isRecurring.value);
+    }
+    if (oneTimeDate.present) {
+      map['one_time_date'] = Variable<DateTime>(oneTimeDate.value);
+    }
+    if (nagEnabled.present) {
+      map['nag_enabled'] = Variable<bool>(nagEnabled.value);
+    }
+    if (nagIntervalMinutes.present) {
+      map['nag_interval_minutes'] = Variable<int>(nagIntervalMinutes.value);
+    }
+    if (windowStart.present) {
+      map['window_start'] = Variable<String>(windowStart.value);
+    }
+    if (windowEnd.present) {
+      map['window_end'] = Variable<String>(windowEnd.value);
+    }
+    if (gapMinutes.present) {
+      map['gap_minutes'] = Variable<int>(gapMinutes.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemindersCompanion(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('type: $type, ')
+          ..write('label: $label, ')
+          ..write('isEnabled: $isEnabled, ')
+          ..write('scheduledTime: $scheduledTime, ')
+          ..write('isRecurring: $isRecurring, ')
+          ..write('oneTimeDate: $oneTimeDate, ')
+          ..write('nagEnabled: $nagEnabled, ')
+          ..write('nagIntervalMinutes: $nagIntervalMinutes, ')
+          ..write('windowStart: $windowStart, ')
+          ..write('windowEnd: $windowEnd, ')
+          ..write('gapMinutes: $gapMinutes')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2568,6 +3356,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $DashboardWidgetsTable dashboardWidgets = $DashboardWidgetsTable(
     this,
   );
+  late final $RemindersTable reminders = $RemindersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2579,6 +3368,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     thresholds,
     taperPlans,
     dashboardWidgets,
+    reminders,
   ];
 }
 
@@ -2715,6 +3505,24 @@ final class $$TrackablesTableReferences
     final cache = $_typedResult.readTableOrNull(
       _dashboardWidgetsRefsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$RemindersTable, List<Reminder>>
+  _remindersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.reminders,
+    aliasName: $_aliasNameGenerator(db.trackables.id, db.reminders.trackableId),
+  );
+
+  $$RemindersTableProcessedTableManager get remindersRefs {
+    final manager = $$RemindersTableTableManager(
+      $_db,
+      $_db.reminders,
+    ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_remindersRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2906,6 +3714,31 @@ class $$TrackablesTableFilterComposer
           }) => $$DashboardWidgetsTableFilterComposer(
             $db: $db,
             $table: $db.dashboardWidgets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> remindersRefs(
+    Expression<bool> Function($$RemindersTableFilterComposer f) f,
+  ) {
+    final $$RemindersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.reminders,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemindersTableFilterComposer(
+            $db: $db,
+            $table: $db.reminders,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3165,6 +3998,31 @@ class $$TrackablesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> remindersRefs<T extends Object>(
+    Expression<T> Function($$RemindersTableAnnotationComposer a) f,
+  ) {
+    final $$RemindersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.reminders,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemindersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.reminders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TrackablesTableTableManager
@@ -3186,6 +4044,7 @@ class $$TrackablesTableTableManager
             bool thresholdsRefs,
             bool taperPlansRefs,
             bool dashboardWidgetsRefs,
+            bool remindersRefs,
           })
         > {
   $$TrackablesTableTableManager(_$AppDatabase db, $TrackablesTable table)
@@ -3270,6 +4129,7 @@ class $$TrackablesTableTableManager
                 thresholdsRefs = false,
                 taperPlansRefs = false,
                 dashboardWidgetsRefs = false,
+                remindersRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -3279,6 +4139,7 @@ class $$TrackablesTableTableManager
                     if (thresholdsRefs) db.thresholds,
                     if (taperPlansRefs) db.taperPlans,
                     if (dashboardWidgetsRefs) db.dashboardWidgets,
+                    if (remindersRefs) db.reminders,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -3388,6 +4249,27 @@ class $$TrackablesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (remindersRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          Reminder
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._remindersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).remindersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -3414,6 +4296,7 @@ typedef $$TrackablesTableProcessedTableManager =
         bool thresholdsRefs,
         bool taperPlansRefs,
         bool dashboardWidgetsRefs,
+        bool remindersRefs,
       })
     >;
 typedef $$DoseLogsTableCreateCompanionBuilder =
@@ -5013,6 +5896,485 @@ typedef $$DashboardWidgetsTableProcessedTableManager =
       DashboardWidget,
       PrefetchHooks Function({bool trackableId})
     >;
+typedef $$RemindersTableCreateCompanionBuilder =
+    RemindersCompanion Function({
+      Value<int> id,
+      required int trackableId,
+      required String type,
+      required String label,
+      Value<bool> isEnabled,
+      Value<String?> scheduledTime,
+      Value<bool> isRecurring,
+      Value<DateTime?> oneTimeDate,
+      Value<bool> nagEnabled,
+      Value<int?> nagIntervalMinutes,
+      Value<String?> windowStart,
+      Value<String?> windowEnd,
+      Value<int?> gapMinutes,
+    });
+typedef $$RemindersTableUpdateCompanionBuilder =
+    RemindersCompanion Function({
+      Value<int> id,
+      Value<int> trackableId,
+      Value<String> type,
+      Value<String> label,
+      Value<bool> isEnabled,
+      Value<String?> scheduledTime,
+      Value<bool> isRecurring,
+      Value<DateTime?> oneTimeDate,
+      Value<bool> nagEnabled,
+      Value<int?> nagIntervalMinutes,
+      Value<String?> windowStart,
+      Value<String?> windowEnd,
+      Value<int?> gapMinutes,
+    });
+
+final class $$RemindersTableReferences
+    extends BaseReferences<_$AppDatabase, $RemindersTable, Reminder> {
+  $$RemindersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $TrackablesTable _trackableIdTable(_$AppDatabase db) =>
+      db.trackables.createAlias(
+        $_aliasNameGenerator(db.reminders.trackableId, db.trackables.id),
+      );
+
+  $$TrackablesTableProcessedTableManager get trackableId {
+    final $_column = $_itemColumn<int>('trackable_id')!;
+
+    final manager = $$TrackablesTableTableManager(
+      $_db,
+      $_db.trackables,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_trackableIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$RemindersTableFilterComposer
+    extends Composer<_$AppDatabase, $RemindersTable> {
+  $$RemindersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isEnabled => $composableBuilder(
+    column: $table.isEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scheduledTime => $composableBuilder(
+    column: $table.scheduledTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isRecurring => $composableBuilder(
+    column: $table.isRecurring,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get oneTimeDate => $composableBuilder(
+    column: $table.oneTimeDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get nagEnabled => $composableBuilder(
+    column: $table.nagEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get nagIntervalMinutes => $composableBuilder(
+    column: $table.nagIntervalMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get windowStart => $composableBuilder(
+    column: $table.windowStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get windowEnd => $composableBuilder(
+    column: $table.windowEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get gapMinutes => $composableBuilder(
+    column: $table.gapMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TrackablesTableFilterComposer get trackableId {
+    final $$TrackablesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableFilterComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemindersTableOrderingComposer
+    extends Composer<_$AppDatabase, $RemindersTable> {
+  $$RemindersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isEnabled => $composableBuilder(
+    column: $table.isEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scheduledTime => $composableBuilder(
+    column: $table.scheduledTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isRecurring => $composableBuilder(
+    column: $table.isRecurring,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get oneTimeDate => $composableBuilder(
+    column: $table.oneTimeDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get nagEnabled => $composableBuilder(
+    column: $table.nagEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get nagIntervalMinutes => $composableBuilder(
+    column: $table.nagIntervalMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get windowStart => $composableBuilder(
+    column: $table.windowStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get windowEnd => $composableBuilder(
+    column: $table.windowEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get gapMinutes => $composableBuilder(
+    column: $table.gapMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TrackablesTableOrderingComposer get trackableId {
+    final $$TrackablesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableOrderingComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemindersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RemindersTable> {
+  $$RemindersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<bool> get isEnabled =>
+      $composableBuilder(column: $table.isEnabled, builder: (column) => column);
+
+  GeneratedColumn<String> get scheduledTime => $composableBuilder(
+    column: $table.scheduledTime,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isRecurring => $composableBuilder(
+    column: $table.isRecurring,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get oneTimeDate => $composableBuilder(
+    column: $table.oneTimeDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get nagEnabled => $composableBuilder(
+    column: $table.nagEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get nagIntervalMinutes => $composableBuilder(
+    column: $table.nagIntervalMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get windowStart => $composableBuilder(
+    column: $table.windowStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get windowEnd =>
+      $composableBuilder(column: $table.windowEnd, builder: (column) => column);
+
+  GeneratedColumn<int> get gapMinutes => $composableBuilder(
+    column: $table.gapMinutes,
+    builder: (column) => column,
+  );
+
+  $$TrackablesTableAnnotationComposer get trackableId {
+    final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemindersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RemindersTable,
+          Reminder,
+          $$RemindersTableFilterComposer,
+          $$RemindersTableOrderingComposer,
+          $$RemindersTableAnnotationComposer,
+          $$RemindersTableCreateCompanionBuilder,
+          $$RemindersTableUpdateCompanionBuilder,
+          (Reminder, $$RemindersTableReferences),
+          Reminder,
+          PrefetchHooks Function({bool trackableId})
+        > {
+  $$RemindersTableTableManager(_$AppDatabase db, $RemindersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RemindersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RemindersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RemindersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> trackableId = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> label = const Value.absent(),
+                Value<bool> isEnabled = const Value.absent(),
+                Value<String?> scheduledTime = const Value.absent(),
+                Value<bool> isRecurring = const Value.absent(),
+                Value<DateTime?> oneTimeDate = const Value.absent(),
+                Value<bool> nagEnabled = const Value.absent(),
+                Value<int?> nagIntervalMinutes = const Value.absent(),
+                Value<String?> windowStart = const Value.absent(),
+                Value<String?> windowEnd = const Value.absent(),
+                Value<int?> gapMinutes = const Value.absent(),
+              }) => RemindersCompanion(
+                id: id,
+                trackableId: trackableId,
+                type: type,
+                label: label,
+                isEnabled: isEnabled,
+                scheduledTime: scheduledTime,
+                isRecurring: isRecurring,
+                oneTimeDate: oneTimeDate,
+                nagEnabled: nagEnabled,
+                nagIntervalMinutes: nagIntervalMinutes,
+                windowStart: windowStart,
+                windowEnd: windowEnd,
+                gapMinutes: gapMinutes,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int trackableId,
+                required String type,
+                required String label,
+                Value<bool> isEnabled = const Value.absent(),
+                Value<String?> scheduledTime = const Value.absent(),
+                Value<bool> isRecurring = const Value.absent(),
+                Value<DateTime?> oneTimeDate = const Value.absent(),
+                Value<bool> nagEnabled = const Value.absent(),
+                Value<int?> nagIntervalMinutes = const Value.absent(),
+                Value<String?> windowStart = const Value.absent(),
+                Value<String?> windowEnd = const Value.absent(),
+                Value<int?> gapMinutes = const Value.absent(),
+              }) => RemindersCompanion.insert(
+                id: id,
+                trackableId: trackableId,
+                type: type,
+                label: label,
+                isEnabled: isEnabled,
+                scheduledTime: scheduledTime,
+                isRecurring: isRecurring,
+                oneTimeDate: oneTimeDate,
+                nagEnabled: nagEnabled,
+                nagIntervalMinutes: nagIntervalMinutes,
+                windowStart: windowStart,
+                windowEnd: windowEnd,
+                gapMinutes: gapMinutes,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$RemindersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({trackableId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (trackableId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.trackableId,
+                                referencedTable: $$RemindersTableReferences
+                                    ._trackableIdTable(db),
+                                referencedColumn: $$RemindersTableReferences
+                                    ._trackableIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$RemindersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RemindersTable,
+      Reminder,
+      $$RemindersTableFilterComposer,
+      $$RemindersTableOrderingComposer,
+      $$RemindersTableAnnotationComposer,
+      $$RemindersTableCreateCompanionBuilder,
+      $$RemindersTableUpdateCompanionBuilder,
+      (Reminder, $$RemindersTableReferences),
+      Reminder,
+      PrefetchHooks Function({bool trackableId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5029,4 +6391,6 @@ class $AppDatabaseManager {
       $$TaperPlansTableTableManager(_db, _db.taperPlans);
   $$DashboardWidgetsTableTableManager get dashboardWidgets =>
       $$DashboardWidgetsTableTableManager(_db, _db.dashboardWidgets);
+  $$RemindersTableTableManager get reminders =>
+      $$RemindersTableTableManager(_db, _db.reminders);
 }

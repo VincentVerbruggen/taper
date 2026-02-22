@@ -69,6 +69,17 @@ class NotificationService {
   static const _actionRepeatLast = 'repeat_last';
   static const _actionAddDose = 'add_dose';
 
+  /// Exposes the underlying plugin for use by ReminderScheduler.
+  /// The scheduler needs direct access to schedule/cancel notifications.
+  /// null if init() hasn't been called yet.
+  FlutterLocalNotificationsPlugin? get plugin => _plugin;
+
+  /// Notification channel ID for reminder notifications (scheduled + gap).
+  /// Separate from the tracking channel because reminders need high importance
+  /// (heads-up banners) while the tracking ticker is low importance (silent).
+  /// Like having separate email folders for urgent vs informational messages.
+  static const remindersChannelId = 'reminders_v1';
+
   /// Whether a trackable is currently pinned and being tracked.
   bool get isTracking => _pinnedTrackable != null;
 

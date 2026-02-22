@@ -126,7 +126,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
               border: const OutlineInputBorder(),
               errorText: _submitted && _amountController.text.trim().isEmpty
                   ? 'Required'
-                  : numericFieldError(_amountController.text),
+                  : numericFieldErrorAllowZero(_amountController.text),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
@@ -160,13 +160,13 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
     );
   }
 
-  /// Validates the form — same logic as LogDoseScreen._canSave().
+  /// Validates the form — allows amount >= 0 (zero = "skipped this dose").
   bool _canSave() {
     if (_selectedTrackable == null) return false;
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) return false;
     final amount = double.tryParse(amountText);
-    return amount != null && amount > 0;
+    return amount != null && amount >= 0;
   }
 
   // Guard against double taps while saving.

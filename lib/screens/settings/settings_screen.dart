@@ -1,11 +1,9 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:taper/data/database.dart';
-import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/backup_providers.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
@@ -217,11 +215,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           key: ValueKey(trackable.id),
           trackable: trackable,
           index: index,
-          onEdit: () => _editTrackable(trackable),
-          onDuplicate: () => _duplicateTrackable(trackable),
+          onTap: () => _editTrackable(trackable),
           onTogglePin: () => _togglePin(trackable),
-          onToggleVisibility: () => _toggleVisibility(trackable),
-          onDelete: () => _deleteTrackable(trackable),
         );
       },
     );
@@ -250,19 +245,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  /// Duplicate a trackable: creates "Copy of X" with the same settings.
-  void _duplicateTrackable(Trackable trackable) async {
-    final db = ref.read(databaseProvider);
-    await db.insertTrackable(
-      'Copy of ${trackable.name}',
-      unit: trackable.unit,
-      halfLifeHours: trackable.halfLifeHours,
-      decayModel: trackable.decayModel,
-      eliminationRate: trackable.eliminationRate,
-      absorptionMinutes: trackable.absorptionMinutes,
-    );
-  }
-
   /// Toggle pin: pin this trackable to a persistent notification, or unpin it.
   void _togglePin(Trackable trackable) async {
     final notificationService = NotificationService.instance;
@@ -288,51 +270,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final db = ref.read(databaseProvider);
       await notificationService.startTracking(trackable, db);
       ref.read(pinnedTrackableIdProvider.notifier).pin(trackable.id);
-    }
-  }
-
-  /// Toggle visibility of a trackable.
-  void _toggleVisibility(Trackable trackable) {
-    final db = ref.read(databaseProvider);
-    db.updateTrackable(trackable.id, isVisible: Value(!trackable.isVisible));
-  }
-
-  /// Delete a trackable after showing a confirmation dialog.
-  void _deleteTrackable(Trackable trackable) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Trackable'),
-        content: Text(
-          'Delete "${trackable.name}"? This will also delete all dose logs for this trackable.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(
-              'Delete',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      final db = ref.read(databaseProvider);
-      await db.deleteTrackable(trackable.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            showCloseIcon: true,
-            content: Text('${trackable.name} deleted'),
-          ),
-        );
-      }
     }
   }
 
@@ -515,27 +452,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 // =============================================================================
 
 /// A single trackable in the settings list — Card-wrapped with drag handle,
-/// color dot, pin button, and three-dots menu.
+/// color dot, and pin button. Tapping the card opens the edit screen.
 ///
+/// All management actions (duplicate, hide/show, delete) live in the edit screen.
 /// ConsumerWidget so it can watch pinnedTrackableIdProvider for pin icon state.
 class _TrackableListItem extends ConsumerWidget {
   final Trackable trackable;
   final int index;
-  final VoidCallback onEdit;
-  final VoidCallback onDuplicate;
+  final VoidCallback onTap;
   final VoidCallback onTogglePin;
-  final VoidCallback onToggleVisibility;
-  final VoidCallback onDelete;
 
   const _TrackableListItem({
     super.key,
     required this.trackable,
     required this.index,
-    required this.onEdit,
-    required this.onDuplicate,
+    required this.onTap,
     required this.onTogglePin,
-    required this.onToggleVisibility,
-    required this.onDelete,
   });
 
   @override
@@ -544,152 +476,70 @@ class _TrackableListItem extends ConsumerWidget {
     final pinnedId = ref.watch(pinnedTrackableIdProvider);
     final isPinned = pinnedId == trackable.id;
 
-    // Unified card pattern: Card(shape: RoundedRectangleBorder(12)) > ListTile
+    // Unified card pattern: Card(shape: RoundedRectangleBorder(12)) > InkWell > ListTile
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: shape,
         clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          // Leading: drag handle + color dot.
-          leading: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ReorderableDragStartListener(
-                index: index,
-                child: const Icon(Icons.drag_handle, size: 24),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: Color(trackable.color).withAlpha(isHidden ? 77 : 255),
-                  shape: BoxShape.circle,
+        child: InkWell(
+          customBorder: shape,
+          // Tapping the card opens the edit screen — all management actions
+          // (duplicate, hide/show, delete) are accessible from there.
+          onTap: onTap,
+          child: ListTile(
+            // Leading: drag handle + color dot.
+            leading: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ReorderableDragStartListener(
+                  index: index,
+                  child: const Icon(Icons.drag_handle, size: 24),
                 ),
-              ),
-            ],
-          ),
-          title: Text(
-            trackable.name,
-            style: isHidden
-                ? TextStyle(
-                    decoration: TextDecoration.lineThrough,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withAlpha(128),
-                  )
-                : null,
-          ),
-          subtitle: Text(
-            _buildSubtitle(),
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withAlpha(
-                isHidden ? 77 : 179,
-              ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Color(trackable.color).withAlpha(isHidden ? 77 : 255),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
             ),
-          ),
-          // Trailing: pin button + three-dots menu.
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: Icon(
-                  isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                  size: 20,
-                  color: isPinned
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                onPressed: onTogglePin,
-                tooltip: isPinned ? 'Unpin from notification' : 'Pin to notification',
-                visualDensity: VisualDensity.compact,
+            title: Text(
+              trackable.name,
+              style: isHidden
+                  ? TextStyle(
+                      decoration: TextDecoration.lineThrough,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withAlpha(128),
+                    )
+                  : null,
+            ),
+            // Trailing: pin button only. All other actions moved to edit screen.
+            trailing: IconButton(
+              icon: Icon(
+                isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                size: 20,
+                color: isPinned
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert, size: 20),
-                tooltip: 'More options',
-                onSelected: (value) {
-                  switch (value) {
-                    case 'edit':
-                      onEdit();
-                    case 'duplicate':
-                      onDuplicate();
-                    case 'visibility':
-                      onToggleVisibility();
-                    case 'delete':
-                      onDelete();
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: ListTile(
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Edit'),
-                      visualDensity: VisualDensity.compact,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'duplicate',
-                    child: ListTile(
-                      leading: Icon(Icons.copy_outlined),
-                      title: Text('Duplicate'),
-                      visualDensity: VisualDensity.compact,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'visibility',
-                    child: ListTile(
-                      leading: Icon(
-                        isHidden ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      title: Text(isHidden ? 'Show' : 'Hide'),
-                      visualDensity: VisualDensity.compact,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.delete_outline,
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      title: Text(
-                        'Delete',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                      visualDensity: VisualDensity.compact,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              onPressed: onTogglePin,
+              tooltip: isPinned ? 'Unpin from notification' : 'Pin to notification',
+              visualDensity: VisualDensity.compact,
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Build the subtitle text showing unit and decay model info.
-  String _buildSubtitle() {
-    final model = DecayModel.fromString(trackable.decayModel);
-    return switch (model) {
-      DecayModel.exponential => trackable.halfLifeHours != null
-          ? '${trackable.unit} \u00B7 half-life: ${trackable.halfLifeHours}h'
-          : trackable.unit,
-      DecayModel.linear => trackable.eliminationRate != null
-          ? '${trackable.unit} \u00B7 elimination: ${trackable.eliminationRate} ${trackable.unit}/h'
-          : trackable.unit,
-      DecayModel.none => trackable.unit,
-    };
-  }
 }

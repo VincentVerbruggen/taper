@@ -21,6 +21,22 @@ String? numericFieldError(String text) {
   return null;
 }
 
+/// Like [numericFieldError] but allows zero (>= 0 instead of > 0).
+///
+/// Used for dose amount fields where 0 = "I skipped this dose" — an explicit
+/// record of not taking something, distinct from having no log entry at all.
+/// Like a nullable boolean in Laravel: null (no entry) vs false (skipped).
+///
+/// Presets, thresholds, and other fields still use [numericFieldError]
+/// because a preset of 0 mg or a threshold at 0 makes no sense.
+String? numericFieldErrorAllowZero(String text) {
+  if (text.trim().isEmpty) return null;
+  final value = double.tryParse(text.trim());
+  if (value == null) return 'Enter a valid number';
+  if (value < 0) return 'Must be zero or greater';
+  return null;
+}
+
 /// Returns an error string if [text] matches any name in [existingNames]
 /// (case-insensitive comparison). Returns null if the field is empty or
 /// no duplicate is found.

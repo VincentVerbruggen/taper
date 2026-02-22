@@ -54,8 +54,9 @@ class TimePicker extends StatelessWidget {
     final picked = await showDatePicker(
       context: context,
       initialDate: date,
-      // Allow logging up to 7 days in the past (forgot to log yesterday's coffee).
-      firstDate: DateTime.now().subtract(const Duration(days: 7)),
+      // Allow logging as far back as needed (no artificial 7-day limit).
+      // Users may need to backfill old data or correct entries from weeks ago.
+      firstDate: DateTime(2020),
       lastDate: DateTime.now(),
     );
     if (picked != null) onDateChanged(picked);

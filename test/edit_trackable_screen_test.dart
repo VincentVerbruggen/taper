@@ -328,188 +328,6 @@ void main() {
     await cleanUp(tester);
   });
 
-  // --- Preset management tests ---
-
-  testWidgets('shows Presets section with "No presets yet"', (tester) async {
-    final caffeine = await getCaffeine();
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // The Presets header and empty state should be visible.
-    expect(find.text('Presets'), findsOneWidget);
-    expect(find.text('No presets yet'), findsOneWidget);
-    expect(find.text('Add Preset'), findsOneWidget);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('add a preset via dialog and it appears in list', (tester) async {
-    final caffeine = await getCaffeine();
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // Tap "Add Preset" to open the dialog.
-    await tester.tap(find.text('Add Preset'));
-    await tester.pump();
-
-    // The dialog should be visible with name and amount fields.
-    expect(find.text('Add Preset'), findsNWidgets(2)); // Header + button.
-    expect(find.text('Name'), findsOneWidget);
-    expect(find.text('Amount'), findsOneWidget);
-
-    // Fill in the dialog fields.
-    // Find TextFields inside the dialog (AlertDialog).
-    final dialogTextFields = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(TextField),
-    );
-    await tester.enterText(dialogTextFields.at(0), 'Espresso');
-    await tester.enterText(dialogTextFields.at(1), '90');
-    await tester.pump();
-
-    // Tap "Add" to insert the preset.
-    // The dialog has Cancel and Add buttons; find Add inside the dialog.
-    await tester.tap(find.widgetWithText(TextButton, 'Add'));
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    // The preset should now appear in the list.
-    expect(find.text('Espresso'), findsOneWidget);
-    // "No presets yet" should be gone.
-    expect(find.text('No presets yet'), findsNothing);
-
-    // Verify it was actually inserted in the database.
-    final presetRows = await db.select(db.presets).get();
-    expect(presetRows.length, 1);
-    expect(presetRows.first.name, 'Espresso');
-    expect(presetRows.first.amount, 90.0);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('delete a preset removes it from list', (tester) async {
-    final caffeine = await getCaffeine();
-    // Pre-insert a preset directly in the database.
-    await db.insertPreset(caffeine.id, 'Espresso', 90);
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // The preset should be visible.
-    expect(find.text('Espresso'), findsOneWidget);
-
-    // Tap the delete icon button (trailing on the preset ListTile).
-    // Find the delete icon inside the presets section.
-    final deleteIcon = find.widgetWithIcon(IconButton, Icons.delete_outline);
-    expect(deleteIcon, findsOneWidget);
-    await tester.tap(deleteIcon);
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    // The preset should be gone, replaced by "No presets yet".
-    expect(find.text('Espresso'), findsNothing);
-    expect(find.text('No presets yet'), findsOneWidget);
-
-    // Verify it was deleted from the database.
-    final presetRows = await db.select(db.presets).get();
-    expect(presetRows, isEmpty);
-
-    await cleanUp(tester);
-  });
-
-  // --- Save tests (below) ---
-
-  // --- Threshold management tests ---
-
-  testWidgets('shows Thresholds section with "No thresholds yet"', (tester) async {
-    final caffeine = await getCaffeine();
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // Scroll to the thresholds section (below presets).
-    await tester.ensureVisible(find.text('Thresholds'));
-    expect(find.text('Thresholds'), findsOneWidget);
-    expect(find.text('No thresholds yet'), findsOneWidget);
-    expect(find.text('Add Threshold'), findsOneWidget);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('add a threshold via dialog and it appears in list', (tester) async {
-    final caffeine = await getCaffeine();
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // Scroll to and tap "Add Threshold".
-    await tester.ensureVisible(find.text('Add Threshold'));
-    await tester.tap(find.text('Add Threshold'));
-    await tester.pump();
-
-    // The dialog should be visible.
-    expect(find.text('Add Threshold'), findsNWidgets(2)); // Header + button.
-    expect(find.text('Name'), findsOneWidget);
-    expect(find.text('Amount'), findsOneWidget);
-
-    // Fill in the dialog fields.
-    final dialogTextFields = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(TextField),
-    );
-    await tester.enterText(dialogTextFields.at(0), 'Daily max');
-    await tester.enterText(dialogTextFields.at(1), '400');
-    await tester.pump();
-
-    // Tap "Add".
-    await tester.tap(find.widgetWithText(TextButton, 'Add'));
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    // The threshold should now appear in the list.
-    expect(find.text('Daily max'), findsOneWidget);
-    // "No thresholds yet" should be gone.
-    expect(find.text('No thresholds yet'), findsNothing);
-
-    // Verify it was inserted in the database.
-    final thresholdRows = await db.select(db.thresholds).get();
-    expect(thresholdRows.length, 1);
-    expect(thresholdRows.first.name, 'Daily max');
-    expect(thresholdRows.first.amount, 400.0);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('delete a threshold removes it from list', (tester) async {
-    final caffeine = await getCaffeine();
-    // Pre-insert a threshold directly in the database.
-    await db.insertThreshold(caffeine.id, 'Daily max', 400);
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // Scroll to make threshold visible.
-    await tester.ensureVisible(find.text('Daily max'));
-    expect(find.text('Daily max'), findsOneWidget);
-
-    // Tap the delete icon button. There might be one from presets too,
-    // so find the one associated with "Daily max".
-    final deleteIcons = find.widgetWithIcon(IconButton, Icons.delete_outline);
-    // Should have at least one (the threshold delete).
-    expect(deleteIcons, findsWidgets);
-    await tester.tap(deleteIcons.last);
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    // The threshold should be gone.
-    expect(find.text('Daily max'), findsNothing);
-    expect(find.text('No thresholds yet'), findsOneWidget);
-
-    // Verify it was deleted from the database.
-    final thresholdRows = await db.select(db.thresholds).get();
-    expect(thresholdRows, isEmpty);
-
-    await cleanUp(tester);
-  });
-
-  // --- Save tests (continued) ---
-
   testWidgets('save with visibility off updates isVisible', (tester) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
@@ -592,45 +410,107 @@ void main() {
     await cleanUp(tester);
   });
 
-  // --- Taper plans section tests ---
+  // --- Navigation tile tests ---
+  // The edit screen now shows ListTile navigation rows for Presets,
+  // Thresholds, Taper Plans, and Reminders instead of inline management
+  // sections. Each tile shows a count summary and a chevron_right icon.
+  // Tapping a tile would push to a sub-screen (not tested here since
+  // we'd need to mock Navigator or the sub-screen itself).
 
-  testWidgets('shows "No taper plans yet" for trackable without plans', (tester) async {
+  testWidgets('shows Presets nav tile with "No presets" when empty', (tester) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
 
-    // Scroll to find the taper plans section.
-    final taperPlansLabel = find.text('Taper Plans');
-    await tester.ensureVisible(taperPlansLabel);
-    expect(taperPlansLabel, findsOneWidget);
-    expect(find.text('No taper plans yet'), findsOneWidget);
-    expect(find.text('New Taper Plan'), findsOneWidget);
+    // The Presets tile should be visible with the "No presets" subtitle.
+    expect(find.text('Presets'), findsOneWidget);
+    expect(find.text('No presets'), findsOneWidget);
+    // Should show a chevron icon indicating navigation.
+    expect(find.byIcon(Icons.chevron_right), findsWidgets);
 
     await cleanUp(tester);
   });
 
-  testWidgets('"New Taper Plan" button is visible and navigates', (tester) async {
+  testWidgets('Presets nav tile shows "1 preset" with one preset', (tester) async {
+    final caffeine = await getCaffeine();
+    // Insert one preset into the database before building the widget.
+    await db.insertPreset(caffeine.id, 'Espresso', 90);
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // The tile subtitle should show the singular form.
+    expect(find.text('Presets'), findsOneWidget);
+    expect(find.text('1 preset'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('Presets nav tile shows "3 presets" with multiple presets', (tester) async {
+    final caffeine = await getCaffeine();
+    // Insert three presets.
+    await db.insertPreset(caffeine.id, 'Espresso', 90);
+    await db.insertPreset(caffeine.id, 'Drip Coffee', 150);
+    await db.insertPreset(caffeine.id, 'Energy Drink', 200);
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // The tile subtitle should show the plural form with count.
+    expect(find.text('3 presets'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('shows Thresholds nav tile with "No thresholds" when empty', (tester) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
 
-    // Scroll to and tap "New Taper Plan".
-    final button = find.text('New Taper Plan');
-    await tester.ensureVisible(button);
-    await tester.tap(button);
-    await pumpAndWait(tester);
-
-    // Should navigate to the AddTaperPlanScreen.
-    expect(find.text('New Taper Plan'), findsWidgets); // Title + button text
-    expect(find.text('Start amount'), findsOneWidget);
-    expect(find.text('Target amount'), findsOneWidget);
+    // The Thresholds tile should be visible with the "No thresholds" subtitle.
+    expect(find.text('Thresholds'), findsOneWidget);
+    expect(find.text('No thresholds'), findsOneWidget);
 
     await cleanUp(tester);
   });
 
-  testWidgets('plan list renders after adding a plan', (tester) async {
+  testWidgets('Thresholds nav tile shows "1 threshold" with one threshold', (tester) async {
     final caffeine = await getCaffeine();
-    // Pre-insert a taper plan directly in the database.
+    await db.insertThreshold(caffeine.id, 'Daily max', 400);
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    expect(find.text('Thresholds'), findsOneWidget);
+    expect(find.text('1 threshold'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('Thresholds nav tile shows "2 thresholds" with multiple', (tester) async {
+    final caffeine = await getCaffeine();
+    await db.insertThreshold(caffeine.id, 'Daily max', 400);
+    await db.insertThreshold(caffeine.id, 'Warning', 300);
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    expect(find.text('2 thresholds'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('shows Taper Plans nav tile with "No plans" when empty', (tester) async {
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // The Taper Plans tile should be visible with the "No plans" subtitle.
+    expect(find.text('Taper Plans'), findsOneWidget);
+    expect(find.text('No plans'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('Taper Plans nav tile shows "1 active plan" with active plan', (tester) async {
+    final caffeine = await getCaffeine();
+    // Insert an active taper plan (isActive defaults to true).
     await db.insertTaperPlan(
       caffeine.id,
       400,
@@ -641,54 +521,120 @@ void main() {
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
 
-    // Scroll to the taper plans section.
-    final taperPlansLabel = find.text('Taper Plans');
-    await tester.ensureVisible(taperPlansLabel);
-
-    // The plan should be visible with its amount range.
-    expect(find.textContaining('400'), findsWidgets);
-    expect(find.textContaining('100'), findsWidgets);
-    // "No taper plans yet" should NOT be shown.
-    expect(find.text('No taper plans yet'), findsNothing);
-    // Status should be "Active".
-    expect(find.textContaining('Active'), findsOneWidget);
+    expect(find.text('Taper Plans'), findsOneWidget);
+    expect(find.text('1 active plan'), findsOneWidget);
 
     await cleanUp(tester);
   });
 
-  testWidgets('delete removes plan from list', (tester) async {
+  testWidgets('shows Reminders nav tile with "No reminders" when empty', (tester) async {
     final caffeine = await getCaffeine();
-    // Pre-insert a taper plan.
-    await db.insertTaperPlan(
-      caffeine.id,
-      400,
-      100,
-      DateTime(2026, 2, 1, 5),
-      DateTime(2026, 3, 1, 5),
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // The Reminders tile should be visible with the "No reminders" subtitle.
+    expect(find.text('Reminders'), findsOneWidget);
+    expect(find.text('No reminders'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('Reminders nav tile shows "1 reminder" with one reminder', (tester) async {
+    final caffeine = await getCaffeine();
+    // Insert a scheduled reminder.
+    await db.insertReminder(
+      trackableId: caffeine.id,
+      type: 'scheduled',
+      label: 'Morning dose',
+      scheduledTime: '08:00',
     );
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
 
-    // Scroll to the taper plans section.
-    final taperPlansLabel = find.text('Taper Plans');
-    await tester.ensureVisible(taperPlansLabel);
+    expect(find.text('Reminders'), findsOneWidget);
+    expect(find.text('1 reminder'), findsOneWidget);
 
-    // Find and tap the delete icon for the taper plan.
-    // There should be one delete icon in the taper plans section.
-    // We need the one with Icons.delete_outline that's inside the taper plans section.
-    final deleteIcons = find.widgetWithIcon(IconButton, Icons.delete_outline);
-    // The last delete icon should be the one in the taper plan row
-    // (presets and thresholds sections come first and are empty).
-    await tester.tap(deleteIcons.last);
-    await tester.pump();
+    await cleanUp(tester);
+  });
+
+  testWidgets('Reminders nav tile shows "2 reminders" with multiple', (tester) async {
+    final caffeine = await getCaffeine();
+    await db.insertReminder(
+      trackableId: caffeine.id,
+      type: 'scheduled',
+      label: 'Morning dose',
+      scheduledTime: '08:00',
+    );
+    await db.insertReminder(
+      trackableId: caffeine.id,
+      type: 'scheduled',
+      label: 'Afternoon dose',
+      scheduledTime: '14:00',
+    );
+    await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
 
-    // The plan should be gone.
-    expect(find.text('No taper plans yet'), findsOneWidget);
+    expect(find.text('2 reminders'), findsOneWidget);
 
-    // Verify it was deleted from the database.
-    final plans = await db.select(db.taperPlans).get();
-    expect(plans, isEmpty);
+    await cleanUp(tester);
+  });
+
+  testWidgets('all four nav tiles are present on the edit screen', (tester) async {
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // All four navigation tiles should be rendered.
+    expect(find.text('Presets'), findsOneWidget);
+    expect(find.text('Thresholds'), findsOneWidget);
+    expect(find.text('Taper Plans'), findsOneWidget);
+    expect(find.text('Reminders'), findsOneWidget);
+
+    // Each tile should have a chevron_right icon indicating navigation.
+    // There should be 4 chevron_right icons (one per tile).
+    expect(find.byIcon(Icons.chevron_right), findsNWidgets(4));
+
+    // Each tile should have its leading icon.
+    expect(find.byIcon(Icons.bolt), findsOneWidget);
+    expect(find.byIcon(Icons.horizontal_rule), findsOneWidget);
+    expect(find.byIcon(Icons.trending_down), findsOneWidget);
+    expect(find.byIcon(Icons.notifications_outlined), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('nav tiles show correct icons for each section', (tester) async {
+    // Verify each navigation tile has its distinct leading icon.
+    // This ensures the tiles are wired up with the correct visual identity
+    // (like checking that sidebar icons match their labels in a web app).
+    final caffeine = await getCaffeine();
+    await tester.pumpWidget(buildTestWidget(caffeine));
+    await pumpAndWait(tester);
+
+    // Presets tile should have the bolt icon.
+    final presetsTile = find.widgetWithText(ListTile, 'Presets');
+    expect(presetsTile, findsOneWidget);
+    final presetsListTile = tester.widget<ListTile>(presetsTile);
+    final presetsIcon = presetsListTile.leading as Icon;
+    expect(presetsIcon.icon, Icons.bolt);
+
+    // Thresholds tile should have the horizontal_rule icon.
+    final thresholdsTile = find.widgetWithText(ListTile, 'Thresholds');
+    final thresholdsListTile = tester.widget<ListTile>(thresholdsTile);
+    final thresholdsIcon = thresholdsListTile.leading as Icon;
+    expect(thresholdsIcon.icon, Icons.horizontal_rule);
+
+    // Taper Plans tile should have the trending_down icon.
+    final taperTile = find.widgetWithText(ListTile, 'Taper Plans');
+    final taperListTile = tester.widget<ListTile>(taperTile);
+    final taperIcon = taperListTile.leading as Icon;
+    expect(taperIcon.icon, Icons.trending_down);
+
+    // Reminders tile should have the notifications_outlined icon.
+    final remindersTile = find.widgetWithText(ListTile, 'Reminders');
+    final remindersListTile = tester.widget<ListTile>(remindersTile);
+    final remindersIcon = remindersListTile.leading as Icon;
+    expect(remindersIcon.icon, Icons.notifications_outlined);
 
     await cleanUp(tester);
   });

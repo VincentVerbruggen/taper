@@ -107,10 +107,15 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
           // Calendar icon to pick a specific date. Always visible in the
           // top right corner — a bit hidden per the user's preference since
           // you usually don't need to browse the past.
-          IconButton(
-            icon: const Icon(Icons.calendar_today),
-            tooltip: 'Select date',
-            onPressed: () => _showDatePicker(context, boundaryHour),
+          // Wrapped in Padding to align with the body's 16px horizontal padding.
+          // AppBar actions default to ~8px right margin which doesn't match.
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: const Icon(Icons.calendar_today),
+              tooltip: 'Select date',
+              onPressed: () => _showDatePicker(context, boundaryHour),
+            ),
           ),
         ],
       ),
@@ -187,40 +192,53 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     );
   }
 
-  /// Opens a date picker dialog. When the user selects a date, filters
-  /// the dose list to that single day.
-  ///
-  /// Like clicking a "Filter by date" button on a web dashboard.
+  /// Opens a date picker dialog that switches instantly when a date is tapped
+  /// (no OK button needed). Uses CalendarDatePicker in a dialog for immediate
+  /// selection — like clicking a date cell in a web calendar filter.
   void _showDatePicker(BuildContext context, int boundaryHour) async {
     final now = DateTime.now();
 
     // Use the selected date or today as the initial date for the picker.
-    // showDatePicker expects a Date without boundary time, so strip it.
     final initialDate = _selectedDate != null
         ? DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day)
         : DateTime(now.year, now.month, now.day);
 
-    final picked = await showDatePicker(
+    await showDialog(
       context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(now.year, now.month, now.day),
-    );
+      builder: (dialogContext) {
+        return Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // CalendarDatePicker fires onDateChanged immediately on tap.
+                // No OK/Cancel buttons needed — picking a date auto-closes.
+                CalendarDatePicker(
+                  initialDate: initialDate,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(now.year, now.month, now.day),
+                  onDateChanged: (picked) {
+                    // Close the dialog immediately on selection.
+                    Navigator.pop(dialogContext);
 
-    if (picked != null && mounted) {
-      // Convert the picked calendar date to a day boundary.
-      // We construct directly (picked.day + boundaryHour) rather than using
-      // dayBoundary() because dayBoundary(midnight) would return the previous
-      // day's boundary (midnight < 5 AM → rolls back one day).
-      setState(() {
-        _selectedDate = DateTime(
-          picked.year,
-          picked.month,
-          picked.day,
-          boundaryHour,
+                    // Convert the picked calendar date to a day boundary.
+                    setState(() {
+                      _selectedDate = DateTime(
+                        picked.year,
+                        picked.month,
+                        picked.day,
+                        boundaryHour,
+                      );
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
         );
-      });
-    }
+      },
+    );
   }
 
   /// Groups doses by their day boundary cutoff.
@@ -342,12 +360,15 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
             customBorder: shape,
             onTap: () => _editDose(dose, trackable),
             child: ListTile(
-              // Show preset name when available (e.g., "Espresso"),
-              // fall back to raw amount (e.g., "63 mg").
+              // Show "Skipped" for zero-dose logs (explicit skip),
+              // preset name when available (e.g., "Espresso"),
+              // or fall back to raw amount (e.g., "63 mg").
               title: Text(
-                dose.name != null
-                    ? dose.name!
-                    : '${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
+                dose.amount == 0
+                    ? 'Skipped'
+                    : dose.name != null
+                        ? dose.name!
+                        : '${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
               ),
               subtitle: Text(time),
               // Copy button: opens AddDoseScreen pre-filled with this dose's

@@ -221,11 +221,13 @@ void main() {
     await tester.tap(find.byIcon(Icons.calendar_today));
     await tester.pump();
 
-    // The date picker dialog should appear.
-    expect(find.byType(DatePickerDialog), findsOneWidget);
+    // The CalendarDatePicker dialog should appear (instant selection, no OK button).
+    expect(find.byType(CalendarDatePicker), findsOneWidget);
 
-    // Tap OK to select today's date (the default initial date).
-    await tester.tap(find.text('OK'));
+    // Tap today's day number to select it — CalendarDatePicker fires
+    // onDateChanged immediately (no OK button needed).
+    final today = now.day.toString();
+    await tester.tap(find.text(today).last);
     await tester.pump();
     await pumpAndWait(tester);
 

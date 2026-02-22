@@ -77,21 +77,14 @@ void main() {
 
   // --- Seeded data tests ---
 
-  testWidgets('shows seeded trackables with decay model info', (tester) async {
+  testWidgets('shows seeded trackable names', (tester) async {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
+    // Trackable list items show just the name (no subtitle with unit/decay info).
     expect(find.text('Caffeine'), findsOneWidget);
-    // Caffeine has exponential decay model → shows half-life.
-    expect(find.text('mg \u00B7 half-life: 5.0h'), findsOneWidget);
-
     expect(find.text('Water'), findsOneWidget);
-    // Water has no decay model → shows just the unit.
-    expect(find.text('ml'), findsAtLeast(1));
-
     expect(find.text('Alcohol'), findsOneWidget);
-    // Alcohol has linear decay model → shows elimination rate.
-    expect(find.text('ml \u00B7 elimination: 9.0 ml/h'), findsOneWidget);
 
     await cleanUp(tester);
   });
@@ -199,25 +192,14 @@ void main() {
     await cleanUp(tester);
   });
 
-  // --- Edit trackable via three-dots menu ---
+  // --- Edit trackable via tap ---
 
-  testWidgets('three-dots menu Edit navigates to EditTrackableScreen', (tester) async {
+  testWidgets('tapping trackable navigates to EditTrackableScreen', (tester) async {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // Open the three-dots menu on the first trackable (Caffeine).
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    // The popup menu should show Edit, Duplicate, Hide, and Delete options.
-    expect(find.text('Edit'), findsOneWidget);
-    expect(find.text('Duplicate'), findsOneWidget);
-    expect(find.text('Hide'), findsOneWidget);
-    expect(find.text('Delete'), findsOneWidget);
-
-    // Tap "Edit" to navigate to the edit screen.
-    await tester.tap(find.text('Edit'));
+    // Tap the Caffeine card to navigate to the edit screen.
+    await tester.tap(find.text('Caffeine'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -245,11 +227,8 @@ void main() {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // Open three-dots menu on Caffeine and tap Edit to navigate.
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('Edit'));
+    // Tap Caffeine card to navigate to edit screen.
+    await tester.tap(find.text('Caffeine'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
@@ -381,139 +360,15 @@ void main() {
     await cleanUp(tester);
   });
 
-  // --- Three-dots menu tests ---
+  // --- No three-dots menu (actions moved to edit screen) ---
 
-  testWidgets('three-dots menu shows Edit, Duplicate, Hide, Delete', (tester) async {
+  testWidgets('no three-dots menu on trackable list items', (tester) async {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.text('Edit'), findsOneWidget);
-    expect(find.text('Duplicate'), findsOneWidget);
-    expect(find.text('Hide'), findsOneWidget);
-    expect(find.text('Delete'), findsOneWidget);
-
-    expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.copy_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.visibility_off), findsOneWidget);
-    expect(find.byIcon(Icons.delete_outline), findsOneWidget);
-
-    await tester.tapAt(Offset.zero);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('duplicate creates "Copy of" trackable with same settings', (tester) async {
-    await tester.pumpWidget(await buildTestWidgetAsync());
-    await pumpAndWait(tester);
-
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    await tester.tap(find.text('Duplicate'));
-    await pumpAndWait(tester);
-
-    expect(find.text('Copy of Caffeine'), findsOneWidget);
-
-    final all = await (db.select(db.trackables)
-          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
-        .get();
-    final copy = all.firstWhere((t) => t.name == 'Copy of Caffeine');
-    expect(copy.unit, 'mg');
-    expect(copy.halfLifeHours, 5.0);
-    expect(copy.decayModel, 'exponential');
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('three-dots menu shows "Show" for hidden trackable', (tester) async {
-    await tester.pumpWidget(await buildTestWidgetAsync());
-    await pumpAndWait(tester);
-
-    // Open the three-dots menu on Alcohol (the last / 3rd item).
-    await tester.tap(find.byIcon(Icons.more_vert).last);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    // For a hidden trackable, the menu should say "Show" instead of "Hide".
-    expect(find.text('Show'), findsOneWidget);
-    expect(find.byIcon(Icons.visibility), findsOneWidget);
-
-    await tester.tapAt(Offset.zero);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('toggle visibility from menu updates the trackable', (tester) async {
-    await tester.pumpWidget(await buildTestWidgetAsync());
-    await pumpAndWait(tester);
-
-    // Caffeine is visible. Open its menu and tap "Hide".
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('Hide'));
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    final trackables = await db.select(db.trackables).get();
-    final caffeine = trackables.firstWhere((t) => t.name == 'Caffeine');
-    expect(caffeine.isVisible, false);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('delete from menu removes the trackable after confirmation', (tester) async {
-    await tester.pumpWidget(await buildTestWidgetAsync());
-    await pumpAndWait(tester);
-
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    await tester.tap(find.text('Delete'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    expect(find.text('Delete Trackable'), findsOneWidget);
-    expect(find.textContaining('Delete "Caffeine"?'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(TextButton, 'Delete'));
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    final trackables = await db.select(db.trackables).get();
-    expect(trackables.any((t) => t.name == 'Caffeine'), false);
-    expect(find.text('Caffeine deleted'), findsOneWidget);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('delete cancel does not remove the trackable', (tester) async {
-    await tester.pumpWidget(await buildTestWidgetAsync());
-    await pumpAndWait(tester);
-
-    await tester.tap(find.byIcon(Icons.more_vert).first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.text('Delete'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    await tester.tap(find.text('Cancel'));
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    final trackables = await db.select(db.trackables).get();
-    expect(trackables.any((t) => t.name == 'Caffeine'), true);
+    // The three-dots menu icon should not be present — all management
+    // actions (duplicate, hide/show, delete) are now in the edit screen.
+    expect(find.byIcon(Icons.more_vert), findsNothing);
 
     await cleanUp(tester);
   });

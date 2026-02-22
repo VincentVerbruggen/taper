@@ -190,6 +190,17 @@ final taperPlansProvider = StreamProvider.family<List<TaperPlan>, int>((ref, tra
   return db.watchTaperPlans(trackableId);
 });
 
+/// Reactive stream of reminders for a specific trackable, keyed by trackable ID.
+///
+/// StreamProvider.family creates a separate provider per trackable ID.
+/// Used by the reminders screen and the edit trackable navigation tile count.
+///
+/// Like: Reminder::where('trackable_id', $id)->orderBy('label')->get()
+final remindersProvider = StreamProvider.family<List<Reminder>, int>((ref, trackableId) {
+  final db = ref.watch(databaseProvider);
+  return db.watchReminders(trackableId);
+});
+
 /// Reactive stream of the active taper plan for a specific trackable.
 ///
 /// Returns null if no active plan exists. Used by the dashboard card

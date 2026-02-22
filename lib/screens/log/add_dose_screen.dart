@@ -27,11 +27,17 @@ class AddDoseScreen extends ConsumerStatefulWidget {
   /// E.g., copying an "Espresso" dose carries the name so the new log also says "Espresso".
   final String? initialName;
 
+  /// Optional date to pre-fill the time picker. Used by the calendar button
+  /// in the Log tab to log a dose for a specific past date. When provided,
+  /// the time picker starts at noon on that date instead of "now".
+  final DateTime? initialDate;
+
   const AddDoseScreen({
     super.key,
     this.initialTrackableId,
     this.initialAmount,
     this.initialName,
+    this.initialDate,
   });
 
   @override
@@ -72,9 +78,16 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
   }
 
   void _resetTime() {
-    final now = DateTime.now();
-    _selectedDate = now;
-    _selectedTime = TimeOfDay.fromDateTime(now);
+    if (widget.initialDate != null) {
+      // Calendar button pre-set: use the provided date at noon
+      // so the user sees a reasonable default instead of midnight.
+      _selectedDate = widget.initialDate!;
+      _selectedTime = const TimeOfDay(hour: 12, minute: 0);
+    } else {
+      final now = DateTime.now();
+      _selectedDate = now;
+      _selectedTime = TimeOfDay.fromDateTime(now);
+    }
   }
 
   @override
@@ -174,7 +187,7 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
               // Other numeric errors (like ".") show live as the user types.
               errorText: _submitted && _amountController.text.trim().isEmpty
                   ? 'Required'
-                  : numericFieldError(_amountController.text),
+                  : numericFieldErrorAllowZero(_amountController.text),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
@@ -254,12 +267,13 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
     );
   }
 
+  /// Validates the form — allows amount >= 0 (zero = "skipped this dose").
   bool _canSave() {
     if (_selectedTrackable == null) return false;
     final amountText = _amountController.text.trim();
     if (amountText.isEmpty) return false;
     final amount = double.tryParse(amountText);
-    return amount != null && amount > 0;
+    return amount != null && amount >= 0;
   }
 
   bool _saving = false;

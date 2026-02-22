@@ -103,7 +103,7 @@ Future<double?> showQuickAddDoseDialog({
                     border: const OutlineInputBorder(),
                     errorText: submitted && amountController.text.trim().isEmpty
                         ? 'Required'
-                        : numericFieldError(amountController.text),
+                        : numericFieldErrorAllowZero(amountController.text),
                   ),
                   // Clear the preset name when the user manually types —
                   // the amount no longer matches the preset exactly.
@@ -116,7 +116,7 @@ Future<double?> showQuickAddDoseDialog({
                   onSubmitted: (_) {
                     final amount =
                         double.tryParse(amountController.text.trim());
-                    if (amount != null && amount > 0) {
+                    if (amount != null && amount >= 0) {
                       result = amount;
                       Navigator.pop(dialogContext);
                     } else {

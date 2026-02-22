@@ -8,7 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/database_providers.dart';
-import 'package:taper/screens/trackables/add_taper_plan_screen.dart';
+import 'package:taper/screens/trackables/presets_screen.dart';
+import 'package:taper/screens/trackables/reminders_screen.dart';
+import 'package:taper/screens/trackables/taper_plans_screen.dart';
+import 'package:taper/screens/trackables/thresholds_screen.dart';
 import 'package:taper/screens/trackables/widgets/color_palette_selector.dart';
 import 'package:taper/utils/validation.dart';
 
@@ -18,13 +21,20 @@ import 'package:taper/utils/validation.dart';
 /// the existing model via route-model binding:
 ///   public function edit(Trackable $trackable) { ... }
 ///
-/// Contains ALL trackable settings in one place:
+/// Contains core trackable settings:
 ///   - Name, Unit (text fields)
+///   - Color picker
+///   - Navigation tiles to sub-screens (Presets, Thresholds, Taper Plans, Reminders)
 ///   - Decay model dropdown (None / Exponential / Linear)
 ///   - Half-life (shown only for exponential)
 ///   - Elimination rate (shown only for linear)
 ///   - Visibility toggle (show/hide in log form)
 ///   - Delete button with confirmation
+///
+/// Sub-sections (presets, thresholds, taper plans, reminders) are extracted
+/// to dedicated screens accessed via navigation tiles. This follows the
+/// standard mobile pattern (like iOS Settings) to keep the edit form
+/// manageable as features grow.
 class EditTrackableScreen extends ConsumerStatefulWidget {
   /// The trackable to edit — passed in like route-model binding.
   final Trackable trackable;
@@ -104,6 +114,13 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
         .map((t) => t.name)
         .toList() ?? [];
 
+    // Watch related data counts for navigation tile summaries.
+    // These are lightweight stream providers that update reactively.
+    final presetsAsync = ref.watch(presetsProvider(widget.trackable.id));
+    final thresholdsAsync = ref.watch(thresholdsProvider(widget.trackable.id));
+    final plansAsync = ref.watch(taperPlansProvider(widget.trackable.id));
+    final remindersAsync = ref.watch(remindersProvider(widget.trackable.id));
+
     return Scaffold(
       // AppBar gives us the back button for free.
       appBar: AppBar(
@@ -158,27 +175,54 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
 
             const SizedBox(height: 24),
 
-            // --- Presets section ---
-            // Named dose shortcuts for this trackable (e.g., "Espresso" = 90 mg).
-            // Users can add/delete presets here; they appear as chips in the
-            // quick-add dialog and Add Dose screen for one-tap dose entry.
-            // Like a "has-many" relationship section in a Laravel edit form.
-            _buildPresetsSection(),
-
-            const SizedBox(height: 24),
-
-            // --- Thresholds section ---
-            // Named horizontal reference lines for the decay chart (e.g.,
-            // "Daily max" = 400 mg). Like thresholds/limits in a monitoring dashboard.
-            _buildThresholdsSection(),
-
-            const SizedBox(height: 24),
-
-            // --- Taper plans section ---
-            // Gradual reduction schedules. Shows plan history with status labels,
-            // retry (copies params to new plan), and delete.
-            // Like a "has-many" relationship section showing order history.
-            _buildTaperPlansSection(),
+            // --- Related data sections (click-through to sub-screens) ---
+            // Each tile navigates to a dedicated full-screen for managing
+            // that section's data. Like iOS Settings rows that push to
+            // detail screens. Count summaries update reactively.
+            _buildNavTile(
+              icon: Icons.bolt,
+              label: 'Presets',
+              summary: _countSummary(presetsAsync, 'preset'),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PresetsScreen(trackable: widget.trackable),
+                ),
+              ),
+            ),
+            _buildNavTile(
+              icon: Icons.horizontal_rule,
+              label: 'Thresholds',
+              summary: _countSummary(thresholdsAsync, 'threshold'),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ThresholdsScreen(trackable: widget.trackable),
+                ),
+              ),
+            ),
+            _buildNavTile(
+              icon: Icons.trending_down,
+              label: 'Taper Plans',
+              summary: _taperPlanSummary(plansAsync),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TaperPlansScreen(trackable: widget.trackable),
+                ),
+              ),
+            ),
+            _buildNavTile(
+              icon: Icons.notifications_outlined,
+              label: 'Reminders',
+              summary: _countSummary(remindersAsync, 'reminder'),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RemindersScreen(trackable: widget.trackable),
+                ),
+              ),
+            ),
 
             const SizedBox(height: 16),
 
@@ -207,7 +251,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             const SizedBox(height: 16),
 
             // --- Half-life field (only for exponential) ---
-            // AnimatedSize smoothly collapses/expands when the decay model changes.
             // Like a v-show transition in Vue.
             if (_selectedDecayModel == DecayModel.exponential)
               TextField(
@@ -322,6 +365,17 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
 
             const SizedBox(height: 12),
 
+            // --- Duplicate button ---
+            // Creates a "Copy of X" with the same settings.
+            // Like Laravel's replicate(): $copy = $trackable->replicate()
+            OutlinedButton.icon(
+              onPressed: _duplicate,
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Duplicate Trackable'),
+            ),
+
+            const SizedBox(height: 12),
+
             // --- Delete button ---
             // Error-colored outline button at the bottom. Opens a confirmation
             // dialog before actually deleting. Like a "danger zone" section.
@@ -343,711 +397,53 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
     );
   }
 
-  /// Builds the presets management section: header, list, and "Add Preset" button.
+  /// Builds a navigation tile that pushes to a sub-screen.
   ///
-  /// Watches presetsProvider reactively — adding/deleting a preset in the DB
-  /// immediately updates this list without any manual setState() calls.
-  /// Like a Livewire component that auto-refreshes when its query changes.
-  Widget _buildPresetsSection() {
-    final presetsAsync = ref.watch(presetsProvider(widget.trackable.id));
-    final unit = _unitController.text.trim().isEmpty
-        ? 'mg'
-        : _unitController.text.trim();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Presets',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-
-        // Show the list of existing presets (or nothing if loading/empty).
-        presetsAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (e, s) => Text('Error loading presets: $e'),
-          data: (presetsList) {
-            if (presetsList.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'No presets yet',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              );
-            }
-            // Each preset = a Card-wrapped ListTile with name, amount, and delete button.
-            // Tapping the tile opens an edit dialog (same as dose log entries).
-            // Like a simple CRUD list inside a parent form.
-            return Column(
-              children: presetsList.map((preset) {
-                // For edit dialog: exclude this preset's name so renaming to
-                // the same name doesn't trigger a duplicate error.
-                final otherPresetNames = presetsList
-                    .where((p) => p.id != preset.id)
-                    .map((p) => p.name)
-                    .toList();
-                final shape = RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                );
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 2.0),
-                  child: Card(
-                    shape: shape,
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      customBorder: shape,
-                      onTap: () => _showEditPresetDialog(preset, otherPresetNames),
-                      child: ListTile(
-                        title: Text(preset.name),
-                        subtitle: Text('${preset.amount.toStringAsFixed(0)} ${_unitController.text.trim().isEmpty ? 'mg' : _unitController.text.trim()}'),
-                        // Trailing delete button — removes the preset immediately.
-                        // Presets are lightweight; no confirmation dialog needed.
-                        trailing: IconButton(
-                          icon: Icon(
-                            Icons.delete_outline,
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                          onPressed: () {
-                            ref.read(databaseProvider).deletePreset(preset.id);
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-
-        // "Add Preset" button — opens a dialog with name + amount fields.
-        // Pass all existing names so the dialog can check for duplicates.
-        TextButton.icon(
-          onPressed: () => _showAddPresetDialog(
-            presetsAsync.value?.map((p) => p.name).toList() ?? [],
-          ),
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Add Preset'),
-        ),
-      ],
+  /// Follows the iOS Settings pattern: leading icon, title, subtitle with
+  /// a count/summary, and a trailing chevron indicating navigation.
+  /// Like a <a> tag styled as a list item in a sidebar navigation.
+  Widget _buildNavTile({
+    required IconData icon,
+    required String label,
+    required String summary,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(label),
+      subtitle: Text(summary),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+      // Compact vertical padding since these tiles are grouped together.
+      visualDensity: VisualDensity.compact,
     );
   }
 
-  /// Shows a dialog to add a new preset (name + amount).
-  /// Like a nested create form that inserts into a related table.
-  /// [existingNames] = names of other presets in this trackable, for duplicate checking.
-  void _showAddPresetDialog(List<String> existingNames) {
-    final nameController = TextEditingController();
-    final amountController = TextEditingController();
-    // Tracks whether the user has attempted to save.
-    // Before this, empty fields don't show "Required" (avoids error spam on open).
-    // After tapping Add, empty required fields light up with errors.
-    // Like Laravel's $errors bag — only populated after form submission.
-    var submitted = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        // StatefulBuilder so the dialog can rebuild when text changes —
-        // needed for live errorText updates on the amount and name fields.
-        // Like using Alpine.js x-data inside a Blade modal.
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            // Compute error text: "Required" takes priority over other validators.
-            final nameError = submitted && nameController.text.trim().isEmpty
-                ? 'Required'
-                : duplicateNameError(nameController.text, existingNames);
-            final amountError = submitted && amountController.text.trim().isEmpty
-                ? 'Required'
-                : numericFieldError(amountController.text);
-
-            return AlertDialog(
-              title: const Text('Add Preset'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      labelText: 'Name',
-                      hintText: 'e.g. Espresso',
-                      border: const OutlineInputBorder(),
-                      errorText: nameError,
-                    ),
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      suffixText: _unitController.text.trim().isEmpty
-                          ? 'mg'
-                          : _unitController.text.trim(),
-                      border: const OutlineInputBorder(),
-                      errorText: amountError,
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-                    ],
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final amount = double.tryParse(amountController.text.trim());
-                    // If validation fails, mark as submitted so error messages
-                    // appear, then rebuild the dialog to show them.
-                    if (name.isEmpty ||
-                        duplicateNameError(name, existingNames) != null ||
-                        amount == null || amount <= 0) {
-                      submitted = true;
-                      setDialogState(() {});
-                      return;
-                    }
-                    ref.read(databaseProvider).insertPreset(
-                      widget.trackable.id,
-                      name,
-                      amount,
-                    );
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('Add'),
-                ),
-              ],
-            );
-          },
-        );
+  /// Generates a summary string like "3 presets" or "No presets" from an async list.
+  /// Handles loading/error states gracefully with a "..." fallback.
+  String _countSummary<T>(AsyncValue<List<T>> asyncList, String singular) {
+    return asyncList.when(
+      loading: () => '...',
+      error: (_, _) => '...',
+      data: (list) {
+        if (list.isEmpty) return 'No ${singular}s';
+        if (list.length == 1) return '1 $singular';
+        return '${list.length} ${singular}s';
       },
     );
   }
 
-  /// Shows a dialog to edit an existing preset's name and/or amount.
-  /// Pre-fills with the current values — like editing a row in a related table.
-  /// Same layout as _showAddPresetDialog but calls updatePreset() instead of insert.
-  /// [existingNames] = names of OTHER presets (excluding this one), for duplicate checking.
-  void _showEditPresetDialog(Preset preset, List<String> existingNames) {
-    final nameController = TextEditingController(text: preset.name);
-    final amountController = TextEditingController(
-      text: preset.amount.toStringAsFixed(
-        preset.amount == preset.amount.roundToDouble() ? 0 : 1,
-      ),
-    );
-    var submitted = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final nameError = submitted && nameController.text.trim().isEmpty
-                ? 'Required'
-                : duplicateNameError(nameController.text, existingNames);
-            final amountError = submitted && amountController.text.trim().isEmpty
-                ? 'Required'
-                : numericFieldError(amountController.text);
-
-            return AlertDialog(
-              title: const Text('Edit Preset'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      labelText: 'Name',
-                      border: const OutlineInputBorder(),
-                      errorText: nameError,
-                    ),
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      suffixText: _unitController.text.trim().isEmpty
-                          ? 'mg'
-                          : _unitController.text.trim(),
-                      border: const OutlineInputBorder(),
-                      errorText: amountError,
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-                    ],
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final amount = double.tryParse(amountController.text.trim());
-                    if (name.isEmpty ||
-                        duplicateNameError(name, existingNames) != null ||
-                        amount == null || amount <= 0) {
-                      submitted = true;
-                      setDialogState(() {});
-                      return;
-                    }
-                    ref.read(databaseProvider).updatePreset(
-                      preset.id,
-                      name: name,
-                      amount: amount,
-                    );
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Builds the thresholds management section: header, list, and "Add Threshold" button.
-  ///
-  /// Same pattern as the presets section — a reactively-updating list with
-  /// inline delete and an add button that opens a dialog.
-  /// Thresholds appear as dashed horizontal lines on the decay chart.
-  Widget _buildThresholdsSection() {
-    final thresholdsAsync = ref.watch(thresholdsProvider(widget.trackable.id));
-    final unit = _unitController.text.trim().isEmpty
-        ? 'mg'
-        : _unitController.text.trim();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Thresholds',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-
-        // Show the list of existing thresholds (or nothing if loading/empty).
-        thresholdsAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (e, s) => Text('Error loading thresholds: $e'),
-          data: (thresholdsList) {
-            if (thresholdsList.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'No thresholds yet',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              );
-            }
-            // Each threshold = a Card-wrapped ListTile with name, amount, and delete button.
-            // Tapping the tile opens an edit dialog (same pattern as presets).
-            return Column(
-              children: thresholdsList.map((threshold) {
-                // For edit dialog: exclude this threshold's name.
-                final otherThresholdNames = thresholdsList
-                    .where((t) => t.id != threshold.id)
-                    .map((t) => t.name)
-                    .toList();
-                final shape = RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                );
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 2.0),
-                  child: Card(
-                    shape: shape,
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      customBorder: shape,
-                      onTap: () => _showEditThresholdDialog(threshold, otherThresholdNames),
-                      child: ListTile(
-                        title: Text(threshold.name),
-                        subtitle: Text('${threshold.amount.toStringAsFixed(0)} ${_unitController.text.trim().isEmpty ? 'mg' : _unitController.text.trim()}'),
-                        trailing: IconButton(
-                          icon: Icon(
-                            Icons.delete_outline,
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                          onPressed: () {
-                            ref.read(databaseProvider).deleteThreshold(threshold.id);
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-
-        // "Add Threshold" button — opens a dialog with name + amount fields.
-        // Pass all existing names so the dialog can check for duplicates.
-        TextButton.icon(
-          onPressed: () => _showAddThresholdDialog(
-            thresholdsAsync.value?.map((t) => t.name).toList() ?? [],
-          ),
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Add Threshold'),
-        ),
-      ],
-    );
-  }
-
-  /// Builds the taper plans management section: header, plan list, and "New Taper Plan" button.
-  ///
-  /// Watches taperPlansProvider reactively — adding/deleting a plan in the DB
-  /// immediately updates this list. Shows status labels:
-  ///   - "Active" = isActive && !ended
-  ///   - "Completed" = isActive && ended (still active, past end date)
-  ///   - "Superseded" = !isActive (replaced by a newer plan)
-  ///
-  /// Like an order history section in a customer edit form.
-  Widget _buildTaperPlansSection() {
-    final plansAsync = ref.watch(taperPlansProvider(widget.trackable.id));
-    final unit = _unitController.text.trim().isEmpty
-        ? 'mg'
-        : _unitController.text.trim();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Taper Plans',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-
-        // Show the list of existing plans (or "No taper plans yet" if empty).
-        plansAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (e, s) => Text('Error loading taper plans: $e'),
-          data: (plansList) {
-            if (plansList.isEmpty) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'No taper plans yet',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              );
-            }
-            // Each plan = a Card with title ("400 → 100 mg"), subtitle (dates + status),
-            // and trailing icons for Retry and Delete.
-            return Column(
-              children: plansList.map((plan) {
-                final status = _taperPlanStatus(plan);
-                final shape = RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                );
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 2.0),
-                  child: Card(
-                    shape: shape,
-                    clipBehavior: Clip.antiAlias,
-                    child: ListTile(
-                      // "400 → 100 mg" — start and target amounts.
-                      title: Text(
-                        '${plan.startAmount.toStringAsFixed(0)} → ${plan.targetAmount.toStringAsFixed(0)} $unit',
-                      ),
-                      // Date range + status chip. Format: "Feb 1 – Mar 15 · Active"
-                      subtitle: Text(
-                        '${_formatDate(plan.startDate)} – ${_formatDate(plan.endDate)} · $status',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Retry: copies this plan's params into a new plan form.
-                          // Like duplicating an order with updated dates.
-                          IconButton(
-                            icon: const Icon(Icons.replay, size: 20),
-                            tooltip: 'Retry with same settings',
-                            onPressed: () => _retryTaperPlan(plan),
-                          ),
-                          // Delete: removes the plan.
-                          IconButton(
-                            icon: Icon(
-                              Icons.delete_outline,
-                              size: 20,
-                              color: Theme.of(context).colorScheme.error,
-                            ),
-                            tooltip: 'Delete plan',
-                            onPressed: () {
-                              ref.read(databaseProvider).deleteTaperPlan(plan.id);
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-
-        // "New Taper Plan" button — navigates to the creation form.
-        TextButton.icon(
-          onPressed: () => _addTaperPlan(),
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('New Taper Plan'),
-        ),
-      ],
-    );
-  }
-
-  /// Determines the status label for a taper plan.
-  ///
-  /// - Active: isActive == true (could be before start, in progress, or maintenance)
-  /// - Completed: isActive == false AND endDate is in the past
-  /// - Superseded: isActive == false AND endDate is NOT in the past
-  ///   (replaced by a newer plan before it finished)
-  String _taperPlanStatus(TaperPlan plan) {
-    if (plan.isActive) return 'Active';
-    // If inactive, check if the plan ran to completion or was superseded early.
-    if (plan.endDate.isBefore(DateTime.now())) return 'Completed';
-    return 'Superseded';
-  }
-
-  /// Format a date as "Feb 1" or "Mar 15" for compact display in plan cards.
-  String _formatDate(DateTime date) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[date.month - 1]} ${date.day}';
-  }
-
-  /// Navigate to AddTaperPlanScreen pre-filled with an old plan's amounts (Retry flow).
-  /// Like duplicating a record in a CRUD list.
-  void _retryTaperPlan(TaperPlan plan) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AddTaperPlanScreen(
-          trackable: widget.trackable,
-          initialStartAmount: plan.startAmount,
-          initialTargetAmount: plan.targetAmount,
-        ),
-      ),
-    );
-  }
-
-  /// Navigate to AddTaperPlanScreen with empty defaults.
-  void _addTaperPlan() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => AddTaperPlanScreen(trackable: widget.trackable),
-      ),
-    );
-  }
-
-  /// Shows a dialog to add a new threshold (name + amount).
-  /// Like a nested create form that inserts into a related table.
-  /// [existingNames] = names of other thresholds in this trackable, for duplicate checking.
-  void _showAddThresholdDialog(List<String> existingNames) {
-    final nameController = TextEditingController();
-    final amountController = TextEditingController();
-    var submitted = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final nameError = submitted && nameController.text.trim().isEmpty
-                ? 'Required'
-                : duplicateNameError(nameController.text, existingNames);
-            final amountError = submitted && amountController.text.trim().isEmpty
-                ? 'Required'
-                : numericFieldError(amountController.text);
-
-            return AlertDialog(
-              title: const Text('Add Threshold'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      labelText: 'Name',
-                      hintText: 'e.g. Daily max',
-                      border: const OutlineInputBorder(),
-                      errorText: nameError,
-                    ),
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      suffixText: _unitController.text.trim().isEmpty
-                          ? 'mg'
-                          : _unitController.text.trim(),
-                      border: const OutlineInputBorder(),
-                      errorText: amountError,
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-                    ],
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final amount = double.tryParse(amountController.text.trim());
-                    if (name.isEmpty ||
-                        duplicateNameError(name, existingNames) != null ||
-                        amount == null || amount <= 0) {
-                      submitted = true;
-                      setDialogState(() {});
-                      return;
-                    }
-                    ref.read(databaseProvider).insertThreshold(
-                      widget.trackable.id,
-                      name,
-                      amount,
-                    );
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('Add'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Shows a dialog to edit an existing threshold's name and/or amount.
-  /// Pre-fills with the current values — like editing a row in a related table.
-  /// Same layout as _showAddThresholdDialog but calls updateThreshold() instead of insert.
-  /// [existingNames] = names of OTHER thresholds (excluding this one), for duplicate checking.
-  void _showEditThresholdDialog(Threshold threshold, List<String> existingNames) {
-    final nameController = TextEditingController(text: threshold.name);
-    final amountController = TextEditingController(
-      text: threshold.amount.toStringAsFixed(
-        threshold.amount == threshold.amount.roundToDouble() ? 0 : 1,
-      ),
-    );
-    var submitted = false;
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final nameError = submitted && nameController.text.trim().isEmpty
-                ? 'Required'
-                : duplicateNameError(nameController.text, existingNames);
-            final amountError = submitted && amountController.text.trim().isEmpty
-                ? 'Required'
-                : numericFieldError(amountController.text);
-
-            return AlertDialog(
-              title: const Text('Edit Threshold'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      labelText: 'Name',
-                      border: const OutlineInputBorder(),
-                      errorText: nameError,
-                    ),
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: amountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      suffixText: _unitController.text.trim().isEmpty
-                          ? 'mg'
-                          : _unitController.text.trim(),
-                      border: const OutlineInputBorder(),
-                      errorText: amountError,
-                    ),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-                    ],
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final amount = double.tryParse(amountController.text.trim());
-                    if (name.isEmpty ||
-                        duplicateNameError(name, existingNames) != null ||
-                        amount == null || amount <= 0) {
-                      submitted = true;
-                      setDialogState(() {});
-                      return;
-                    }
-                    ref.read(databaseProvider).updateThreshold(
-                      threshold.id,
-                      name: name,
-                      amount: amount,
-                    );
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
+  /// Generates a summary for the taper plans tile.
+  /// Shows "1 active plan" if there's an active plan, otherwise the count.
+  String _taperPlanSummary(AsyncValue<List<TaperPlan>> plansAsync) {
+    return plansAsync.when(
+      loading: () => '...',
+      error: (_, _) => '...',
+      data: (plans) {
+        if (plans.isEmpty) return 'No plans';
+        final activePlan = plans.where((p) => p.isActive).firstOrNull;
+        if (activePlan != null) return '1 active plan';
+        return '${plans.length} plan${plans.length == 1 ? '' : 's'}';
       },
     );
   }
@@ -1142,6 +538,28 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
         );
       },
     );
+  }
+
+  /// Duplicate this trackable: creates "Copy of X" with the same settings.
+  /// Like Laravel's replicate(): $copy = $trackable->replicate()->fill([...])
+  void _duplicate() async {
+    final db = ref.read(databaseProvider);
+    await db.insertTrackable(
+      'Copy of ${widget.trackable.name}',
+      unit: widget.trackable.unit,
+      halfLifeHours: widget.trackable.halfLifeHours,
+      decayModel: widget.trackable.decayModel,
+      eliminationRate: widget.trackable.eliminationRate,
+      absorptionMinutes: widget.trackable.absorptionMinutes,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          showCloseIcon: true,
+          content: Text('Created "Copy of ${widget.trackable.name}"'),
+        ),
+      );
+    }
   }
 
   /// Delete the trackable and pop back to the list.
