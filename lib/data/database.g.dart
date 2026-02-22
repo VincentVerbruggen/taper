@@ -2204,6 +2204,359 @@ class TaperPlansCompanion extends UpdateCompanion<TaperPlan> {
   }
 }
 
+class $DashboardWidgetsTable extends DashboardWidgets
+    with TableInfo<$DashboardWidgetsTable, DashboardWidget> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DashboardWidgetsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _trackableIdMeta = const VerificationMeta(
+    'trackableId',
+  );
+  @override
+  late final GeneratedColumn<int> trackableId = GeneratedColumn<int>(
+    'trackable_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES trackables (id)',
+    ),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _configMeta = const VerificationMeta('config');
+  @override
+  late final GeneratedColumn<String> config = GeneratedColumn<String>(
+    'config',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    type,
+    trackableId,
+    sortOrder,
+    config,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dashboard_widgets';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DashboardWidget> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('trackable_id')) {
+      context.handle(
+        _trackableIdMeta,
+        trackableId.isAcceptableOrUnknown(
+          data['trackable_id']!,
+          _trackableIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('config')) {
+      context.handle(
+        _configMeta,
+        config.isAcceptableOrUnknown(data['config']!, _configMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DashboardWidget map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DashboardWidget(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      trackableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}trackable_id'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      config: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}config'],
+      )!,
+    );
+  }
+
+  @override
+  $DashboardWidgetsTable createAlias(String alias) {
+    return $DashboardWidgetsTable(attachedDatabase, alias);
+  }
+}
+
+class DashboardWidget extends DataClass implements Insertable<DashboardWidget> {
+  final int id;
+  final String type;
+  final int? trackableId;
+  final int sortOrder;
+  final String config;
+  const DashboardWidget({
+    required this.id,
+    required this.type,
+    this.trackableId,
+    required this.sortOrder,
+    required this.config,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['type'] = Variable<String>(type);
+    if (!nullToAbsent || trackableId != null) {
+      map['trackable_id'] = Variable<int>(trackableId);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['config'] = Variable<String>(config);
+    return map;
+  }
+
+  DashboardWidgetsCompanion toCompanion(bool nullToAbsent) {
+    return DashboardWidgetsCompanion(
+      id: Value(id),
+      type: Value(type),
+      trackableId: trackableId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(trackableId),
+      sortOrder: Value(sortOrder),
+      config: Value(config),
+    );
+  }
+
+  factory DashboardWidget.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DashboardWidget(
+      id: serializer.fromJson<int>(json['id']),
+      type: serializer.fromJson<String>(json['type']),
+      trackableId: serializer.fromJson<int?>(json['trackableId']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      config: serializer.fromJson<String>(json['config']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'type': serializer.toJson<String>(type),
+      'trackableId': serializer.toJson<int?>(trackableId),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'config': serializer.toJson<String>(config),
+    };
+  }
+
+  DashboardWidget copyWith({
+    int? id,
+    String? type,
+    Value<int?> trackableId = const Value.absent(),
+    int? sortOrder,
+    String? config,
+  }) => DashboardWidget(
+    id: id ?? this.id,
+    type: type ?? this.type,
+    trackableId: trackableId.present ? trackableId.value : this.trackableId,
+    sortOrder: sortOrder ?? this.sortOrder,
+    config: config ?? this.config,
+  );
+  DashboardWidget copyWithCompanion(DashboardWidgetsCompanion data) {
+    return DashboardWidget(
+      id: data.id.present ? data.id.value : this.id,
+      type: data.type.present ? data.type.value : this.type,
+      trackableId: data.trackableId.present
+          ? data.trackableId.value
+          : this.trackableId,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      config: data.config.present ? data.config.value : this.config,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DashboardWidget(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('config: $config')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, type, trackableId, sortOrder, config);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DashboardWidget &&
+          other.id == this.id &&
+          other.type == this.type &&
+          other.trackableId == this.trackableId &&
+          other.sortOrder == this.sortOrder &&
+          other.config == this.config);
+}
+
+class DashboardWidgetsCompanion extends UpdateCompanion<DashboardWidget> {
+  final Value<int> id;
+  final Value<String> type;
+  final Value<int?> trackableId;
+  final Value<int> sortOrder;
+  final Value<String> config;
+  const DashboardWidgetsCompanion({
+    this.id = const Value.absent(),
+    this.type = const Value.absent(),
+    this.trackableId = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.config = const Value.absent(),
+  });
+  DashboardWidgetsCompanion.insert({
+    this.id = const Value.absent(),
+    required String type,
+    this.trackableId = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.config = const Value.absent(),
+  }) : type = Value(type);
+  static Insertable<DashboardWidget> custom({
+    Expression<int>? id,
+    Expression<String>? type,
+    Expression<int>? trackableId,
+    Expression<int>? sortOrder,
+    Expression<String>? config,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (type != null) 'type': type,
+      if (trackableId != null) 'trackable_id': trackableId,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (config != null) 'config': config,
+    });
+  }
+
+  DashboardWidgetsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? type,
+    Value<int?>? trackableId,
+    Value<int>? sortOrder,
+    Value<String>? config,
+  }) {
+    return DashboardWidgetsCompanion(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      trackableId: trackableId ?? this.trackableId,
+      sortOrder: sortOrder ?? this.sortOrder,
+      config: config ?? this.config,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (trackableId.present) {
+      map['trackable_id'] = Variable<int>(trackableId.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (config.present) {
+      map['config'] = Variable<String>(config.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DashboardWidgetsCompanion(')
+          ..write('id: $id, ')
+          ..write('type: $type, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('config: $config')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2212,6 +2565,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PresetsTable presets = $PresetsTable(this);
   late final $ThresholdsTable thresholds = $ThresholdsTable(this);
   late final $TaperPlansTable taperPlans = $TaperPlansTable(this);
+  late final $DashboardWidgetsTable dashboardWidgets = $DashboardWidgetsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2222,6 +2578,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     presets,
     thresholds,
     taperPlans,
+    dashboardWidgets,
   ];
 }
 
@@ -2335,6 +2692,29 @@ final class $$TrackablesTableReferences
     ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_taperPlansRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$DashboardWidgetsTable, List<DashboardWidget>>
+  _dashboardWidgetsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.dashboardWidgets,
+    aliasName: $_aliasNameGenerator(
+      db.trackables.id,
+      db.dashboardWidgets.trackableId,
+    ),
+  );
+
+  $$DashboardWidgetsTableProcessedTableManager get dashboardWidgetsRefs {
+    final manager = $$DashboardWidgetsTableTableManager(
+      $_db,
+      $_db.dashboardWidgets,
+    ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _dashboardWidgetsRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2501,6 +2881,31 @@ class $$TrackablesTableFilterComposer
           }) => $$TaperPlansTableFilterComposer(
             $db: $db,
             $table: $db.taperPlans,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> dashboardWidgetsRefs(
+    Expression<bool> Function($$DashboardWidgetsTableFilterComposer f) f,
+  ) {
+    final $$DashboardWidgetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dashboardWidgets,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DashboardWidgetsTableFilterComposer(
+            $db: $db,
+            $table: $db.dashboardWidgets,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2735,6 +3140,31 @@ class $$TrackablesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> dashboardWidgetsRefs<T extends Object>(
+    Expression<T> Function($$DashboardWidgetsTableAnnotationComposer a) f,
+  ) {
+    final $$DashboardWidgetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dashboardWidgets,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DashboardWidgetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.dashboardWidgets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TrackablesTableTableManager
@@ -2755,6 +3185,7 @@ class $$TrackablesTableTableManager
             bool presetsRefs,
             bool thresholdsRefs,
             bool taperPlansRefs,
+            bool dashboardWidgetsRefs,
           })
         > {
   $$TrackablesTableTableManager(_$AppDatabase db, $TrackablesTable table)
@@ -2838,6 +3269,7 @@ class $$TrackablesTableTableManager
                 presetsRefs = false,
                 thresholdsRefs = false,
                 taperPlansRefs = false,
+                dashboardWidgetsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -2846,6 +3278,7 @@ class $$TrackablesTableTableManager
                     if (presetsRefs) db.presets,
                     if (thresholdsRefs) db.thresholds,
                     if (taperPlansRefs) db.taperPlans,
+                    if (dashboardWidgetsRefs) db.dashboardWidgets,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -2934,6 +3367,27 @@ class $$TrackablesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (dashboardWidgetsRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          DashboardWidget
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._dashboardWidgetsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).dashboardWidgetsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -2959,6 +3413,7 @@ typedef $$TrackablesTableProcessedTableManager =
         bool presetsRefs,
         bool thresholdsRefs,
         bool taperPlansRefs,
+        bool dashboardWidgetsRefs,
       })
     >;
 typedef $$DoseLogsTableCreateCompanionBuilder =
@@ -4236,6 +4691,328 @@ typedef $$TaperPlansTableProcessedTableManager =
       TaperPlan,
       PrefetchHooks Function({bool trackableId})
     >;
+typedef $$DashboardWidgetsTableCreateCompanionBuilder =
+    DashboardWidgetsCompanion Function({
+      Value<int> id,
+      required String type,
+      Value<int?> trackableId,
+      Value<int> sortOrder,
+      Value<String> config,
+    });
+typedef $$DashboardWidgetsTableUpdateCompanionBuilder =
+    DashboardWidgetsCompanion Function({
+      Value<int> id,
+      Value<String> type,
+      Value<int?> trackableId,
+      Value<int> sortOrder,
+      Value<String> config,
+    });
+
+final class $$DashboardWidgetsTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $DashboardWidgetsTable, DashboardWidget> {
+  $$DashboardWidgetsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $TrackablesTable _trackableIdTable(_$AppDatabase db) =>
+      db.trackables.createAlias(
+        $_aliasNameGenerator(db.dashboardWidgets.trackableId, db.trackables.id),
+      );
+
+  $$TrackablesTableProcessedTableManager? get trackableId {
+    final $_column = $_itemColumn<int>('trackable_id');
+    if ($_column == null) return null;
+    final manager = $$TrackablesTableTableManager(
+      $_db,
+      $_db.trackables,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_trackableIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DashboardWidgetsTableFilterComposer
+    extends Composer<_$AppDatabase, $DashboardWidgetsTable> {
+  $$DashboardWidgetsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get config => $composableBuilder(
+    column: $table.config,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TrackablesTableFilterComposer get trackableId {
+    final $$TrackablesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableFilterComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DashboardWidgetsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DashboardWidgetsTable> {
+  $$DashboardWidgetsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get config => $composableBuilder(
+    column: $table.config,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TrackablesTableOrderingComposer get trackableId {
+    final $$TrackablesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableOrderingComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DashboardWidgetsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DashboardWidgetsTable> {
+  $$DashboardWidgetsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get config =>
+      $composableBuilder(column: $table.config, builder: (column) => column);
+
+  $$TrackablesTableAnnotationComposer get trackableId {
+    final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DashboardWidgetsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DashboardWidgetsTable,
+          DashboardWidget,
+          $$DashboardWidgetsTableFilterComposer,
+          $$DashboardWidgetsTableOrderingComposer,
+          $$DashboardWidgetsTableAnnotationComposer,
+          $$DashboardWidgetsTableCreateCompanionBuilder,
+          $$DashboardWidgetsTableUpdateCompanionBuilder,
+          (DashboardWidget, $$DashboardWidgetsTableReferences),
+          DashboardWidget,
+          PrefetchHooks Function({bool trackableId})
+        > {
+  $$DashboardWidgetsTableTableManager(
+    _$AppDatabase db,
+    $DashboardWidgetsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DashboardWidgetsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DashboardWidgetsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DashboardWidgetsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<int?> trackableId = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<String> config = const Value.absent(),
+              }) => DashboardWidgetsCompanion(
+                id: id,
+                type: type,
+                trackableId: trackableId,
+                sortOrder: sortOrder,
+                config: config,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String type,
+                Value<int?> trackableId = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<String> config = const Value.absent(),
+              }) => DashboardWidgetsCompanion.insert(
+                id: id,
+                type: type,
+                trackableId: trackableId,
+                sortOrder: sortOrder,
+                config: config,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DashboardWidgetsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({trackableId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (trackableId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.trackableId,
+                                referencedTable:
+                                    $$DashboardWidgetsTableReferences
+                                        ._trackableIdTable(db),
+                                referencedColumn:
+                                    $$DashboardWidgetsTableReferences
+                                        ._trackableIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DashboardWidgetsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DashboardWidgetsTable,
+      DashboardWidget,
+      $$DashboardWidgetsTableFilterComposer,
+      $$DashboardWidgetsTableOrderingComposer,
+      $$DashboardWidgetsTableAnnotationComposer,
+      $$DashboardWidgetsTableCreateCompanionBuilder,
+      $$DashboardWidgetsTableUpdateCompanionBuilder,
+      (DashboardWidget, $$DashboardWidgetsTableReferences),
+      DashboardWidget,
+      PrefetchHooks Function({bool trackableId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4250,4 +5027,6 @@ class $AppDatabaseManager {
       $$ThresholdsTableTableManager(_db, _db.thresholds);
   $$TaperPlansTableTableManager get taperPlans =>
       $$TaperPlansTableTableManager(_db, _db.taperPlans);
+  $$DashboardWidgetsTableTableManager get dashboardWidgets =>
+      $$DashboardWidgetsTableTableManager(_db, _db.dashboardWidgets);
 }

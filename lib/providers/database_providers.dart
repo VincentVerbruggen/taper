@@ -128,6 +128,21 @@ final visibleTrackablesProvider = StreamProvider<List<Trackable>>((ref) {
   return db.watchVisibleTrackables();
 });
 
+/// dashboardWidgetsProvider = reactive stream of dashboard widget configuration.
+///
+/// Like a Livewire computed property:
+///   public function getDashboardWidgetsProperty() {
+///       return DashboardWidget::orderBy('sort_order')->get();
+///   }
+///
+/// Used by the dashboard screen to know which cards to show and in what order.
+/// Decoupled from trackable visibility — a trackable can be hidden from the
+/// log form dropdown but still have a widget on the dashboard.
+final dashboardWidgetsProvider = StreamProvider<List<DashboardWidget>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchDashboardWidgets();
+});
+
 /// doseLogsProvider = reactive stream of recent dose logs with trackable names.
 ///
 /// Like: DoseLog::with('trackable')->latest()->limit(50)->get()

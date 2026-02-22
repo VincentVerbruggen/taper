@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,40 +64,42 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('shows Today header with date navigation', (tester) async {
+  testWidgets('shows edit icon in normal mode', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
 
-    // The header now shows "Today" (the date nav label) instead of "Dashboard".
-    expect(find.text('Today'), findsOneWidget);
-    // Date navigation arrows should be visible.
-    expect(find.byIcon(Icons.chevron_left), findsOneWidget);
-    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+    // Edit mode toggle icon should be visible at the top.
+    expect(find.byIcon(Icons.edit), findsOneWidget);
 
     await cleanUp(tester);
   });
 
-  testWidgets('shows cards for visible trackables', (tester) async {
+  testWidgets('shows cards for seeded dashboard widgets', (tester) async {
+    // The onCreate seeder inserts 2 dashboard widgets (Caffeine + Water decay cards).
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
 
+    // Both TrackableCards should render from the dashboard widgets.
     expect(find.byType(TrackableCard), findsNWidgets(2));
     expect(find.text('Caffeine'), findsOneWidget);
     expect(find.text('Water'), findsOneWidget);
+    // Alcohol is hidden and has no widget — shouldn't appear.
     expect(find.text('Alcohol'), findsNothing);
 
     await cleanUp(tester);
   });
 
-  testWidgets('empty state when no visible trackables', (tester) async {
-    // Hide both visible trackables using updateTrackable.
-    await db.updateTrackable(1, isVisible: const Value(false));
-    await db.updateTrackable(2, isVisible: const Value(false));
+  testWidgets('empty state when no dashboard widgets', (tester) async {
+    // Delete all dashboard widgets.
+    final widgets = await db.select(db.dashboardWidgets).get();
+    for (final w in widgets) {
+      await db.deleteDashboardWidget(w.id);
+    }
 
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    expect(find.textContaining('No visible trackables'), findsOneWidget);
+    expect(find.textContaining('No dashboard widgets'), findsOneWidget);
     expect(find.byType(TrackableCard), findsNothing);
 
     await cleanUp(tester);
@@ -239,78 +240,95 @@ void main() {
     await cleanUp(tester, hasNavigated: true);
   });
 
-  // --- Date navigation tests ---
+  // --- Edit mode tests ---
 
-  testWidgets('date nav shows "Today" by default', (tester) async {
+  testWidgets('edit mode toggle shows/hides drag handles', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
 
-    // The header should show "Today" as the date label.
-    expect(find.text('Today'), findsOneWidget);
-    // Left arrow should be enabled, right arrow should be disabled (on today).
-    expect(find.byIcon(Icons.chevron_left), findsOneWidget);
-    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+    // Normal mode: no drag handles visible.
+    expect(find.byIcon(Icons.drag_handle), findsNothing);
+
+    // Tap the edit icon to enter edit mode.
+    await tester.tap(find.byIcon(Icons.edit));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // Edit mode: drag handles should appear for each widget (Caffeine + Water).
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(2));
+    // The edit icon should now be a check icon (done editing).
+    expect(find.byIcon(Icons.check), findsOneWidget);
+    // Should have delete buttons (X icons) for each widget.
+    expect(find.byIcon(Icons.close), findsNWidgets(2));
+    // "Add Widget" button should be visible.
+    expect(find.text('Add Widget'), findsOneWidget);
+
+    // Tap check to exit edit mode.
+    await tester.tap(find.byIcon(Icons.check));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // Back to normal mode: drag handles gone.
+    expect(find.byIcon(Icons.drag_handle), findsNothing);
+    expect(find.byIcon(Icons.edit), findsOneWidget);
 
     await cleanUp(tester);
   });
 
-  testWidgets('left arrow navigates to previous day', (tester) async {
+  testWidgets('add widget dialog shows type options', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
 
-    // Tap the left arrow to go to the previous day.
-    await tester.tap(find.byIcon(Icons.chevron_left));
+    // Enter edit mode.
+    await tester.tap(find.byIcon(Icons.edit));
     await tester.pump();
-    await pumpAndWaitLong(tester);
+    await pumpAndWait(tester);
 
-    // Should show "Yesterday" now, not "Today".
-    expect(find.text('Yesterday'), findsOneWidget);
-    expect(find.text('Today'), findsNothing);
+    // Tap "Add Widget".
+    await tester.tap(find.text('Add Widget'));
+    await tester.pump();
+
+    // Dialog should show all widget type options.
+    // "Decay Card" also appears as subtitle labels in edit mode (2 widgets),
+    // so we check the dialog contains the option using findsWidgets.
+    expect(find.text('Decay Card'), findsWidgets); // 2 edit labels + 1 dialog option
+    expect(find.text('Taper Progress'), findsOneWidget); // only in dialog
+    expect(find.text('Daily Totals'), findsOneWidget); // new type
+    expect(find.text('Decay Card (Enhanced)'), findsOneWidget); // new type
+
+    // Dismiss by tapping outside.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump();
 
     await cleanUp(tester);
   });
 
-  testWidgets('right arrow navigates back to today', (tester) async {
+  testWidgets('delete widget removes card from dashboard', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
 
-    // Go back one day.
-    await tester.tap(find.byIcon(Icons.chevron_left));
+    // Should start with 2 cards.
+    expect(find.byType(TrackableCard), findsNWidgets(2));
+
+    // Enter edit mode.
+    await tester.tap(find.byIcon(Icons.edit));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // Delete the first widget (Caffeine).
+    await tester.tap(find.byIcon(Icons.close).first);
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // Exit edit mode.
+    await tester.tap(find.byIcon(Icons.check));
     await tester.pump();
     await pumpAndWaitLong(tester);
 
-    expect(find.text('Yesterday'), findsOneWidget);
-
-    // Go forward one day (back to today).
-    await tester.tap(find.byIcon(Icons.chevron_right));
-    await tester.pump();
-    await pumpAndWaitLong(tester);
-
-    expect(find.text('Today'), findsOneWidget);
+    // Only 1 card should remain (Water).
+    expect(find.byType(TrackableCard), findsOneWidget);
+    expect(find.text('Water'), findsOneWidget);
 
     await cleanUp(tester);
   });
-
-  testWidgets('past date shows old data', (tester) async {
-    // Log a dose yesterday.
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    await db.insertDoseLog(2, 750, yesterday);
-
-    await tester.pumpWidget(buildTestWidget());
-    await pumpAndWaitLong(tester);
-
-    // Today: Water card should show "0 ml" (no dose today).
-    expect(find.text('0 ml'), findsOneWidget);
-
-    // Navigate to yesterday.
-    await tester.tap(find.byIcon(Icons.chevron_left));
-    await tester.pump();
-    await pumpAndWaitLong(tester);
-
-    // Yesterday: Water card should show "750 ml".
-    expect(find.text('750 ml'), findsOneWidget);
-
-    await cleanUp(tester);
-  });
-
 }

@@ -191,6 +191,65 @@ void main() {
     await cleanUp(tester, hasNavigated: true);
   });
 
+  // --- Date filter tests ---
+
+  testWidgets('calendar icon is visible in AppBar', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Calendar icon should be in the AppBar for date filtering.
+    expect(find.byIcon(Icons.calendar_today), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('selecting a date filters doses to that day', (tester) async {
+    // Log doses on two different days.
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+    await db.insertDoseLog(caffeine.id, 90, now);
+    await db.insertDoseLog(caffeine.id, 60, yesterday);
+
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Both doses should be visible initially (infinite scroll loads recent history).
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+
+    // Tap the calendar icon to open the date picker.
+    await tester.tap(find.byIcon(Icons.calendar_today));
+    await tester.pump();
+
+    // The date picker dialog should appear.
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+
+    // Tap OK to select today's date (the default initial date).
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // After selecting today, "Today" appears twice: AppBar subtitle + day header.
+    // Yesterday's doses should be filtered out.
+    expect(find.text('Today'), findsNWidgets(2));
+    expect(find.text('Yesterday'), findsNothing);
+    // The close button should appear to clear the filter.
+    expect(find.byIcon(Icons.close), findsOneWidget);
+
+    // Tap close to go back to all history.
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pump();
+    await pumpAndWait(tester);
+
+    // Both days should be visible again. "Today" back to just the day header.
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+    // Close button should be gone.
+    expect(find.byIcon(Icons.close), findsNothing);
+
+    await cleanUp(tester);
+  });
+
   // --- FAB + quick-add dialog tests ---
 
   testWidgets('FAB opens quick-add dialog', (tester) async {

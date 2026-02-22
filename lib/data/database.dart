@@ -228,9 +228,46 @@ class Thresholds extends Table {
   RealColumn get amount => real()();
 }
 
+/// Dashboard widgets table — decouples "what's on the dashboard" from trackable visibility.
+///
+/// Each widget is a card on the dashboard that shows a view of a trackable's data.
+/// Multiple widgets can reference the same trackable (e.g., decay card + taper progress).
+/// Trackable visibility (isVisible) only controls the log form dropdown now.
+///
+/// Laravel equivalent:
+///   Schema::create('dashboard_widgets', function (Blueprint $table) {
+///       $table->id();
+///       $table->string('type');  // 'decay_card' or 'taper_progress'
+///       $table->foreignId('trackable_id')->nullable()->constrained()->cascadeOnDelete();
+///       $table->unsignedInteger('sort_order')->default(0);
+///       $table->text('config')->default('{}');
+///   });
+class DashboardWidgets extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // Widget type: 'decay_card' or 'taper_progress'.
+  // Determines which widget component to render on the dashboard.
+  // Stored as text for readability and extensibility.
+  TextColumn get type => text()();
+
+  // FK to trackables table. Nullable so future widget types might not need a trackable.
+  // Cascade delete: if the trackable is removed, its dashboard widgets go too.
+  // Like $table->foreignId('trackable_id')->nullable()->constrained()->cascadeOnDelete()
+  IntColumn get trackableId => integer().nullable().references(Trackables, #id)();
+
+  // User-controlled display order. Lower values appear first on the dashboard.
+  // Same pattern as Trackables.sortOrder — auto-assigned max+1 on insert.
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  // JSON blob for per-widget settings (e.g., showCumulativeLine for decay cards).
+  // Default '{}' = no custom config. Parsed by individual widget components.
+  // Like a Laravel JSON column: $table->json('config')->default('{}')
+  TextColumn get config => text().withDefault(const Constant('{}'))();
+}
+
 /// AppDatabase = the database singleton.
 /// Like DatabaseServiceProvider + config/database.php in Laravel.
-@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds, TaperPlans])
+@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds, TaperPlans, DashboardWidgets])
 class AppDatabase extends _$AppDatabase {
   // Default constructor uses platform-specific SQLite via drift_flutter.
   AppDatabase() : super(driftDatabase(name: 'taper'));
@@ -240,7 +277,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -289,6 +326,25 @@ class AppDatabase extends _$AppDatabase {
           sortOrder: const Value(3),
           decayModel: const Value('linear'),
           eliminationRate: const Value(9.0),
+        ),
+      );
+
+      // Seed dashboard widgets for the 2 visible trackables (Caffeine + Water).
+      // Alcohol is hidden so no widget. IDs are 1 and 2 because autoIncrement
+      // assigns them in insertion order on a fresh database.
+      // Like: DashboardWidget::insert([['type' => 'decay_card', 'trackable_id' => 1, ...]])
+      await into(dashboardWidgets).insert(
+        DashboardWidgetsCompanion.insert(
+          type: 'decay_card',
+          trackableId: const Value(1),
+          sortOrder: const Value(1),
+        ),
+      );
+      await into(dashboardWidgets).insert(
+        DashboardWidgetsCompanion.insert(
+          type: 'decay_card',
+          trackableId: const Value(2),
+          sortOrder: const Value(2),
         ),
       );
     },
@@ -421,6 +477,63 @@ class AppDatabase extends _$AppDatabase {
         // v11 → v12: Add taper_plans table for gradual reduction schedules.
         // Each plan defines a linear ramp from startAmount to targetAmount.
         await m.createTable(taperPlans);
+      }
+      if (from < 13) {
+        // v12 → v13: Add dashboard_widgets table — decouples dashboard layout
+        // from trackable visibility. Each widget is an independent card on the
+        // dashboard that shows a specific view (decay curve or taper progress)
+        // of a trackable's data.
+        await m.createTable(dashboardWidgets);
+
+        // Migrate existing visible trackables to dashboard widgets.
+        // Each visible trackable gets a 'decay_card' widget, preserving sortOrder.
+        // This keeps the dashboard looking identical to before the migration.
+        final visible = await (select(trackables)
+              ..where((t) => t.isVisible.equals(true))
+              ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+            .get();
+
+        for (final t in visible) {
+          // Copy the trackable's showCumulativeLine setting into the widget's
+          // config JSON, so the new widget-based rendering can read it.
+          final config = t.showCumulativeLine
+              ? '{"showCumulativeLine":true}'
+              : '{}';
+          await into(dashboardWidgets).insert(
+            DashboardWidgetsCompanion.insert(
+              type: 'decay_card',
+              trackableId: Value(t.id),
+              sortOrder: Value(t.sortOrder),
+              config: Value(config),
+            ),
+          );
+        }
+
+        // Also add taper_progress widgets for trackables with active taper plans.
+        // These go after all the decay cards (sortOrder = max + 1 and up).
+        final activePlans = await (select(taperPlans)
+              ..where((t) => t.isActive.equals(true)))
+            .get();
+
+        // Find the max sortOrder from the widgets we just inserted.
+        var nextSort = visible.isEmpty
+            ? 1
+            : visible.map((t) => t.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
+
+        for (final plan in activePlans) {
+          // Only add if the trackable is visible (it already has a decay card).
+          final hasWidget = visible.any((t) => t.id == plan.trackableId);
+          if (hasWidget) {
+            await into(dashboardWidgets).insert(
+              DashboardWidgetsCompanion.insert(
+                type: 'taper_progress',
+                trackableId: Value(plan.trackableId),
+                sortOrder: Value(nextSort),
+              ),
+            );
+            nextSort++;
+          }
+        }
       }
     },
   );
@@ -575,7 +688,7 @@ class AppDatabase extends _$AppDatabase {
         .then((rows) => rows.length);
     final nextSortOrder = (existing?.sortOrder ?? 0) + 1;
 
-    return into(trackables).insert(
+    final trackableId = await into(trackables).insert(
       TrackablesCompanion.insert(
         name: name,
         unit: Value(unit),
@@ -587,6 +700,13 @@ class AppDatabase extends _$AppDatabase {
         absorptionMinutes: Value(absorptionMinutes),
       ),
     );
+
+    // Auto-add a decay_card dashboard widget for the new trackable.
+    // This way new trackables immediately appear on the dashboard
+    // without the user having to manually add them via edit mode.
+    await insertDashboardWidget('decay_card', trackableId: trackableId);
+
+    return trackableId;
   }
 
   /// Update a trackable's fields.
@@ -943,6 +1063,70 @@ class AppDatabase extends _$AppDatabase {
   /// Like: TaperPlan::destroy($id)
   Future<int> deleteTaperPlan(int id) {
     return (delete(taperPlans)..where((t) => t.id.equals(id))).go();
+  }
+
+  // --- Dashboard widget queries ---
+
+  /// Watch all dashboard widgets, ordered by sortOrder (reactive stream).
+  /// Used by the dashboard screen to know which cards to render and in what order.
+  /// Like: DashboardWidget::orderBy('sort_order')->get()
+  Stream<List<DashboardWidget>> watchDashboardWidgets() {
+    return (select(dashboardWidgets)
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .watch();
+  }
+
+  /// Insert a new dashboard widget with auto-assigned sortOrder (max + 1).
+  /// Returns the new widget's auto-increment ID.
+  /// Like: $maxSort = DashboardWidget::max('sort_order'); DashboardWidget::create([...])
+  Future<int> insertDashboardWidget(
+    String type, {
+    int? trackableId,
+    String config = '{}',
+  }) async {
+    // Find the current max sortOrder to append the new widget at the end.
+    final last = await (select(dashboardWidgets)
+          ..orderBy([(t) => OrderingTerm.desc(t.sortOrder)])
+          ..limit(1))
+        .getSingleOrNull();
+    final nextSort = (last?.sortOrder ?? 0) + 1;
+
+    return into(dashboardWidgets).insert(
+      DashboardWidgetsCompanion.insert(
+        type: type,
+        trackableId: Value(trackableId),
+        sortOrder: Value(nextSort),
+        config: Value(config),
+      ),
+    );
+  }
+
+  /// Delete a dashboard widget by ID.
+  /// Like: DashboardWidget::destroy($id)
+  Future<int> deleteDashboardWidget(int id) {
+    return (delete(dashboardWidgets)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// Reorder dashboard widgets by writing sortOrder = index for each ID.
+  /// Called after drag-to-reorder in the dashboard's edit mode.
+  /// Same transaction-based pattern as reorderTrackables().
+  /// Like: DB::transaction(fn() => collect($ids)->each(fn($id, $i) => ...))
+  Future<void> reorderDashboardWidgets(List<int> orderedIds) {
+    return transaction(() async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await (update(dashboardWidgets)
+              ..where((t) => t.id.equals(orderedIds[i])))
+            .write(DashboardWidgetsCompanion(sortOrder: Value(i + 1)));
+      }
+    });
+  }
+
+  /// Update a dashboard widget's config JSON.
+  /// Used to toggle per-widget settings (like showCumulativeLine).
+  /// Like: DashboardWidget::find($id)->update(['config' => $config])
+  Future<int> updateDashboardWidgetConfig(int id, String config) {
+    return (update(dashboardWidgets)..where((t) => t.id.equals(id)))
+        .write(DashboardWidgetsCompanion(config: Value(config)));
   }
 
   /// Watch recent dose logs (last 50), newest first, with trackable name.

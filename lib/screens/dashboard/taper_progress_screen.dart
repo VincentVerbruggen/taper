@@ -55,25 +55,19 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
     final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
     final trackableColor = Color(trackable.color);
 
-    // Chart range: 3 days before planStart → min(7 days after planEnd, today + 1 day).
-    // The extra padding on each side gives context before/after the plan period.
+    // Chart range: full taper period with small padding on each side.
+    // Shows the entire planned trajectory so you can see the downward slope
+    // and where you are on it (via the "today" vertical line).
+    // Actual consumption dots only go up to today — future days aren't plotted.
     final chartStart = DateTime(
       plan.startDate.year, plan.startDate.month, plan.startDate.day - 3,
       plan.startDate.hour,
     );
-    // Show up to 7 days past the end, but never further than tomorrow.
-    final planEndPlus7 = DateTime(
-      plan.endDate.year, plan.endDate.month, plan.endDate.day + 7,
+    // Show the full plan + 3 days padding after end for maintenance context.
+    final chartEnd = DateTime(
+      plan.endDate.year, plan.endDate.month, plan.endDate.day + 3,
       plan.endDate.hour,
     );
-    final tomorrowBoundary = DateTime(
-      todayBoundary.year, todayBoundary.month, todayBoundary.day + 1,
-      todayBoundary.hour,
-    );
-    // Chart end = whichever comes first: 7 days after plan ends, or tomorrow.
-    final chartEnd = planEndPlus7.isBefore(tomorrowBoundary)
-        ? planEndPlus7
-        : tomorrowBoundary;
 
     // Compute "Day X of Y" stats.
     final totalDays = plan.endDate.difference(plan.startDate).inDays;

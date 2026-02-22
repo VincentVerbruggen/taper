@@ -15,13 +15,15 @@ import 'package:taper/utils/decay_calculator.dart';
 /// Shows doses grouped by day (using the 5 AM day boundary), with a
 /// daily total header and individual dose entries.
 ///
-/// Starts with 3 days loaded, adds 3 more when scrolling near the bottom.
-/// Uses StreamBuilder directly (not a Riverpod provider) because the query
-/// range changes with local state (_daysLoaded).
+/// Two modes:
+///   1. **All history** (_selectedDate == null) — infinite scroll starting from
+///      today, loads 3 more days when scrolling near the bottom.
+///   2. **Single day** (_selectedDate != null) — shows only the selected day's
+///      doses. Activated by tapping the calendar icon in the AppBar.
 ///
-/// Like a paginated list in a web app:
+/// Like a paginated list with an optional date filter:
 ///   DoseLog::where('trackable_id', $id)
-///       ->whereBetween('logged_at', [$start, $end])
+///       ->when($date, fn($q) => $q->whereDate('logged_at', $date))
 ///       ->orderByDesc('logged_at')
 ///       ->get()
 ///       ->groupBy(fn($d) => $d->logged_at->format('Y-m-d'))
@@ -36,8 +38,13 @@ class TrackableLogScreen extends ConsumerStatefulWidget {
 
 class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
   /// How many days of history to load. Starts at 3, grows by 3 on scroll.
-  /// Like a cursor-based pagination offset.
+  /// Only used in "all history" mode (_selectedDate == null).
   int _daysLoaded = 3;
+
+  /// When set, filters the view to a single day (the day boundary for that date).
+  /// null = show all recent history with infinite scroll.
+  /// Like a URL query parameter: /doses?date=2026-02-20 vs /doses (all recent).
+  DateTime? _selectedDate;
 
   @override
   Widget build(BuildContext context) {
@@ -46,20 +53,69 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     final boundaryHour = ref.watch(dayBoundaryHourProvider);
     final trackable = widget.trackable;
     final now = DateTime.now();
+    final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
 
-    // Calculate the query window based on _daysLoaded.
-    // End = next day boundary (end of "today").
-    // Start = _daysLoaded day boundaries back.
-    final endBoundary = nextDayBoundary(now, boundaryHour: boundaryHour);
-    final startBoundary = dayBoundary(now, boundaryHour: boundaryHour).subtract(
-      Duration(days: _daysLoaded - 1),
-    );
+    // Calculate the query window based on mode.
+    // Single day mode: just one day boundary to the next.
+    // All history mode: from _daysLoaded ago to end of today.
+    final DateTime startBoundary;
+    final DateTime endBoundary;
+
+    if (_selectedDate != null) {
+      // Single day: query from the selected boundary to the next day's boundary.
+      startBoundary = _selectedDate!;
+      endBoundary = DateTime(
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day + 1,
+        boundaryHour,
+      );
+    } else {
+      // Infinite scroll: recent history.
+      endBoundary = nextDayBoundary(now, boundaryHour: boundaryHour);
+      startBoundary = dayBoundary(now, boundaryHour: boundaryHour).subtract(
+        Duration(days: _daysLoaded - 1),
+      );
+    }
 
     return Scaffold(
-      appBar: AppBar(title: Text(trackable.name)),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(trackable.name),
+            // Show the selected date as a subtitle when filtering by day.
+            // Like a breadcrumb: "Caffeine > Yesterday".
+            if (_selectedDate != null)
+              Text(
+                _formatDayLabel(_selectedDate!, todayBoundary),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          // Clear filter button — only visible when a date is selected.
+          // Tapping resets to "all history" mode with infinite scroll.
+          if (_selectedDate != null)
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Show all history',
+              onPressed: () => setState(() => _selectedDate = null),
+            ),
+          // Calendar icon to pick a specific date. Always visible in the
+          // top right corner — a bit hidden per the user's preference since
+          // you usually don't need to browse the past.
+          IconButton(
+            icon: const Icon(Icons.calendar_today),
+            tooltip: 'Select date',
+            onPressed: () => _showDatePicker(context, boundaryHour),
+          ),
+        ],
+      ),
       // FAB opens a quick-add dialog for logging a dose without leaving
       // the history screen. Like a "quick add" shortcut in a to-do app.
-      // FAB opens the shared quick-add dialog for this trackable.
       // Loads presets first so the dialog can show quick-fill chips.
       floatingActionButton: FloatingActionButton(
         heroTag: 'trackableLogFab',
@@ -78,8 +134,10 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
       body: NotificationListener<ScrollNotification>(
         // When the user scrolls near the bottom, load more days.
         // Like IntersectionObserver in JS triggering "load more" pagination.
+        // Only active in "all history" mode — single day doesn't paginate.
         onNotification: (notification) {
-          if (notification is ScrollUpdateNotification &&
+          if (_selectedDate == null &&
+              notification is ScrollUpdateNotification &&
               notification.metrics.extentAfter < 200) {
             setState(() => _daysLoaded += 3);
           }
@@ -97,11 +155,13 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
             final doses = snapshot.data ?? [];
 
             if (doses.isEmpty) {
-              return const Center(
+              return Center(
                 child: Padding(
-                  padding: EdgeInsets.all(32),
+                  padding: const EdgeInsets.all(32),
                   child: Text(
-                    'No doses logged yet.',
+                    _selectedDate != null
+                        ? 'No doses logged on this day.'
+                        : 'No doses logged yet.',
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -125,6 +185,42 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
         ),
       ),
     );
+  }
+
+  /// Opens a date picker dialog. When the user selects a date, filters
+  /// the dose list to that single day.
+  ///
+  /// Like clicking a "Filter by date" button on a web dashboard.
+  void _showDatePicker(BuildContext context, int boundaryHour) async {
+    final now = DateTime.now();
+
+    // Use the selected date or today as the initial date for the picker.
+    // showDatePicker expects a Date without boundary time, so strip it.
+    final initialDate = _selectedDate != null
+        ? DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day)
+        : DateTime(now.year, now.month, now.day);
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year, now.month, now.day),
+    );
+
+    if (picked != null && mounted) {
+      // Convert the picked calendar date to a day boundary.
+      // We construct directly (picked.day + boundaryHour) rather than using
+      // dayBoundary() because dayBoundary(midnight) would return the previous
+      // day's boundary (midnight < 5 AM → rolls back one day).
+      setState(() {
+        _selectedDate = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          boundaryHour,
+        );
+      });
+    }
   }
 
   /// Groups doses by their day boundary cutoff.
