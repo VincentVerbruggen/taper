@@ -1,6 +1,4 @@
 import 'package:drift/drift.dart' show Value;
-// hide Threshold to avoid clash with our database's Threshold model.
-// Flutter's Threshold is a Curve subclass from animations — not used here.
 import 'package:flutter/material.dart' hide Threshold;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,16 +18,6 @@ import 'package:taper/utils/validation.dart';
 /// Like a Laravel edit form (trackables/{id}/edit.blade.php) that receives
 /// the existing model via route-model binding:
 ///   public function edit(Trackable $trackable) { ... }
-///
-/// Contains core trackable settings:
-///   - Name, Unit (text fields)
-///   - Color picker
-///   - Navigation tiles to sub-screens (Presets, Thresholds, Taper Plans, Reminders)
-///   - Decay model dropdown (None / Exponential / Linear)
-///   - Half-life (shown only for exponential)
-///   - Elimination rate (shown only for linear)
-///   - Visibility toggle (show/hide in log form)
-///   - Delete button with confirmation
 ///
 /// Sub-sections (presets, thresholds, taper plans, reminders) are extracted
 /// to dedicated screens accessed via navigation tiles. This follows the
@@ -54,11 +42,9 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   late final TextEditingController _absorptionMinutesController;
 
   /// The currently selected decay model in the dropdown.
-  /// Drives which parameter field (half-life vs elimination rate) is shown.
   late DecayModel _selectedDecayModel;
 
   /// Selected color from the palette (ARGB int).
-  /// Initialized from the trackable's current color.
   late int _selectedColor;
 
   /// Whether this trackable appears in the log form dropdown.
@@ -68,14 +54,11 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   late bool _showCumulativeLine;
 
   /// Tracks whether the user has attempted to save.
-  /// Controls when "Required" errors appear on empty required fields.
   bool _submitted = false;
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill all form fields from the existing trackable.
-    // Like old() in Laravel Blade — populates inputs with previous values.
     _nameController = TextEditingController(text: widget.trackable.name);
     _unitController = TextEditingController(text: widget.trackable.unit);
     _halfLifeController = TextEditingController(
@@ -106,25 +89,28 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   @override
   Widget build(BuildContext context) {
     // Watch all trackables to check for duplicate names.
-    // Exclude the current trackable so renaming to the same name works fine.
-    // Like: Rule::unique('trackables', 'name')->ignore($trackable->id)
     final existingTrackableNames = ref.watch(trackablesProvider)
         .value
         ?.where((t) => t.id != widget.trackable.id)
         .map((t) => t.name)
         .toList() ?? [];
 
-    // Watch related data counts for navigation tile summaries.
-    // These are lightweight stream providers that update reactively.
     final presetsAsync = ref.watch(presetsProvider(widget.trackable.id));
     final thresholdsAsync = ref.watch(thresholdsProvider(widget.trackable.id));
     final plansAsync = ref.watch(taperPlansProvider(widget.trackable.id));
     final remindersAsync = ref.watch(remindersProvider(widget.trackable.id));
 
     return Scaffold(
-      // AppBar gives us the back button for free.
+      // Unified AppBar pattern: Title + Checkmark action.
       appBar: AppBar(
         title: const Text('Edit Trackable'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Save changes',
+            onPressed: () => _save(existingTrackableNames),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -161,8 +147,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             const SizedBox(height: 16),
 
             // --- Color picker ---
-            // Shows the 10 palette colors as tappable circles.
-            // Like a color swatch picker in a design tool.
             Text(
               'Color',
               style: Theme.of(context).textTheme.bodySmall,
@@ -175,10 +159,7 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
 
             const SizedBox(height: 24),
 
-            // --- Related data sections (click-through to sub-screens) ---
-            // Each tile navigates to a dedicated full-screen for managing
-            // that section's data. Like iOS Settings rows that push to
-            // detail screens. Count summaries update reactively.
+            // --- Related data sections ---
             _buildNavTile(
               icon: Icons.bolt,
               label: 'Presets',
@@ -227,8 +208,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             const SizedBox(height: 16),
 
             // --- Decay model dropdown ---
-            // Like a <select> in HTML. DropdownButtonFormField integrates with
-            // Material 3's InputDecoration for consistent styling.
             DropdownButtonFormField<DecayModel>(
               initialValue: _selectedDecayModel,
               decoration: const InputDecoration(
@@ -251,7 +230,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             const SizedBox(height: 16),
 
             // --- Half-life field (only for exponential) ---
-            // Like a v-show transition in Vue.
             if (_selectedDecayModel == DecayModel.exponential)
               TextField(
                 controller: _halfLifeController,
@@ -287,10 +265,7 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
                 onChanged: (_) => setState(() {}),
               ),
 
-            // --- Absorption time field (for exponential and linear) ---
-            // How long it takes for the dose to be fully absorbed before decay
-            // begins. Creates a linear ramp-up phase on the curve.
-            // Like an "onset delay" — e.g., a capsule takes 30 min to dissolve.
+            // --- Absorption time field ---
             if (_selectedDecayModel != DecayModel.none) ...[
               const SizedBox(height: 16),
               TextField(
@@ -310,9 +285,7 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
               ),
             ],
 
-            // --- Cumulative intake toggle (only for trackables with decay) ---
-            // Shows a staircase line on the chart representing total consumed today.
-            // Like toggling a "show overlay" option on a chart in a dashboard.
+            // --- Cumulative intake toggle ---
             if (_selectedDecayModel != DecayModel.none) ...[
               const SizedBox(height: 16),
               SwitchListTile(
@@ -332,19 +305,15 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
               ),
             ],
 
-            // Spacing only needed if a parameter field was shown above.
             if (_selectedDecayModel != DecayModel.none)
               const SizedBox(height: 16),
 
             // --- Visibility toggle ---
-            // SwitchListTile = a list tile with an integrated switch on the right.
-            // Like a toggle component in a settings screen.
             SwitchListTile(
               title: const Text('Visible in log form'),
               subtitle: const Text('Hidden trackables keep their data but don\'t appear in the dropdown'),
               value: _isVisible,
               onChanged: (value) => setState(() => _isVisible = value),
-              // Gives the tile a card-like outline to match other form fields.
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(4),
                 side: BorderSide(
@@ -354,20 +323,10 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             ),
 
             const SizedBox(height: 24),
-
-            // --- Save button ---
-            // Always enabled — shows errors on press instead of silently disabling.
-            FilledButton.icon(
-              onPressed: () => _save(existingTrackableNames),
-              icon: const Icon(Icons.check),
-              label: const Text('Save Changes'),
-            ),
-
-            const SizedBox(height: 12),
+            
+            // Note: Save button moved to AppBar actions.
 
             // --- Duplicate button ---
-            // Creates a "Copy of X" with the same settings.
-            // Like Laravel's replicate(): $copy = $trackable->replicate()
             OutlinedButton.icon(
               onPressed: _duplicate,
               icon: const Icon(Icons.copy_outlined),
@@ -377,8 +336,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             const SizedBox(height: 12),
 
             // --- Delete button ---
-            // Error-colored outline button at the bottom. Opens a confirmation
-            // dialog before actually deleting. Like a "danger zone" section.
             OutlinedButton.icon(
               onPressed: _confirmDelete,
               icon: Icon(Icons.delete_outline,
@@ -398,10 +355,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   }
 
   /// Builds a navigation tile that pushes to a sub-screen.
-  ///
-  /// Follows the iOS Settings pattern: leading icon, title, subtitle with
-  /// a count/summary, and a trailing chevron indicating navigation.
-  /// Like a <a> tag styled as a list item in a sidebar navigation.
   Widget _buildNavTile({
     required IconData icon,
     required String label,
@@ -414,13 +367,11 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
       subtitle: Text(summary),
       trailing: const Icon(Icons.chevron_right),
       onTap: onTap,
-      // Compact vertical padding since these tiles are grouped together.
       visualDensity: VisualDensity.compact,
     );
   }
 
-  /// Generates a summary string like "3 presets" or "No presets" from an async list.
-  /// Handles loading/error states gracefully with a "..." fallback.
+  /// Generates a summary string like "3 presets" or "No presets".
   String _countSummary<T>(AsyncValue<List<T>> asyncList, String singular) {
     return asyncList.when(
       loading: () => '...',
@@ -434,7 +385,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   }
 
   /// Generates a summary for the taper plans tile.
-  /// Shows "1 active plan" if there's an active plan, otherwise the count.
   String _taperPlanSummary(AsyncValue<List<TaperPlan>> plansAsync) {
     return plansAsync.when(
       loading: () => '...',
@@ -451,10 +401,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   bool _saving = false;
 
   /// Update the trackable in the database and pop back to the list.
-  /// Clears irrelevant fields when switching decay models:
-  ///   - Switching to linear → clears halfLifeHours
-  ///   - Switching to exponential → clears eliminationRate
-  ///   - Switching to none → clears both
   void _save(List<String> existingNames) async {
     if (_saving) return;
     final name = _nameController.text.trim();
@@ -469,8 +415,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
         ? 'mg'
         : _unitController.text.trim();
 
-    // Parse the parameter field for the selected decay model.
-    // Irrelevant fields are explicitly set to null so old values don't linger.
     final halfLife = _selectedDecayModel == DecayModel.exponential
         ? double.tryParse(_halfLifeController.text.trim())
         : null;
@@ -478,8 +422,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
         ? double.tryParse(_eliminationRateController.text.trim())
         : null;
 
-    // Absorption time is relevant for both exponential and linear models.
-    // When decay model is "none", clear it (no decay = no absorption phase).
     final absorptionMinutes = _selectedDecayModel != DecayModel.none
         ? double.tryParse(_absorptionMinutesController.text.trim())
         : null;
@@ -494,7 +436,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
       absorptionMinutes: Value(absorptionMinutes),
       isVisible: Value(_isVisible),
       color: Value(_selectedColor),
-      // Clear cumulative line when switching to no-decay model (irrelevant).
       showCumulativeLine: Value(
         _selectedDecayModel != DecayModel.none ? _showCumulativeLine : false,
       ),
@@ -507,9 +448,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   }
 
   /// Show a confirmation dialog before deleting.
-  /// AlertDialog with "Cancel" and "Delete" actions — the "Delete" button
-  /// uses error color to signal destructive intent. Like a modal confirm
-  /// in JavaScript: if (confirm('Delete?')) { ... }
   void _confirmDelete() {
     showDialog(
       context: context,
@@ -541,7 +479,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   }
 
   /// Duplicate this trackable: creates "Copy of X" with the same settings.
-  /// Like Laravel's replicate(): $copy = $trackable->replicate()->fill([...])
   void _duplicate() async {
     final db = ref.read(databaseProvider);
     await db.insertTrackable(

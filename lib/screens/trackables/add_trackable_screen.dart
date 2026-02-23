@@ -9,14 +9,7 @@ import 'package:taper/utils/validation.dart';
 /// AddTrackableScreen = the form for creating a new trackable.
 ///
 /// Like a Laravel create form (trackables/create.blade.php).
-/// Mirrors EditTrackableScreen's layout but with empty defaults:
-///   - Name, Unit (text fields)
-///   - Decay model dropdown (defaults to None)
-///   - Half-life (shown only for exponential)
-///   - Elimination rate (shown only for linear)
-///
-/// No visibility toggle or delete button — those only make sense for
-/// existing trackables and are available in the edit screen.
+/// Unified header pattern: Back arrow | Title | Checkmark (Save).
 class AddTrackableScreen extends ConsumerStatefulWidget {
   const AddTrackableScreen({super.key});
 
@@ -33,14 +26,9 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
   late final TextEditingController _absorptionMinutesController;
 
   /// The currently selected decay model in the dropdown.
-  /// Drives which parameter field (half-life vs elimination rate) is shown.
-  /// Defaults to "None" for new trackables.
   DecayModel _selectedDecayModel = DecayModel.none;
 
   /// Tracks whether the user has attempted to save.
-  /// Before this, empty required fields don't show "Required" (avoids error
-  /// spam when the form first opens). After tapping save, they light up.
-  /// Like Laravel's $errors bag — only populated after form submission.
   bool _submitted = false;
 
   @override
@@ -66,15 +54,22 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
   @override
   Widget build(BuildContext context) {
     // Watch all trackables to check for duplicate names.
-    // Like: $existingNames = Trackable::pluck('name')->toArray();
     final existingTrackableNames = ref.watch(trackablesProvider)
         .value
         ?.map((t) => t.name)
         .toList() ?? [];
 
     return Scaffold(
+      // Unified AppBar pattern: Title + Checkmark action.
       appBar: AppBar(
         title: const Text('Add Trackable'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Add Trackable',
+            onPressed: () => _save(existingTrackableNames),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -88,13 +83,10 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
               decoration: InputDecoration(
                 labelText: 'Trackable name',
                 border: const OutlineInputBorder(),
-                // "Required" only shows after the user tries to save (avoids
-                // red text the moment the form opens). Duplicate check is live.
                 errorText: _submitted && _nameController.text.trim().isEmpty
                     ? 'Required'
                     : duplicateNameError(_nameController.text, existingTrackableNames),
               ),
-              // Trigger rebuild so the duplicate check updates as the user types.
               onChanged: (_) => setState(() {}),
               onSubmitted: (_) => _save(existingTrackableNames),
             ),
@@ -114,7 +106,6 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
             const SizedBox(height: 16),
 
             // --- Decay model dropdown ---
-            // Same as edit screen. Defaults to "None" for new trackables.
             DropdownButtonFormField<DecayModel>(
               initialValue: _selectedDecayModel,
               decoration: const InputDecoration(
@@ -144,17 +135,13 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
                   labelText: 'Half-life (hours)',
                   hintText: 'e.g. 5.0',
                   border: const OutlineInputBorder(),
-                  // Show inline error when input is non-empty but not a valid number.
-                  // Like Laravel's @error('half_life') directive in Blade.
                   errorText: numericFieldError(_halfLifeController.text),
                 ),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                // Only allow digits and decimal point — prevents typing letters.
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
                 ],
-                // Trigger rebuild so errorText updates as the user types.
                 onChanged: (_) => setState(() {}),
               ),
 
@@ -176,9 +163,7 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
                 onChanged: (_) => setState(() {}),
               ),
 
-            // --- Absorption time field (for exponential and linear) ---
-            // How long it takes for the dose to be fully absorbed before decay
-            // begins. Creates a linear ramp-up phase on the curve.
+            // --- Absorption time field ---
             if (_selectedDecayModel != DecayModel.none) ...[
               const SizedBox(height: 16),
               TextField(
@@ -198,18 +183,10 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
               ),
             ],
 
-            // Spacing only needed if a parameter field was shown above.
             if (_selectedDecayModel != DecayModel.none)
               const SizedBox(height: 16),
 
-            // --- Save button ---
-            // Always enabled — tapping it with invalid fields triggers
-            // error messages instead of silently staying disabled.
-            FilledButton.icon(
-              onPressed: () => _save(existingTrackableNames),
-              icon: const Icon(Icons.check),
-              label: const Text('Add Trackable'),
-            ),
+            // Note: Save button moved to AppBar actions for UI consistency.
           ],
         ),
       ),
@@ -219,12 +196,9 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
   bool _saving = false;
 
   /// Insert the trackable into the database and pop back to the list.
-  /// If validation fails, sets _submitted = true so error messages appear.
   void _save(List<String> existingNames) async {
     if (_saving) return;
     final name = _nameController.text.trim();
-    // Validate — if anything is wrong, mark as submitted so errors show,
-    // then rebuild. The user sees exactly which fields need fixing.
     if (name.isEmpty || duplicateNameError(name, existingNames) != null) {
       _submitted = true;
       setState(() {});
@@ -236,8 +210,6 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
         ? 'mg'
         : _unitController.text.trim();
 
-    // Parse the parameter field for the selected decay model.
-    // Only the relevant field is parsed; the other stays null.
     final halfLife = _selectedDecayModel == DecayModel.exponential
         ? double.tryParse(_halfLifeController.text.trim())
         : null;
@@ -245,7 +217,6 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
         ? double.tryParse(_eliminationRateController.text.trim())
         : null;
 
-    // Absorption time is relevant for both exponential and linear models.
     final absorptionMinutes = _selectedDecayModel != DecayModel.none
         ? double.tryParse(_absorptionMinutesController.text.trim())
         : null;

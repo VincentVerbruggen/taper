@@ -13,11 +13,8 @@ import 'package:taper/utils/validation.dart';
 /// the existing model via route-model binding:
 ///   public function edit(DoseLog $doseLog) { return view('doses.edit', compact('doseLog')); }
 ///
-/// Structurally identical to the create form in LogDoseScreen, but:
-///   - Receives the existing entry as a constructor parameter
-///   - Pre-fills all fields from the existing data
-///   - Save calls updateDoseLog() instead of insertDoseLog()
-///   - Navigator.pop() after saving returns to the log list
+/// Unified header pattern: Back arrow | Title | Checkmark (Save).
+/// Like a standard Material 3 edit toolbar.
 class EditDoseScreen extends ConsumerStatefulWidget {
   /// The dose log entry to edit — includes both the DoseLog and its Trackable.
   /// Like passing $doseLog->load('trackable') to the view.
@@ -70,10 +67,17 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
     final trackablesAsync = ref.watch(trackablesProvider);
 
     return Scaffold(
-      // AppBar gives us the back button for free — like having a <a href="{{ url()->previous() }}">
-      // back link in a Blade layout. Flutter's Navigator handles it automatically.
+      // Unified AppBar pattern: Title + Checkmark action.
+      // Back button is automatic in Flutter's standard AppBar.
       appBar: AppBar(
         title: const Text('Edit Dose'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Save changes',
+            onPressed: _saveChanges,
+          ),
+        ],
       ),
       body: trackablesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -90,13 +94,8 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // --- Trackable picker ---
-          // Same dropdown as the create form, but with initialValue set
-          // to the existing trackable. Like <select> with selected="...".
           DropdownButtonFormField<Trackable>(
             // Pre-select the trackable that matches the existing entry's trackable ID.
-            // We find by ID (not reference) because the Trackable objects from the
-            // provider stream are different instances than widget.entry.trackable.
-            // Like: <option> with @selected($t->id === $doseLog->trackable_id)
             initialValue: trackables.where((t) => t.id == _selectedTrackable?.id).firstOrNull,
             decoration: const InputDecoration(
               labelText: 'Trackable',
@@ -116,8 +115,6 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
           const SizedBox(height: 16),
 
           // --- Amount input ---
-          // Pre-filled with the existing amount.
-          // suffixText shows the trackable's unit dynamically.
           TextField(
             controller: _amountController,
             decoration: InputDecoration(
@@ -138,29 +135,20 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
           const SizedBox(height: 16),
 
           // --- Time picker ---
-          // Pre-filled with the existing date/time.
           TimePicker(
             date: _selectedDate,
             time: _selectedTime,
             onDateChanged: (date) => setState(() => _selectedDate = date),
             onTimeChanged: (time) => setState(() => _selectedTime = time),
           ),
-
-          const SizedBox(height: 24),
-
-          // --- Save button ---
-          // Always enabled — shows errors on press instead of silently disabling.
-          FilledButton.icon(
-            onPressed: _saveChanges,
-            icon: const Icon(Icons.check),
-            label: const Text('Save Changes'),
-          ),
+          
+          // Note: Save button moved to AppBar actions for UI consistency.
         ],
       ),
     );
   }
 
-  /// Validates the form — allows amount >= 0 (zero = "skipped this dose").
+  /// Validates the form — allows amount >= 0.
   bool _canSave() {
     if (_selectedTrackable == null) return false;
     final amountText = _amountController.text.trim();
@@ -173,12 +161,6 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
   bool _saving = false;
 
   /// Update the dose log in the database and pop back to the log screen.
-  ///
-  /// Like a Laravel update action:
-  ///   public function update(Request $request, DoseLog $doseLog) {
-  ///       $doseLog->update($request->validated());
-  ///       return redirect()->back();
-  ///   }
   void _saveChanges() async {
     if (_saving) return;
     if (!_canSave()) {
@@ -191,7 +173,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
     final trackable = _selectedTrackable!;
     final amount = double.parse(_amountController.text.trim());
 
-    // Combine date + time into a single DateTime (same as LogDoseScreen).
+    // Combine date + time into a single DateTime.
     final loggedAt = DateTime(
       _selectedDate.year,
       _selectedDate.month,
@@ -200,7 +182,6 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
       _selectedTime.minute,
     );
 
-    // Call updateDoseLog() instead of insertDoseLog().
     await ref.read(databaseProvider).updateDoseLog(
       widget.entry.doseLog.id,
       trackable.id,
@@ -210,9 +191,6 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
 
     _saving = false;
 
-    // Pop back to the log screen. The stream provider will automatically
-    // re-emit the updated list, so the changed entry shows up immediately.
-    // Like return redirect()->back() in Laravel.
     if (mounted) {
       Navigator.pop(context);
     }

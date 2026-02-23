@@ -10,26 +10,12 @@ import 'package:taper/utils/validation.dart';
 /// AddDoseScreen = the full form for logging a new dose.
 ///
 /// Like a Laravel create form (doses/create.blade.php).
-/// Mirrors EditDoseScreen's layout but with empty defaults:
-///   - Trackable picker (dropdown of visible trackables)
-///   - Amount (text field with unit suffix)
-///   - Time picker (date + time)
-///
-/// Auto-selects the last-used trackable, falling back to the first visible one.
+/// Unified header pattern: Back arrow | Title | Checkmark (Save).
 class AddDoseScreen extends ConsumerStatefulWidget {
   /// Optional pre-fill values for the "copy dose" feature.
-  /// When provided, the form opens with these values already set,
-  /// but the time defaults to now (like "duplicate" in a CMS).
   final int? initialTrackableId;
   final double? initialAmount;
-
-  /// Optional preset name to pre-fill when copying a dose that came from a preset.
-  /// E.g., copying an "Espresso" dose carries the name so the new log also says "Espresso".
   final String? initialName;
-
-  /// Optional date to pre-fill the time picker. Used by the calendar button
-  /// in the Log tab to log a dose for a specific past date. When provided,
-  /// the time picker starts at noon on that date instead of "now".
   final DateTime? initialDate;
 
   const AddDoseScreen({
@@ -49,26 +35,17 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
   final _amountController = TextEditingController();
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
-
-  // Tracks which preset was selected (if any). Set when a chip is tapped,
-  // cleared when the user manually edits. Passed to insertDoseLog() so
-  // the log entry shows "Espresso" instead of just "63 mg".
   String? _selectedPresetName;
 
   /// Tracks whether the user has attempted to save.
-  /// Controls when "Required" errors appear on the amount field.
   bool _submitted = false;
 
   @override
   void initState() {
     super.initState();
     _resetTime();
-
-    // Pre-fill preset name when copying a dose that came from a preset.
     _selectedPresetName = widget.initialName;
 
-    // Pre-fill amount when copying a dose.
-    // The amount goes into the text controller immediately so the user sees it.
     if (widget.initialAmount != null) {
       final amount = widget.initialAmount!;
       _amountController.text = amount.toStringAsFixed(
@@ -79,8 +56,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
 
   void _resetTime() {
     if (widget.initialDate != null) {
-      // Calendar button pre-set: use the provided date at noon
-      // so the user sees a reasonable default instead of midnight.
       _selectedDate = widget.initialDate!;
       _selectedTime = const TimeOfDay(hour: 12, minute: 0);
     } else {
@@ -98,14 +73,20 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch visible trackables — triggers rebuild when data arrives.
     final trackablesAsync = ref.watch(visibleTrackablesProvider);
-    // Watch the last-used trackable ID for auto-selecting the dropdown.
     final lastLoggedIdAsync = ref.watch(lastLoggedTrackableIdProvider);
 
     return Scaffold(
+      // Unified AppBar pattern: Title + Checkmark action.
       appBar: AppBar(
         title: const Text('Log Dose'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Log Dose',
+            onPressed: _saveDose,
+          ),
+        ],
       ),
       body: trackablesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -123,11 +104,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
       return const Center(child: Text('No trackables. Add one first.'));
     }
 
-    // Auto-select logic priority:
-    // 1. initialTrackableId (from "copy dose" action) — highest priority
-    // 2. lastLoggedTrackableId (most recently used) — convenience default
-    // 3. First visible trackable — fallback
-    // Like: $selected = $request->input('trackable_id') ?? $lastUsed ?? $trackables->first()
     if (_selectedTrackable == null) {
       if (widget.initialTrackableId != null) {
         _selectedTrackable = trackables
@@ -140,7 +116,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
       _selectedTrackable ??= trackables.first;
     }
 
-    // Look up the selected trackable from the current stream data.
     final currentSelected = _selectedTrackable != null
         ? trackables.where((t) => t.id == _selectedTrackable!.id).firstOrNull
         : null;
@@ -171,8 +146,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
           const SizedBox(height: 16),
 
           // --- Preset chips ---
-          // Only shown when presets exist for the selected trackable.
-          // Tapping a chip fills the amount field, like quick-fill buttons.
           _buildPresetChips(),
 
           // --- Amount input ---
@@ -183,8 +156,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
               labelText: 'Amount',
               suffixText: _selectedTrackable?.unit ?? 'mg',
               border: const OutlineInputBorder(),
-              // "Required" only shows after the user taps save with an empty field.
-              // Other numeric errors (like ".") show live as the user types.
               errorText: _submitted && _amountController.text.trim().isEmpty
                   ? 'Required'
                   : numericFieldErrorAllowZero(_amountController.text),
@@ -193,9 +164,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
             ],
-            // Clear the preset name when the user manually types —
-            // the amount no longer matches the preset exactly.
-            // Also triggers rebuild so errorText updates live.
             onChanged: (_) {
               _selectedPresetName = null;
               setState(() {});
@@ -212,23 +180,12 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
             onTimeChanged: (time) => setState(() => _selectedTime = time),
           ),
 
-          const SizedBox(height: 24),
-
-          // --- Save button ---
-          // Always enabled — shows errors on press instead of silently disabling.
-          FilledButton.icon(
-            onPressed: _saveDose,
-            icon: const Icon(Icons.check),
-            label: const Text('Log Dose'),
-          ),
+          // Note: Save button moved to AppBar actions for UI consistency.
         ],
       ),
     );
   }
 
-  /// Builds preset chips for the currently selected trackable.
-  /// Watches presetsProvider reactively — chips update when trackable changes.
-  /// Like a dynamic slot in a Vue component that re-renders on prop change.
   Widget _buildPresetChips() {
     if (_selectedTrackable == null) return const SizedBox.shrink();
 
@@ -248,15 +205,12 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
               return ActionChip(
                 label: Text('${preset.name} (${preset.amount.toStringAsFixed(0)})'),
                 onPressed: () {
-                  // Fill the amount field with the preset value.
                   _amountController.text = preset.amount.toStringAsFixed(
                     preset.amount == preset.amount.roundToDouble() ? 0 : 1,
                   );
                   _amountController.selection = TextSelection.fromPosition(
                     TextPosition(offset: _amountController.text.length),
                   );
-                  // Remember which preset was tapped so the dose log
-                  // stores the name (e.g., "Espresso") alongside the amount.
                   _selectedPresetName = preset.name;
                 },
               );
@@ -267,7 +221,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
     );
   }
 
-  /// Validates the form — allows amount >= 0 (zero = "skipped this dose").
   bool _canSave() {
     if (_selectedTrackable == null) return false;
     final amountText = _amountController.text.trim();
@@ -280,8 +233,6 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
 
   void _saveDose() async {
     if (_saving) return;
-    // Validate — if anything is wrong, mark as submitted so "Required"
-    // errors appear, then rebuild. The user sees what needs fixing.
     if (!_canSave()) {
       _submitted = true;
       setState(() {});

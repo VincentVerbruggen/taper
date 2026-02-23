@@ -46,15 +46,53 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => Center(child: Text('Error: $error')),
           data: (trackables) {
-            return SafeArea(
-              bottom: false,
-              child: _isEditMode
-                  ? _buildEditMode(context, widgets, trackables)
-                  : _buildNormalMode(context, widgets),
+            // PopScope intercepts the system back button.
+            // Like: $(window).on('popstate', ...) in a SPA.
+            return PopScope(
+              // canPop: true = default back behavior (pop the route/exit).
+              // canPop: false = intercept the back press.
+              canPop: !_isEditMode,
+              onPopInvokedWithResult: (didPop, result) {
+                // If the pop already happened (didPop = true), do nothing.
+                if (didPop) return;
+
+                // If we're in edit mode, back button should exit edit mode.
+                if (_isEditMode) {
+                  setState(() => _isEditMode = false);
+                }
+              },
+              child: SafeArea(
+                bottom: false,
+                child: _isEditMode
+                    ? _buildEditMode(context, widgets, trackables)
+                    : _buildNormalMode(context, widgets),
+              ),
             );
           },
         );
       },
+    );
+  }
+
+  /// Helper to build the "Dashboard" heading row.
+  /// Shared between normal and edit modes to ensure consistency.
+  Widget _buildTitleRow(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Dashboard',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          IconButton(
+            icon: Icon(_isEditMode ? Icons.check : Icons.edit),
+            tooltip: _isEditMode ? 'Done editing' : 'Edit dashboard',
+            onPressed: () => setState(() => _isEditMode = !_isEditMode),
+          ),
+        ],
+      ),
     );
   }
 
@@ -65,59 +103,49 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   ) {
     // Empty state: no dashboard widgets configured.
     if (widgets.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'No dashboard widgets.\nTap the edit icon to add one.',
-                textAlign: TextAlign.center,
+      return Column(
+        children: [
+          _buildTitleRow(context),
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'No dashboard widgets.\nTap the edit icon to add one.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () => setState(() => _isEditMode = true),
+                      tooltip: 'Edit dashboard',
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () => setState(() => _isEditMode = true),
-                tooltip: 'Edit dashboard',
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.only(bottom: 16),
       // +1 for the edit toggle row at index 0.
       itemCount: widgets.length + 1,
       itemBuilder: (context, index) {
         // First item = "Dashboard" heading with edit toggle on the right.
-        // Matches the pattern used by Log, Trackables, and Settings tabs.
         if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Dashboard',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit),
-                  tooltip: 'Edit dashboard',
-                  onPressed: () => setState(() => _isEditMode = true),
-                ),
-              ],
-            ),
-          );
+          return _buildTitleRow(context);
         }
 
         // Render the appropriate widget card based on type.
         final widget = widgets[index - 1];
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: _buildWidgetCard(widget),
         );
       },
@@ -153,18 +181,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return Column(
       children: [
-        // Header with done button.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              icon: const Icon(Icons.check),
-              tooltip: 'Done editing',
-              onPressed: () => setState(() => _isEditMode = false),
-            ),
-          ),
-        ),
+        // Heading row (same as normal mode but with "Check" icon).
+        _buildTitleRow(context),
 
         // Reorderable list of widget labels.
         Expanded(

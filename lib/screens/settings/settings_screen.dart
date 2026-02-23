@@ -17,9 +17,8 @@ import 'package:taper/services/notification_service.dart';
 /// Combines trackable management (previously a separate tab) with app settings.
 /// Layout: Trackables section → Settings section → Data section.
 ///
-/// ConsumerStatefulWidget because we need both:
+/// ConsumerStatefulWidget because we need:
 ///   - Riverpod providers for reactive data (trackables, settings)
-///   - Local state for trackable list reorder callbacks
 ///
 /// Like a Laravel settings page that also embeds an inline CRUD list
 /// (imagine a "Manage categories" section above general settings).
@@ -54,7 +53,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             // =================================================================
             // TRACKABLES SECTION
             // Moved from the old Trackables tab into Settings.
-            // Uses a ReorderableListView with shrinkWrap so it fits inside the
+            // Uses a ListView with shrinkWrap so it fits inside the
             // outer ListView without needing its own scroll physics.
             // =================================================================
             Text(
@@ -83,8 +82,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const Divider(height: 32),
 
             // =================================================================
-            // SETTINGS SECTION
+            // APPEARANCE SECTION
             // =================================================================
+            Text(
+              'Appearance',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
 
             // --- Day boundary setting ---
             ListTile(
@@ -190,7 +194,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // TRACKABLES SECTION BUILD
   // ===========================================================================
 
-  /// Builds the trackable list as a ReorderableListView with shrinkWrap.
+  /// Builds the trackable list as a simple ListView.
   ///
   /// shrinkWrap + NeverScrollableScrollPhysics makes it behave like a Column
   /// inside the outer ListView — it takes only the height it needs and doesn't
@@ -203,18 +207,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     }
 
-    return ReorderableListView.builder(
+    return ListView.builder(
       shrinkWrap: true, // Only take the height needed (don't expand to fill)
       physics: const NeverScrollableScrollPhysics(), // Let outer ListView scroll
       itemCount: trackables.length,
-      onReorder: (oldIndex, newIndex) =>
-          _onReorder(trackables, oldIndex, newIndex),
       itemBuilder: (context, index) {
         final trackable = trackables[index];
         return _TrackableListItem(
           key: ValueKey(trackable.id),
           trackable: trackable,
-          index: index,
           onTap: () => _editTrackable(trackable),
           onTogglePin: () => _togglePin(trackable),
         );
@@ -225,15 +226,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // ===========================================================================
   // TRACKABLE ACTIONS (moved from TrackablesScreen)
   // ===========================================================================
-
-  /// Handle drag-to-reorder.
-  void _onReorder(List<Trackable> trackables, int oldIndex, int newIndex) {
-    if (newIndex > oldIndex) newIndex -= 1;
-    final ids = trackables.map((t) => t.id).toList();
-    final movedId = ids.removeAt(oldIndex);
-    ids.insert(newIndex, movedId);
-    ref.read(databaseProvider).reorderTrackables(ids);
-  }
 
   /// Navigate to the edit screen for this trackable.
   void _editTrackable(Trackable trackable) {
@@ -447,25 +439,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
 // =============================================================================
 // TRACKABLE LIST ITEM — inline widget for the trackable list in settings.
-// Same design as the old TrackablesScreen's _TrackableListItem but wrapped
-// in the unified Card pattern (Padding > Card > ListTile).
 // =============================================================================
 
-/// A single trackable in the settings list — Card-wrapped with drag handle,
-/// color dot, and pin button. Tapping the card opens the edit screen.
+/// A single trackable in the settings list — Card-wrapped with color dot,
+/// and pin button. Tapping the card opens the edit screen.
 ///
-/// All management actions (duplicate, hide/show, delete) live in the edit screen.
 /// ConsumerWidget so it can watch pinnedTrackableIdProvider for pin icon state.
 class _TrackableListItem extends ConsumerWidget {
   final Trackable trackable;
-  final int index;
   final VoidCallback onTap;
   final VoidCallback onTogglePin;
 
   const _TrackableListItem({
     super.key,
     required this.trackable,
-    required this.index,
     required this.onTap,
     required this.onTogglePin,
   });
@@ -492,24 +479,14 @@ class _TrackableListItem extends ConsumerWidget {
           // (duplicate, hide/show, delete) are accessible from there.
           onTap: onTap,
           child: ListTile(
-            // Leading: drag handle + color dot.
-            leading: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ReorderableDragStartListener(
-                  index: index,
-                  child: const Icon(Icons.drag_handle, size: 24),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Color(trackable.color).withAlpha(isHidden ? 77 : 255),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
+            // Leading: color dot. Drag handle removed to simplify UI.
+            leading: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: Color(trackable.color).withAlpha(isHidden ? 77 : 255),
+                shape: BoxShape.circle,
+              ),
             ),
             title: Text(
               trackable.name,
@@ -523,7 +500,7 @@ class _TrackableListItem extends ConsumerWidget {
                     )
                   : null,
             ),
-            // Trailing: pin button only. All other actions moved to edit screen.
+            // Trailing: pin button only.
             trailing: IconButton(
               icon: Icon(
                 isPinned ? Icons.push_pin : Icons.push_pin_outlined,
@@ -541,5 +518,4 @@ class _TrackableListItem extends ConsumerWidget {
       ),
     );
   }
-
 }
