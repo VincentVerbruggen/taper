@@ -5,7 +5,6 @@ import 'package:taper/data/dashboard_widget_type.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/dashboard/widgets/daily_totals_card.dart';
-import 'package:taper/screens/dashboard/widgets/enhanced_decay_card.dart';
 import 'package:taper/screens/dashboard/widgets/taper_progress_card.dart';
 import 'package:taper/screens/dashboard/widgets/trackable_card.dart';
 
@@ -131,14 +130,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return switch (type) {
       DashboardWidgetType.decayCard => TrackableCard(
           trackableId: widget.trackableId!,
+          widgetId: widget.id,
+          config: widget.config,
         ),
       DashboardWidgetType.taperProgress => TaperProgressCard(
           trackableId: widget.trackableId!,
         ),
       DashboardWidgetType.dailyTotals => DailyTotalsCard(
-          trackableId: widget.trackableId!,
-        ),
-      DashboardWidgetType.enhancedDecayCard => EnhancedDecayCard(
           trackableId: widget.trackableId!,
         ),
     };

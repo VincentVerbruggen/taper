@@ -1478,8 +1478,26 @@ class $ThresholdsTable extends Thresholds
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _comparisonTypeMeta = const VerificationMeta(
+    'comparisonType',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, trackableId, name, amount];
+  late final GeneratedColumn<String> comparisonType = GeneratedColumn<String>(
+    'comparison_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('daily_total'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    trackableId,
+    name,
+    amount,
+    comparisonType,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1522,6 +1540,15 @@ class $ThresholdsTable extends Thresholds
     } else if (isInserting) {
       context.missing(_amountMeta);
     }
+    if (data.containsKey('comparison_type')) {
+      context.handle(
+        _comparisonTypeMeta,
+        comparisonType.isAcceptableOrUnknown(
+          data['comparison_type']!,
+          _comparisonTypeMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1547,6 +1574,10 @@ class $ThresholdsTable extends Thresholds
         DriftSqlType.double,
         data['${effectivePrefix}amount'],
       )!,
+      comparisonType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}comparison_type'],
+      )!,
     );
   }
 
@@ -1561,11 +1592,13 @@ class Threshold extends DataClass implements Insertable<Threshold> {
   final int trackableId;
   final String name;
   final double amount;
+  final String comparisonType;
   const Threshold({
     required this.id,
     required this.trackableId,
     required this.name,
     required this.amount,
+    required this.comparisonType,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1574,6 +1607,7 @@ class Threshold extends DataClass implements Insertable<Threshold> {
     map['trackable_id'] = Variable<int>(trackableId);
     map['name'] = Variable<String>(name);
     map['amount'] = Variable<double>(amount);
+    map['comparison_type'] = Variable<String>(comparisonType);
     return map;
   }
 
@@ -1583,6 +1617,7 @@ class Threshold extends DataClass implements Insertable<Threshold> {
       trackableId: Value(trackableId),
       name: Value(name),
       amount: Value(amount),
+      comparisonType: Value(comparisonType),
     );
   }
 
@@ -1596,6 +1631,7 @@ class Threshold extends DataClass implements Insertable<Threshold> {
       trackableId: serializer.fromJson<int>(json['trackableId']),
       name: serializer.fromJson<String>(json['name']),
       amount: serializer.fromJson<double>(json['amount']),
+      comparisonType: serializer.fromJson<String>(json['comparisonType']),
     );
   }
   @override
@@ -1606,6 +1642,7 @@ class Threshold extends DataClass implements Insertable<Threshold> {
       'trackableId': serializer.toJson<int>(trackableId),
       'name': serializer.toJson<String>(name),
       'amount': serializer.toJson<double>(amount),
+      'comparisonType': serializer.toJson<String>(comparisonType),
     };
   }
 
@@ -1614,11 +1651,13 @@ class Threshold extends DataClass implements Insertable<Threshold> {
     int? trackableId,
     String? name,
     double? amount,
+    String? comparisonType,
   }) => Threshold(
     id: id ?? this.id,
     trackableId: trackableId ?? this.trackableId,
     name: name ?? this.name,
     amount: amount ?? this.amount,
+    comparisonType: comparisonType ?? this.comparisonType,
   );
   Threshold copyWithCompanion(ThresholdsCompanion data) {
     return Threshold(
@@ -1628,6 +1667,9 @@ class Threshold extends DataClass implements Insertable<Threshold> {
           : this.trackableId,
       name: data.name.present ? data.name.value : this.name,
       amount: data.amount.present ? data.amount.value : this.amount,
+      comparisonType: data.comparisonType.present
+          ? data.comparisonType.value
+          : this.comparisonType,
     );
   }
 
@@ -1637,13 +1679,15 @@ class Threshold extends DataClass implements Insertable<Threshold> {
           ..write('id: $id, ')
           ..write('trackableId: $trackableId, ')
           ..write('name: $name, ')
-          ..write('amount: $amount')
+          ..write('amount: $amount, ')
+          ..write('comparisonType: $comparisonType')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, trackableId, name, amount);
+  int get hashCode =>
+      Object.hash(id, trackableId, name, amount, comparisonType);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1651,7 +1695,8 @@ class Threshold extends DataClass implements Insertable<Threshold> {
           other.id == this.id &&
           other.trackableId == this.trackableId &&
           other.name == this.name &&
-          other.amount == this.amount);
+          other.amount == this.amount &&
+          other.comparisonType == this.comparisonType);
 }
 
 class ThresholdsCompanion extends UpdateCompanion<Threshold> {
@@ -1659,17 +1704,20 @@ class ThresholdsCompanion extends UpdateCompanion<Threshold> {
   final Value<int> trackableId;
   final Value<String> name;
   final Value<double> amount;
+  final Value<String> comparisonType;
   const ThresholdsCompanion({
     this.id = const Value.absent(),
     this.trackableId = const Value.absent(),
     this.name = const Value.absent(),
     this.amount = const Value.absent(),
+    this.comparisonType = const Value.absent(),
   });
   ThresholdsCompanion.insert({
     this.id = const Value.absent(),
     required int trackableId,
     required String name,
     required double amount,
+    this.comparisonType = const Value.absent(),
   }) : trackableId = Value(trackableId),
        name = Value(name),
        amount = Value(amount);
@@ -1678,12 +1726,14 @@ class ThresholdsCompanion extends UpdateCompanion<Threshold> {
     Expression<int>? trackableId,
     Expression<String>? name,
     Expression<double>? amount,
+    Expression<String>? comparisonType,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (trackableId != null) 'trackable_id': trackableId,
       if (name != null) 'name': name,
       if (amount != null) 'amount': amount,
+      if (comparisonType != null) 'comparison_type': comparisonType,
     });
   }
 
@@ -1692,12 +1742,14 @@ class ThresholdsCompanion extends UpdateCompanion<Threshold> {
     Value<int>? trackableId,
     Value<String>? name,
     Value<double>? amount,
+    Value<String>? comparisonType,
   }) {
     return ThresholdsCompanion(
       id: id ?? this.id,
       trackableId: trackableId ?? this.trackableId,
       name: name ?? this.name,
       amount: amount ?? this.amount,
+      comparisonType: comparisonType ?? this.comparisonType,
     );
   }
 
@@ -1716,6 +1768,9 @@ class ThresholdsCompanion extends UpdateCompanion<Threshold> {
     if (amount.present) {
       map['amount'] = Variable<double>(amount.value);
     }
+    if (comparisonType.present) {
+      map['comparison_type'] = Variable<String>(comparisonType.value);
+    }
     return map;
   }
 
@@ -1725,7 +1780,8 @@ class ThresholdsCompanion extends UpdateCompanion<Threshold> {
           ..write('id: $id, ')
           ..write('trackableId: $trackableId, ')
           ..write('name: $name, ')
-          ..write('amount: $amount')
+          ..write('amount: $amount, ')
+          ..write('comparisonType: $comparisonType')
           ..write(')'))
         .toString();
   }
@@ -4931,6 +4987,7 @@ typedef $$ThresholdsTableCreateCompanionBuilder =
       required int trackableId,
       required String name,
       required double amount,
+      Value<String> comparisonType,
     });
 typedef $$ThresholdsTableUpdateCompanionBuilder =
     ThresholdsCompanion Function({
@@ -4938,6 +4995,7 @@ typedef $$ThresholdsTableUpdateCompanionBuilder =
       Value<int> trackableId,
       Value<String> name,
       Value<double> amount,
+      Value<String> comparisonType,
     });
 
 final class $$ThresholdsTableReferences
@@ -4985,6 +5043,11 @@ class $$ThresholdsTableFilterComposer
 
   ColumnFilters<double> get amount => $composableBuilder(
     column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get comparisonType => $composableBuilder(
+    column: $table.comparisonType,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5036,6 +5099,11 @@ class $$ThresholdsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get comparisonType => $composableBuilder(
+    column: $table.comparisonType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$TrackablesTableOrderingComposer get trackableId {
     final $$TrackablesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -5077,6 +5145,11 @@ class $$ThresholdsTableAnnotationComposer
 
   GeneratedColumn<double> get amount =>
       $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get comparisonType => $composableBuilder(
+    column: $table.comparisonType,
+    builder: (column) => column,
+  );
 
   $$TrackablesTableAnnotationComposer get trackableId {
     final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
@@ -5134,11 +5207,13 @@ class $$ThresholdsTableTableManager
                 Value<int> trackableId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<double> amount = const Value.absent(),
+                Value<String> comparisonType = const Value.absent(),
               }) => ThresholdsCompanion(
                 id: id,
                 trackableId: trackableId,
                 name: name,
                 amount: amount,
+                comparisonType: comparisonType,
               ),
           createCompanionCallback:
               ({
@@ -5146,11 +5221,13 @@ class $$ThresholdsTableTableManager
                 required int trackableId,
                 required String name,
                 required double amount,
+                Value<String> comparisonType = const Value.absent(),
               }) => ThresholdsCompanion.insert(
                 id: id,
                 trackableId: trackableId,
                 name: name,
                 amount: amount,
+                comparisonType: comparisonType,
               ),
           withReferenceMapper: (p0) => p0
               .map(

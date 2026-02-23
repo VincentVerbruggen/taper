@@ -293,8 +293,7 @@ void main() {
     // so we check the dialog contains the option using findsWidgets.
     expect(find.text('Decay Card'), findsWidgets); // 2 edit labels + 1 dialog option
     expect(find.text('Taper Progress'), findsOneWidget); // only in dialog
-    expect(find.text('Daily Totals'), findsOneWidget); // new type
-    expect(find.text('Decay Card (Enhanced)'), findsOneWidget); // new type
+    expect(find.text('Daily Totals'), findsOneWidget); // only in dialog
 
     // Dismiss by tapping outside.
     await tester.tapAt(const Offset(10, 10));

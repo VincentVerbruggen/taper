@@ -292,9 +292,13 @@ class TrackableCardData {
   /// Empty for trackables without a half-life.
   final List<({DateTime time, double amount})> curvePoints;
 
-  /// The day boundary (5 AM) used to generate the curve.
+  /// The day boundary (5 AM today) used to generate the curve.
   /// Passed to the chart so X-axis labels can show clock times.
   final DateTime dayBoundaryTime;
+
+  /// The next day boundary (5 AM tomorrow).
+  /// Used by the chart to draw a vertical marker at the end of "today".
+  final DateTime nextDayBoundaryTime;
 
   /// Most recent dose for this trackable (for "Repeat Last" button).
   /// null if no doses ever logged.
@@ -325,6 +329,7 @@ class TrackableCardData {
     required this.totalToday,
     required this.curvePoints,
     required this.dayBoundaryTime,
+    required this.nextDayBoundaryTime,
     required this.lastDose,
     required this.thresholds,
     required this.cumulativePoints,
@@ -409,8 +414,16 @@ final trackableCardDataProvider =
         final todayDoses =
             allDoses.where((d) => !d.loggedAt.isBefore(boundary)).toList();
 
+        // Extended time window: 6h before day boundary and 6h after next boundary.
+        // This lets the chart show yesterday's decay trailing in from the left
+        // and tomorrow's projected decay on the right. Users can pan to see these.
+        // Like a Laravel report that shows a buffer zone around today's date range.
+        final extendedStart = boundary.subtract(const Duration(hours: 6));
+        final extendedEnd = nextBoundary.add(const Duration(hours: 6));
+
         // 3-way switch on decay model — each branch calculates active amount
         // and curve points using its own formula.
+        // Curves use the extended window for multi-day visibility.
         final (double activeAmount, List<({DateTime time, double amount})> curvePoints) =
             switch (model) {
           DecayModel.exponential => (
@@ -423,8 +436,8 @@ final trackableCardDataProvider =
             DecayCalculator.generateCurve(
               doses: allDoses,
               halfLifeHours: trackable.halfLifeHours!,
-              startTime: boundary,
-              endTime: nextBoundary,
+              startTime: extendedStart,
+              endTime: extendedEnd,
               absorptionMinutes: trackable.absorptionMinutes,
             ),
           ),
@@ -438,24 +451,23 @@ final trackableCardDataProvider =
             DecayCalculator.generateLinearCurve(
               doses: allDoses,
               eliminationRate: trackable.eliminationRate!,
-              startTime: boundary,
-              endTime: nextBoundary,
+              startTime: extendedStart,
+              endTime: extendedEnd,
               absorptionMinutes: trackable.absorptionMinutes,
             ),
           ),
           DecayModel.none => (0.0, <({DateTime time, double amount})>[]),
         };
 
-        // Generate cumulative intake staircase when the toggle is on and
-        // the trackable has a decay model. Uses todayDoses only — yesterday's
-        // leftover caffeine shows on the decay curve but doesn't count as
-        // today's intake. Empty list when off or no decay model.
+        // Generate cumulative intake staircase for the extended window.
+        // Uses todayDoses only — yesterday's leftover caffeine shows on the
+        // decay curve but doesn't count as today's intake.
         final cumulativePoints =
             (trackable.showCumulativeLine && model != DecayModel.none)
                 ? DecayCalculator.generateCumulativeCurve(
                     doses: todayDoses,
-                    startTime: boundary,
-                    endTime: nextBoundary,
+                    startTime: extendedStart,
+                    endTime: extendedEnd,
                   )
                 : <({DateTime time, double amount})>[];
 
@@ -481,6 +493,7 @@ final trackableCardDataProvider =
           totalToday: DecayCalculator.totalRawAmount(todayDoses),
           curvePoints: curvePoints,
           dayBoundaryTime: boundary,
+          nextDayBoundaryTime: nextBoundary,
           lastDose: lastDose,
           thresholds: thresholdsList,
           cumulativePoints: cumulativePoints,

@@ -13,6 +13,10 @@ import 'package:taper/utils/validation.dart';
 /// Thresholds = named horizontal reference lines on the decay chart (e.g.,
 /// "Daily max" = 400 mg). Same CRUD pattern as PresetsScreen.
 ///
+/// Each threshold has a comparison type:
+///   - Daily Total: compares against cumulative intake today (shown in Total Focus mode)
+///   - Active Amount: compares against what's currently in your system (shown in Decay Focus mode)
+///
 /// Like a Laravel resource controller for thresholds:
 ///   Route::resource('trackables/{trackable}/thresholds', ThresholdController::class)
 class ThresholdsScreen extends ConsumerWidget {
@@ -72,6 +76,10 @@ class ThresholdsScreen extends ConsumerWidget {
               final shape = RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               );
+              // Human-readable label for the comparison type.
+              final typeLabel = threshold.comparisonType == 'active_amount'
+                  ? 'Active Amount'
+                  : 'Daily Total';
               return Padding(
                 padding: const EdgeInsets.only(bottom: 2.0),
                 child: Card(
@@ -88,7 +96,7 @@ class ThresholdsScreen extends ConsumerWidget {
                     child: ListTile(
                       title: Text(threshold.name),
                       subtitle: Text(
-                        '${threshold.amount.toStringAsFixed(0)} ${trackable.unit}',
+                        '${threshold.amount.toStringAsFixed(0)} ${trackable.unit} · $typeLabel',
                       ),
                       trailing: IconButton(
                         icon: Icon(
@@ -110,7 +118,7 @@ class ThresholdsScreen extends ConsumerWidget {
     );
   }
 
-  /// Shows a dialog to add a new threshold (name + amount).
+  /// Shows a dialog to add a new threshold (name + amount + comparison type).
   void _showAddThresholdDialog(
     BuildContext context,
     WidgetRef ref,
@@ -118,6 +126,8 @@ class ThresholdsScreen extends ConsumerWidget {
   ) {
     final nameController = TextEditingController();
     final amountController = TextEditingController();
+    // Default comparison type — "daily_total" for backward compatibility.
+    var comparisonType = 'daily_total';
     var submitted = false;
 
     showDialog(
@@ -164,6 +174,13 @@ class ThresholdsScreen extends ConsumerWidget {
                     ],
                     onChanged: (_) => setDialogState(() {}),
                   ),
+                  const SizedBox(height: 16),
+                  // Comparison type selector — determines what the threshold
+                  // compares against on the chart. Like a radio group in HTML.
+                  _buildComparisonTypeSelector(
+                    comparisonType,
+                    (value) => setDialogState(() => comparisonType = value),
+                  ),
                 ],
               ),
               actions: [
@@ -188,6 +205,7 @@ class ThresholdsScreen extends ConsumerWidget {
                       trackable.id,
                       name,
                       amount,
+                      comparisonType: comparisonType,
                     );
                     Navigator.pop(dialogContext);
                   },
@@ -201,7 +219,7 @@ class ThresholdsScreen extends ConsumerWidget {
     );
   }
 
-  /// Shows a dialog to edit an existing threshold's name and/or amount.
+  /// Shows a dialog to edit an existing threshold's name, amount, and comparison type.
   void _showEditThresholdDialog(
     BuildContext context,
     WidgetRef ref,
@@ -214,6 +232,7 @@ class ThresholdsScreen extends ConsumerWidget {
         threshold.amount == threshold.amount.roundToDouble() ? 0 : 1,
       ),
     );
+    var comparisonType = threshold.comparisonType;
     var submitted = false;
 
     showDialog(
@@ -259,6 +278,11 @@ class ThresholdsScreen extends ConsumerWidget {
                     ],
                     onChanged: (_) => setDialogState(() {}),
                   ),
+                  const SizedBox(height: 16),
+                  _buildComparisonTypeSelector(
+                    comparisonType,
+                    (value) => setDialogState(() => comparisonType = value),
+                  ),
                 ],
               ),
               actions: [
@@ -283,6 +307,7 @@ class ThresholdsScreen extends ConsumerWidget {
                       threshold.id,
                       name: name,
                       amount: amount,
+                      comparisonType: comparisonType,
                     );
                     Navigator.pop(dialogContext);
                   },
@@ -293,6 +318,38 @@ class ThresholdsScreen extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+
+  /// Segmented button for choosing the comparison type.
+  ///
+  /// "Daily Total" = threshold compared against cumulative intake today.
+  /// "Active Amount" = threshold compared against active (in-system) amount.
+  ///
+  /// Like a radio group in HTML:
+  ///   <input type="radio" name="comparison" value="daily_total" />
+  ///   <input type="radio" name="comparison" value="active_amount" />
+  Widget _buildComparisonTypeSelector(
+    String currentValue,
+    ValueChanged<String> onChanged,
+  ) {
+    return SegmentedButton<String>(
+      segments: const [
+        ButtonSegment(
+          value: 'daily_total',
+          label: Text('Daily Total'),
+          icon: Icon(Icons.bar_chart, size: 18),
+        ),
+        ButtonSegment(
+          value: 'active_amount',
+          label: Text('Active Amount'),
+          icon: Icon(Icons.show_chart, size: 18),
+        ),
+      ],
+      selected: {currentValue},
+      onSelectionChanged: (selection) => onChanged(selection.first),
+      // Single selection — exactly one type must be active.
+      multiSelectionEnabled: false,
     );
   }
 }

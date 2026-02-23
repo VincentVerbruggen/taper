@@ -228,6 +228,14 @@ class Thresholds extends Table {
 
   // The amount value where the horizontal line is drawn on the chart.
   RealColumn get amount => real()();
+
+  // What the threshold compares against:
+  //   'daily_total'    — cumulative intake today (existing behavior)
+  //   'active_amount'  — currently active (in-system) amount from decay curve
+  // Default 'daily_total' preserves backward compatibility for existing thresholds.
+  // Like a PHP enum column: $table->string('comparison_type')->default('daily_total')
+  TextColumn get comparisonType =>
+      text().withDefault(const Constant('daily_total'))();
 }
 
 /// Reminders table — scheduled notifications per trackable.
@@ -359,7 +367,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -622,6 +630,14 @@ class AppDatabase extends _$AppDatabase {
         // Supports two types: scheduled (fire at specific time) and logging_gap
         // (fire when no dose logged for a while).
         await m.createTable(reminders);
+      }
+      if (from < 15) {
+        // v14 → v15: Add comparisonType column to thresholds.
+        // Determines what a threshold compares against:
+        //   'daily_total'   — cumulative intake today (existing behavior)
+        //   'active_amount' — currently active (in-system) amount from decay
+        // Existing thresholds default to 'daily_total' for backward compat.
+        await m.addColumn(thresholds, thresholds.comparisonType);
       }
     },
   );
@@ -1077,22 +1093,36 @@ class AppDatabase extends _$AppDatabase {
 
   /// Insert a new threshold for a trackable.
   /// Like: Threshold::create(['trackable_id' => $id, 'name' => 'Daily max', 'amount' => 400])
-  Future<int> insertThreshold(int trackableId, String name, double amount) {
+  Future<int> insertThreshold(
+    int trackableId,
+    String name,
+    double amount, {
+    String comparisonType = 'daily_total',
+  }) {
     return into(thresholds).insert(
       ThresholdsCompanion.insert(
         trackableId: trackableId,
         name: name,
         amount: amount,
+        comparisonType: Value(comparisonType),
       ),
     );
   }
 
-  /// Update a threshold's name and/or amount.
+  /// Update a threshold's name, amount, and/or comparisonType.
   /// Like: Threshold::find($id)->update([...])
-  Future<int> updateThreshold(int id, {String? name, double? amount}) {
+  Future<int> updateThreshold(
+    int id, {
+    String? name,
+    double? amount,
+    String? comparisonType,
+  }) {
     final companion = ThresholdsCompanion(
       name: name != null ? Value(name) : const Value.absent(),
       amount: amount != null ? Value(amount) : const Value.absent(),
+      comparisonType: comparisonType != null
+          ? Value(comparisonType)
+          : const Value.absent(),
     );
     return (update(thresholds)..where((t) => t.id.equals(id))).write(companion);
   }

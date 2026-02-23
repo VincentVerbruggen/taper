@@ -9,8 +9,8 @@
 ///       case TaperProgress = 'taper_progress';
 ///   }
 enum DashboardWidgetType {
-  /// The standard trackable card with decay curve chart + stats + toolbar.
-  /// Same as the existing dashboard card, just now controlled by the widgets table.
+  /// The trackable card with enhanced decay curve chart + stats + toolbar.
+  /// Uses gradient fill, pan/zoom, shadow glow, and full-height touch indicator.
   decayCard,
 
   /// Inline taper progress chart showing actual vs. target consumption.
@@ -19,21 +19,20 @@ enum DashboardWidgetType {
 
   /// Line/area chart showing daily intake totals over the past 30 days.
   /// Good for spotting consumption trends. Uses sample12-style gradient fill.
-  dailyTotals,
-
-  /// Same decay curve data as decayCard, but rendered with sample12 visual style:
-  /// gradient area fill, pan & zoom, shadow glow, full-height touch indicator.
-  /// Experimental — side-by-side comparison with the standard decay card.
-  enhancedDecayCard;
+  dailyTotals;
 
   /// Parse a DB string value into the enum.
   /// Like PHP's BackedEnum::from($value) — throws if no match.
+  ///
+  /// Maps both 'decay_card' and legacy 'enhanced_decay_card' strings to
+  /// decayCard for backward compatibility with existing DB rows.
   static DashboardWidgetType fromString(String value) {
     return switch (value) {
       'decay_card' => DashboardWidgetType.decayCard,
+      // Legacy: enhanced_decay_card was a separate type, now merged into decayCard.
+      'enhanced_decay_card' => DashboardWidgetType.decayCard,
       'taper_progress' => DashboardWidgetType.taperProgress,
       'daily_totals' => DashboardWidgetType.dailyTotals,
-      'enhanced_decay_card' => DashboardWidgetType.enhancedDecayCard,
       _ => throw ArgumentError('Unknown dashboard widget type: $value'),
     };
   }
@@ -45,7 +44,6 @@ enum DashboardWidgetType {
       DashboardWidgetType.decayCard => 'decay_card',
       DashboardWidgetType.taperProgress => 'taper_progress',
       DashboardWidgetType.dailyTotals => 'daily_totals',
-      DashboardWidgetType.enhancedDecayCard => 'enhanced_decay_card',
     };
   }
 
@@ -56,7 +54,6 @@ enum DashboardWidgetType {
       DashboardWidgetType.decayCard => 'Decay Card',
       DashboardWidgetType.taperProgress => 'Taper Progress',
       DashboardWidgetType.dailyTotals => 'Daily Totals',
-      DashboardWidgetType.enhancedDecayCard => 'Decay Card (Enhanced)',
     };
   }
 }
