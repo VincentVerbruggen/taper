@@ -137,7 +137,7 @@ void main() {
     await cleanUp(tester, hasNavigated: true);
   });
 
-  testWidgets('swipe-to-delete removes dose and shows undo SnackBar', (tester) async {
+  testWidgets('tap delete icon removes dose and shows undo SnackBar', (tester) async {
     await db.insertDoseLog(1, 200, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
@@ -145,13 +145,9 @@ void main() {
 
     expect(find.text('Caffeine — 200 mg'), findsOneWidget);
 
-    // Fling (fast swipe) the dose entry from right to left to trigger dismiss.
-    // fling() is like a fast drag gesture — the Offset is the direction vector.
-    await tester.fling(find.text('Caffeine — 200 mg'), const Offset(-500, 0), 1000);
-    // Pump repeatedly to let the dismiss animation finish, the async DB delete
-    // complete, and the Riverpod stream emit the updated list.
-    // onDismissed fires a void callback that starts an async delete — we need
-    // multiple pump cycles to let the Future resolve and the stream propagate.
+    // Tap the delete icon button.
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    // Pump repeatedly to let the async DB delete complete and the Riverpod stream emit.
     for (int i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -177,8 +173,8 @@ void main() {
 
     expect(find.text('Caffeine — 300 mg'), findsOneWidget);
 
-    // Swipe to delete.
-    await tester.fling(find.text('Caffeine — 300 mg'), const Offset(-500, 0), 1000);
+    // Tap delete.
+    await tester.tap(find.byIcon(Icons.delete_outline));
     for (int i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -248,8 +244,8 @@ void main() {
 
     // Should be on the AddDoseScreen with the form fields.
     expect(find.byType(AddDoseScreen), findsOneWidget);
-    // "Log Dose" in the AppBar title AND as the FilledButton label.
-    expect(find.text('Log Dose'), findsNWidgets(2));
+    // "Log Dose" in the AppBar title.
+    expect(find.text('Log Dose'), findsOneWidget);
     // Trackable dropdown + amount field.
     expect(find.text('Trackable'), findsOneWidget);
     expect(find.text('Amount'), findsOneWidget);
@@ -272,9 +268,8 @@ void main() {
     await tester.enterText(find.byType(TextField).first, '100');
     await tester.pump();
 
-    // Scroll the save button into view (may be off-screen in 600px viewport).
-    await tester.ensureVisible(find.byType(FilledButton));
-    await tester.tap(find.byType(FilledButton));
+    // Tap the save check icon in the AppBar.
+    await tester.tap(find.byTooltip('Log Dose'));
     await tester.pump();
     await pumpAndWait(tester);
 

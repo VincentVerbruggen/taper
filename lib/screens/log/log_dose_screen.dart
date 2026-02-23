@@ -149,7 +149,7 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     }
   }
 
-  /// Builds a single log entry card wrapped in Dismissible for swipe-to-delete.
+  /// Builds a single log entry card.
   Widget _buildLogTile(DoseLogWithTrackable entry) {
     final theme = Theme.of(context);
     final shape = RoundedRectangleBorder(
@@ -158,47 +158,40 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2.0),
-      child: Dismissible(
-        key: ValueKey(entry.doseLog.id),
-        direction: DismissDirection.endToStart,
-        background: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            color: theme.colorScheme.errorContainer,
-            child: Icon(
-              Icons.delete_outline,
-              color: theme.colorScheme.onErrorContainer,
-            ),
-          ),
-        ),
-        onDismissed: (_) => _deleteDoseLogWithUndo(entry),
-        child: Card(
-          shape: shape,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            customBorder: shape,
-            onTap: () => _editDoseLog(entry),
-            child: ListTile(
-              // Show "Skipped" for zero-dose logs (explicit skip),
-              // preset name when available (e.g., "Caffeine — Espresso"),
-              // or fall back to raw amount (e.g., "Caffeine — 63 mg").
-              title: Text(
-                entry.doseLog.amount == 0
-                    ? '${entry.trackable.name} — Skipped'
-                    : entry.doseLog.name != null
-                        ? '${entry.trackable.name} — ${entry.doseLog.name}'
-                        : '${entry.trackable.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
-              ),
-              // Show just the time (HH:MM) since the day header already
-              // provides the date context.
-              subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
-              trailing: IconButton(
-                icon: const Icon(Icons.copy, size: 20),
-                tooltip: 'Copy dose',
-                onPressed: () => _copyDose(entry),
-              ),
+      child: Card(
+        shape: shape,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          customBorder: shape,
+          onTap: () => _editDoseLog(entry),
+          child: ListTile(
+            // Show "Skipped" for zero-dose logs (explicit skip),
+            // preset name when available (e.g., "Caffeine — Espresso"),
+            // or fall back to raw amount (e.g., "Caffeine — 63 mg").
+                          title: Text(
+                            entry.doseLog.amount == 0
+                                ? '${entry.trackable.name} — Skipped'
+                                : entry.doseLog.name != null
+                                    ? '${entry.trackable.name} — ${entry.doseLog.name!} (${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit})'
+                                    : '${entry.trackable.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
+                          ),            // Show just the time (HH:MM) since the day header already
+            // provides the date context.
+            subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 20),
+                  tooltip: 'Copy dose',
+                  onPressed: () => _copyDose(entry),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  tooltip: 'Delete dose',
+                  onPressed: () => _deleteDoseLogWithUndo(entry),
+                  color: theme.colorScheme.error,
+                ),
+              ],
             ),
           ),
         ),

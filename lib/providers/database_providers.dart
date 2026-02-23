@@ -462,14 +462,13 @@ final trackableCardDataProvider =
         // Generate cumulative intake staircase for the extended window.
         // Uses todayDoses only — yesterday's leftover caffeine shows on the
         // decay curve but doesn't count as today's intake.
-        final cumulativePoints =
-            (trackable.showCumulativeLine && model != DecayModel.none)
-                ? DecayCalculator.generateCumulativeCurve(
-                    doses: todayDoses,
-                    startTime: extendedStart,
-                    endTime: extendedEnd,
-                  )
-                : <({DateTime time, double amount})>[];
+        final cumulativePoints = (model != DecayModel.none)
+            ? DecayCalculator.generateCumulativeCurve(
+                doses: todayDoses,
+                startTime: extendedStart,
+                endTime: extendedEnd,
+              )
+            : <({DateTime time, double amount})>[];
 
         // Compute today's taper target from the active plan (if any).
         // Uses the day boundary as the query date so the target aligns with

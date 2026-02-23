@@ -50,9 +50,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   /// Whether this trackable appears in the log form dropdown.
   late bool _isVisible;
 
-  /// Whether to show a cumulative intake staircase on the decay chart.
-  late bool _showCumulativeLine;
-
   /// Tracks whether the user has attempted to save.
   bool _submitted = false;
 
@@ -73,7 +70,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
     _selectedDecayModel = DecayModel.fromString(widget.trackable.decayModel);
     _selectedColor = widget.trackable.color;
     _isVisible = widget.trackable.isVisible;
-    _showCumulativeLine = widget.trackable.showCumulativeLine;
   }
 
   @override
@@ -285,29 +281,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
               ),
             ],
 
-            // --- Cumulative intake toggle ---
-            if (_selectedDecayModel != DecayModel.none) ...[
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('Show cumulative intake'),
-                subtitle: const Text(
-                  'Overlay a line showing total consumed today',
-                ),
-                value: _showCumulativeLine,
-                onChanged: (value) =>
-                    setState(() => _showCumulativeLine = value),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                  side: BorderSide(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                ),
-              ),
-            ],
-
-            if (_selectedDecayModel != DecayModel.none)
-              const SizedBox(height: 16),
-
             // --- Visibility toggle ---
             SwitchListTile(
               title: const Text('Visible in log form'),
@@ -436,9 +409,6 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
       absorptionMinutes: Value(absorptionMinutes),
       isVisible: Value(_isVisible),
       color: Value(_selectedColor),
-      showCumulativeLine: Value(
-        _selectedDecayModel != DecayModel.none ? _showCumulativeLine : false,
-      ),
     );
 
     _saving = false;

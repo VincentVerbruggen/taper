@@ -137,13 +137,14 @@ Doses beyond 5 half-lives are ignored (< 3% remaining, negligible).
 - This is like Laravel's `$errors` bag — validation errors appear after form submission, not on page load.
 
 ## Testing
-When writing new code make sure to add tests, especially UI / integrations tests. When running tests always add a sensible timeout to the runner most tests should complete in seconds.
-But over the last few changes we ran into a lot of tests that ran for minutes on end. So I want you to catch those earlier.
+- **New Code**: Always add tests for new features or bug fixes, prioritizing UI/integration tests.
+- **Reliability**: Use **fixed timestamps** (e.g., `DateTime(2026, 2, 23, 12)`) and **`tester.pumpAndSettle()`** in widget tests to avoid race conditions and boundary-related flakiness.
+- **Execution**: Always use the **`--fail-fast`** flag and a **strict 5-second timeout** (`--timeout 5s`). Tests should be fast and reliable; anything taking longer than 5 seconds per test is a sign of a hang or an issue.
 
 ## Build & Run
 - Run: `flutter run`
 - Build APK: `flutter build apk`
-- Tests: `flutter test`
+- Tests: `flutter test --timeout 5s --fail-fast`
 - Analyze: `flutter analyze`
 - Code gen: `dart run build_runner build --delete-conflicting-outputs`
 

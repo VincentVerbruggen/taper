@@ -289,8 +289,7 @@ void main() {
     );
 
     // Save the changes.
-    await tester.ensureVisible(find.text('Save Changes'));
-    await tester.tap(find.text('Save Changes'));
+    await tester.tap(find.byTooltip('Save changes'));
     await tester.pump();
     await pumpAndWait(tester);
 
@@ -314,9 +313,8 @@ void main() {
     await tester.enterText(textFields.at(0), 'Espresso');
     await tester.pump();
 
-    // Scroll to and tap save.
-    await tester.ensureVisible(find.text('Save Changes'));
-    await tester.tap(find.text('Save Changes'));
+    // Tap save.
+    await tester.tap(find.byTooltip('Save changes'));
     await tester.pump();
     await pumpAndWait(tester);
 
@@ -341,8 +339,7 @@ void main() {
     await tester.pump();
 
     // Save.
-    await tester.ensureVisible(find.text('Save Changes'));
-    await tester.tap(find.text('Save Changes'));
+    await tester.tap(find.byTooltip('Save changes'));
     await tester.pump();
     await pumpAndWait(tester);
 
@@ -350,62 +347,6 @@ void main() {
     final trackables = await db.select(db.trackables).get();
     final caffeine2 = trackables.firstWhere((s) => s.name == 'Caffeine');
     expect(caffeine2.isVisible, false);
-
-    await cleanUp(tester);
-  });
-
-  // --- Cumulative intake toggle tests ---
-
-  testWidgets('cumulative toggle visible for trackable with decay model', (tester) async {
-    // Caffeine has exponential decay, so the cumulative toggle should appear.
-    final caffeine = await getCaffeine();
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // Scroll to make the toggle visible (it's below the absorption field).
-    final cumulativeSwitch = find.widgetWithText(SwitchListTile, 'Show cumulative intake');
-    await tester.ensureVisible(cumulativeSwitch);
-    expect(cumulativeSwitch, findsOneWidget);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('cumulative toggle hidden for trackable without decay model', (tester) async {
-    // Water has decay model = none, so the cumulative toggle should not appear.
-    final water = await getWater();
-    await tester.pumpWidget(buildTestWidget(water));
-    await pumpAndWait(tester);
-
-    expect(find.text('Show cumulative intake'), findsNothing);
-
-    await cleanUp(tester);
-  });
-
-  testWidgets('cumulative toggle defaults to off and saves correctly', (tester) async {
-    final caffeine = await getCaffeine();
-    await tester.pumpWidget(buildTestWidget(caffeine));
-    await pumpAndWait(tester);
-
-    // The toggle should default to off (showCumulativeLine = false for seeded data).
-    final cumulativeSwitch = find.widgetWithText(SwitchListTile, 'Show cumulative intake');
-    await tester.ensureVisible(cumulativeSwitch);
-    final switchWidget = tester.widget<SwitchListTile>(cumulativeSwitch);
-    expect(switchWidget.value, false);
-
-    // Toggle it on.
-    await tester.tap(cumulativeSwitch);
-    await tester.pump();
-
-    // Save changes.
-    await tester.ensureVisible(find.text('Save Changes'));
-    await tester.tap(find.text('Save Changes'));
-    await tester.pump();
-    await pumpAndWait(tester);
-
-    // Verify the flag was persisted in the database.
-    final trackables = await db.select(db.trackables).get();
-    final updated = trackables.firstWhere((t) => t.name == 'Caffeine');
-    expect(updated.showCumulativeLine, true);
 
     await cleanUp(tester);
   });

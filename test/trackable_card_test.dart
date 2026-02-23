@@ -144,10 +144,6 @@ void main() {
     // Need a dose so the chart and toggle are rendered.
     await db.insertDoseLog(1, 90, DateTime.now());
 
-    // Enable cumulative line for Caffeine so the toggle appears.
-    // (The toggle only shows when cumulativePoints is non-empty.)
-    await db.updateTrackable(1, showCumulativeLine: const Value(true));
-
     await tester.pumpWidget(buildTestWidget(trackableId: 1));
     await pumpAndWaitLong(tester);
 
@@ -159,7 +155,6 @@ void main() {
 
   testWidgets('shows bar_chart icon when config mode is total', (tester) async {
     await db.insertDoseLog(1, 90, DateTime.now());
-    await db.updateTrackable(1, showCumulativeLine: const Value(true));
 
     await tester.pumpWidget(buildTestWidget(
       trackableId: 1,
@@ -192,7 +187,6 @@ void main() {
 
   testWidgets('mode toggle persists config to DB', (tester) async {
     await db.insertDoseLog(1, 90, DateTime.now());
-    await db.updateTrackable(1, showCumulativeLine: const Value(true));
 
     // Get the first dashboard widget ID (seeded by DB).
     final widgets = await db.select(db.dashboardWidgets).get();

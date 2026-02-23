@@ -98,13 +98,13 @@ void main() {
     final widgets = await db.select(db.dashboardWidgets).get();
     final id = widgets.first.id;
 
-    await db.updateDashboardWidgetConfig(id, '{"showCumulativeLine":true}');
+    await db.updateDashboardWidgetConfig(id, '{"mode":"total"}');
 
     final updated = await (db.select(db.dashboardWidgets)
           ..where((t) => t.id.equals(id)))
         .getSingle();
 
-    expect(updated.config, '{"showCumulativeLine":true}');
+    expect(updated.config, '{"mode":"total"}');
   });
 
   test('insertTrackable auto-adds decay_card widget', () async {
@@ -150,13 +150,13 @@ void main() {
     final id = await db.insertDashboardWidget(
       'decay_card',
       trackableId: 1,
-      config: '{"showCumulativeLine":true}',
+      config: '{"mode":"total"}',
     );
 
     final widget = await (db.select(db.dashboardWidgets)
           ..where((t) => t.id.equals(id)))
         .getSingle();
 
-    expect(widget.config, '{"showCumulativeLine":true}');
+    expect(widget.config, '{"mode":"total"}');
   });
 }

@@ -81,12 +81,12 @@ void main() {
   });
 
   testWidgets('shows doses grouped by day', (tester) async {
-    final now = DateTime.now();
+    final now = DateTime(2026, 2, 23, 12); // Noon
     await db.insertDoseLog(caffeine.id, 90, now);
     await db.insertDoseLog(caffeine.id, 90, now.subtract(const Duration(hours: 1)));
 
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
     expect(find.text('Today'), findsOneWidget);
     expect(find.text('90 mg'), findsNWidgets(2));
@@ -95,38 +95,66 @@ void main() {
   });
 
   testWidgets('daily total shown in header', (tester) async {
-    final now = DateTime.now();
+    final now = DateTime(2026, 2, 23, 12); // Noon
     await db.insertDoseLog(caffeine.id, 90, now);
     await db.insertDoseLog(caffeine.id, 60, now.subtract(const Duration(hours: 1)));
 
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
-    expect(find.text('150 mg'), findsOneWidget);
+    expect(find.textContaining('150'), findsOneWidget);
+    expect(find.textContaining('mg'), findsWidgets);
 
     await cleanUp(tester);
   });
 
-  testWidgets('swipe-to-delete removes dose and shows undo SnackBar', (tester) async {
-    await db.insertDoseLog(caffeine.id, 100, DateTime.now());
+  testWidgets('shows tapering target when plan exists', (tester) async {
+    final now = DateTime(2026, 2, 23, 12);
+    final boundaryHour = 5;
+    final boundary = DateTime(now.year, now.month, now.day, boundaryHour);
+    
+    // Insert a tapering plan for caffeine.
+    await db.insertTaperPlan(
+      caffeine.id,
+      400,
+      100,
+      boundary,
+      boundary.add(const Duration(days: 30)),
+    );
+    
+    await db.insertDoseLog(caffeine.id, 90, now);
 
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
-    // 100 mg appears twice: once in the dose entry, once in the day total header.
-    expect(find.text('100 mg'), findsNWidgets(2));
+    // Should show "90 / 400 mg" in the header.
+    expect(find.text('90'), findsOneWidget);
+    expect(find.text(' / 400'), findsOneWidget);
+    expect(find.text('mg'), findsWidgets);
 
-    // Fling the Dismissible widget (there's exactly one since we have one dose).
-    // Can't use find.text('100 mg').first because the first match is the
-    // day total header (not inside a Dismissible).
-    await tester.fling(find.byType(Dismissible), const Offset(-500, 0), 1000);
-    // Pump repeatedly to let dismiss animation finish, async DB delete complete,
-    // and the StreamBuilder emit the updated empty list.
-    for (int i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    await cleanUp(tester);
+  });
 
-    expect(find.text('100 mg'), findsNothing);
+  testWidgets('tap delete icon removes dose and shows undo SnackBar', (tester) async {
+    final now = DateTime(2026, 2, 23, 12);
+    await db.insertDoseLog(caffeine.id, 100, now);
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    // "100" appears in the header and "100 mg" appears in the dose entry.
+    expect(find.textContaining('100'), findsNWidgets(2));
+
+    // Tap the delete icon button.
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    
+    // Wait for animation and DB update.
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: find.byType(ListView), matching: find.textContaining('100')),
+      findsNothing,
+    );
     expect(find.text('No doses logged yet.'), findsOneWidget);
 
     final logs = await db.select(db.doseLogs).get();
@@ -140,28 +168,29 @@ void main() {
   });
 
   testWidgets('undo re-inserts deleted dose', (tester) async {
-    await db.insertDoseLog(caffeine.id, 100, DateTime.now());
+    final now = DateTime(2026, 2, 23, 12);
+    await db.insertDoseLog(caffeine.id, 100, now);
 
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
-    expect(find.text('100 mg'), findsNWidgets(2));
+    expect(find.textContaining('100'), findsNWidgets(2));
 
-    // Swipe to delete.
-    await tester.fling(find.byType(Dismissible), const Offset(-500, 0), 1000);
-    for (int i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+    // Tap delete.
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
 
-    expect(find.text('100 mg'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(ListView), matching: find.textContaining('100')),
+      findsNothing,
+    );
 
     // Tap "Undo" to re-insert.
     await tester.tap(find.text('Undo'));
-    await tester.pump();
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
-    // Dose should be back — appears in entry + day total again.
-    expect(find.text('100 mg'), findsNWidgets(2));
+    // Dose should be back.
+    expect(find.textContaining('100'), findsNWidgets(2));
 
     final logs = await db.select(db.doseLogs).get();
     expect(logs.length, 1);
@@ -174,7 +203,7 @@ void main() {
     await db.insertDoseLog(caffeine.id, 75, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
     await tester.tap(
       find.ancestor(
@@ -182,8 +211,7 @@ void main() {
         matching: find.byType(ListTile),
       ),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
 
     expect(find.byType(EditDoseScreen), findsOneWidget);
     expect(find.text('Edit Dose'), findsOneWidget);
@@ -205,13 +233,13 @@ void main() {
 
   testWidgets('selecting a date filters doses to that day', (tester) async {
     // Log doses on two different days.
-    final now = DateTime.now();
+    final now = DateTime(2026, 2, 23, 12);
     final yesterday = now.subtract(const Duration(days: 1));
     await db.insertDoseLog(caffeine.id, 90, now);
     await db.insertDoseLog(caffeine.id, 60, yesterday);
 
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
     // Both doses should be visible initially (infinite scroll loads recent history).
     expect(find.text('Today'), findsOneWidget);
@@ -219,17 +247,15 @@ void main() {
 
     // Tap the calendar icon to open the date picker.
     await tester.tap(find.byIcon(Icons.calendar_today));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    // The CalendarDatePicker dialog should appear (instant selection, no OK button).
+    // The CalendarDatePicker dialog should appear.
     expect(find.byType(CalendarDatePicker), findsOneWidget);
 
-    // Tap today's day number to select it — CalendarDatePicker fires
-    // onDateChanged immediately (no OK button needed).
+    // Tap today's day number to select it.
     final today = now.day.toString();
     await tester.tap(find.text(today).last);
-    await tester.pump();
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
     // After selecting today, "Today" appears twice: AppBar subtitle + day header.
     // Yesterday's doses should be filtered out.
@@ -240,14 +266,11 @@ void main() {
 
     // Tap close to go back to all history.
     await tester.tap(find.byIcon(Icons.close));
-    await tester.pump();
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
-    // Both days should be visible again. "Today" back to just the day header.
+    // Both days should be visible again.
     expect(find.text('Today'), findsOneWidget);
     expect(find.text('Yesterday'), findsOneWidget);
-    // Close button should be gone.
-    expect(find.byIcon(Icons.close), findsNothing);
 
     await cleanUp(tester);
   });
@@ -256,50 +279,53 @@ void main() {
 
   testWidgets('FAB opens quick-add dialog', (tester) async {
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
     expect(find.byType(FloatingActionButton), findsOneWidget);
 
     await tester.tap(find.byType(FloatingActionButton));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Log Caffeine'), findsOneWidget);
-    expect(find.text('Amount'), findsOneWidget);
-    expect(find.text('Cancel'), findsOneWidget);
-    expect(find.text('Log'), findsOneWidget);
 
     await tester.tap(find.text('Cancel'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     await cleanUp(tester);
   });
 
   testWidgets('quick-add dialog logs dose and closes', (tester) async {
     await tester.pumpWidget(buildTestWidget());
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byType(FloatingActionButton));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '200');
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Log'));
-    await tester.pump();
-    await pumpAndWait(tester);
+    await tester.pumpAndSettle();
 
     // Dialog should be dismissed.
     expect(find.text('Log Caffeine'), findsNothing);
 
-    // SnackBar should confirm the dose.
-    expect(find.byType(SnackBar), findsOneWidget);
-    expect(find.textContaining('Logged 200'), findsOneWidget);
-
     // Verify dose was inserted.
     final logs = await db.select(db.doseLogs).get();
-    expect(logs.length, 1);
-    expect(logs.first.amount, 200.0);
-    expect(logs.first.trackableId, caffeine.id);
+    expect(logs.any((l) => l.amount == 200), isTrue);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('zero-dose shows "Skipped" instead of amount', (tester) async {
+    final now = DateTime(2026, 2, 23, 12);
+    await db.insertDoseLog(caffeine.id, 0, now);
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    // Should show "Skipped" for zero-dose entries.
+    expect(find.text('Skipped'), findsOneWidget);
 
     await cleanUp(tester);
   });

@@ -9,6 +9,7 @@ import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
 import 'package:taper/utils/day_boundary.dart';
 import 'package:taper/utils/decay_calculator.dart';
+import 'package:taper/utils/taper_calculator.dart';
 
 /// Full dose history for a single trackable, with infinite scroll.
 ///
@@ -270,6 +271,18 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     // Format the day label: "Today", "Yesterday", or "Wed, Feb 19".
     final dayLabel = _formatDayLabel(boundary, todayBoundary);
 
+    // Watch the active taper plan for this trackable to show the target.
+    final activePlan = ref.watch(activeTaperPlanProvider(trackable.id)).value;
+    final double? taperTarget = activePlan == null
+        ? null
+        : TaperCalculator.dailyTarget(
+            startAmount: activePlan.startAmount,
+            targetAmount: activePlan.targetAmount,
+            startDate: activePlan.startDate,
+            endDate: activePlan.endDate,
+            queryDate: boundary,
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -285,12 +298,31 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              // Daily total — e.g., "270 mg".
-              Text(
-                '${total.toStringAsFixed(0)} ${trackable.unit}',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              // Daily total — e.g., "270 / 300 mg".
+              Row(
+                children: [
+                  Text(
+                    total.toStringAsFixed(0),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: taperTarget != null ? FontWeight.bold : null,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  if (taperTarget != null)
+                    Text(
+                      ' / ${taperTarget.toStringAsFixed(0)}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  const SizedBox(width: 4),
+                  Text(
+                    trackable.unit,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -319,10 +351,10 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     return '${days[boundary.weekday - 1]}, ${months[boundary.month - 1]} ${boundary.day}';
   }
 
-  /// Builds a single dose entry row wrapped in Dismissible for swipe-to-delete.
+  /// Builds a single dose entry row.
   ///
-  /// Same pattern as LogDoseScreen._buildLogTile() — swipe left reveals red
-  /// background, dismisses the card, then shows an "Undo" SnackBar.
+  /// Removed Dismissible to fix poor scrolling performance; deletion is now
+  /// handled via an explicit delete button in the trailing row.
   Widget _buildDoseEntry(BuildContext context, DoseLog dose, Trackable trackable) {
     // 24h NATO format: "14:30" instead of locale-dependent AM/PM.
     final h = dose.loggedAt.hour.toString().padLeft(2, '0');
@@ -330,54 +362,47 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     final time = '$h:$m';
 
     // Unified card pattern matching log_dose_screen.dart:
-    // Padding > Dismissible > Card(shape: RoundedRectangleBorder(12)) > InkWell > ListTile
+    // Padding > Card(shape: RoundedRectangleBorder(12)) > InkWell > ListTile
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(12),
     );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2.0),
-      child: Dismissible(
-        key: ValueKey(dose.id),
-        direction: DismissDirection.endToStart,
-        background: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            color: Theme.of(context).colorScheme.errorContainer,
-            child: Icon(
-              Icons.delete_outline,
-              color: Theme.of(context).colorScheme.onErrorContainer,
+      child: Card(
+        shape: shape,
+        clipBehavior: Clip.antiAlias, // clips ink to rounded corners
+        child: InkWell(
+          customBorder: shape,
+          onTap: () => _editDose(dose, trackable),
+          child: ListTile(
+            // Show "Skipped" for zero-dose logs (explicit skip),
+            // preset name when available (e.g., "Espresso"),
+            // or fall back to raw amount (e.g., "63 mg").
+            title: Text(
+              dose.amount == 0
+                  ? 'Skipped'
+                  : dose.name != null
+                      ? '${dose.name!} (${dose.amount.toStringAsFixed(0)} ${trackable.unit})'
+                      : '${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
             ),
-          ),
-        ),
-        onDismissed: (_) => _deleteDoseWithUndo(dose, trackable),
-        child: Card(
-          shape: shape,
-          clipBehavior: Clip.antiAlias, // clips ink to rounded corners
-          child: InkWell(
-            customBorder: shape,
-            onTap: () => _editDose(dose, trackable),
-            child: ListTile(
-              // Show "Skipped" for zero-dose logs (explicit skip),
-              // preset name when available (e.g., "Espresso"),
-              // or fall back to raw amount (e.g., "63 mg").
-              title: Text(
-                dose.amount == 0
-                    ? 'Skipped'
-                    : dose.name != null
-                        ? dose.name!
-                        : '${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
-              ),
-              subtitle: Text(time),
-              // Copy button: opens AddDoseScreen pre-filled with this dose's
-              // trackable + amount, but with current time.
-              trailing: IconButton(
-                icon: const Icon(Icons.copy, size: 20),
-                tooltip: 'Copy dose',
-                onPressed: () => _copyDose(dose),
-              ),
+            subtitle: Text(time),
+            // Actions row: Copy and Delete buttons.
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 20),
+                  tooltip: 'Copy dose',
+                  onPressed: () => _copyDose(dose),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  tooltip: 'Delete dose',
+                  onPressed: () => _deleteDoseWithUndo(dose, trackable),
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ],
             ),
           ),
         ),
