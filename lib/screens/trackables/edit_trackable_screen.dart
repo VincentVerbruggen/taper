@@ -9,6 +9,7 @@ import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/trackables/presets_screen.dart';
 import 'package:taper/screens/trackables/reminders_screen.dart';
 import 'package:taper/screens/trackables/taper_plans_screen.dart';
+import 'package:taper/screens/trackables/targets_screen.dart';
 import 'package:taper/screens/trackables/thresholds_screen.dart';
 import 'package:taper/screens/trackables/widgets/color_palette_selector.dart';
 import 'package:taper/utils/validation.dart';
@@ -40,6 +41,7 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
   late final TextEditingController _halfLifeController;
   late final TextEditingController _eliminationRateController;
   late final TextEditingController _absorptionMinutesController;
+  late final TextEditingController _sleepThresholdController;
 
   /// The currently selected decay model in the dropdown.
   late DecayModel _selectedDecayModel;
@@ -67,6 +69,9 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
     _absorptionMinutesController = TextEditingController(
       text: widget.trackable.absorptionMinutes?.toString() ?? '',
     );
+    _sleepThresholdController = TextEditingController(
+      text: widget.trackable.sleepThreshold?.toString() ?? '',
+    );
     _selectedDecayModel = DecayModel.fromString(widget.trackable.decayModel);
     _selectedColor = widget.trackable.color;
     _isVisible = widget.trackable.isVisible;
@@ -79,6 +84,7 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
     _halfLifeController.dispose();
     _eliminationRateController.dispose();
     _absorptionMinutesController.dispose();
+    _sleepThresholdController.dispose();
     super.dispose();
   }
 
@@ -93,6 +99,7 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
 
     final presetsAsync = ref.watch(presetsProvider(widget.trackable.id));
     final thresholdsAsync = ref.watch(thresholdsProvider(widget.trackable.id));
+    final targetsAsync = ref.watch(targetsProvider(widget.trackable.id));
     final plansAsync = ref.watch(taperPlansProvider(widget.trackable.id));
     final remindersAsync = ref.watch(remindersProvider(widget.trackable.id));
 
@@ -175,6 +182,17 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => ThresholdsScreen(trackable: widget.trackable),
+                ),
+              ),
+            ),
+            _buildNavTile(
+              icon: Icons.my_location,
+              label: 'Targets',
+              summary: _countSummary(targetsAsync, 'target'),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TargetsScreen(trackable: widget.trackable),
                 ),
               ),
             ),
@@ -271,6 +289,25 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
                   hintText: 'e.g. 30 (optional)',
                   border: const OutlineInputBorder(),
                   errorText: numericFieldError(_absorptionMinutesController.text),
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                ],
+                onChanged: (_) => setState(() {}),
+              ),
+
+              const SizedBox(height: 16),
+
+              // --- Sleep threshold field ---
+              TextField(
+                controller: _sleepThresholdController,
+                decoration: InputDecoration(
+                  labelText: 'Sleep readiness threshold (${_unitController.text.isEmpty ? 'mg' : _unitController.text})',
+                  hintText: 'e.g. 50.0 (optional)',
+                  border: const OutlineInputBorder(),
+                  errorText: numericFieldError(_sleepThresholdController.text),
                 ),
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
@@ -399,6 +436,10 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
         ? double.tryParse(_absorptionMinutesController.text.trim())
         : null;
 
+    final sleepThreshold = _selectedDecayModel != DecayModel.none
+        ? double.tryParse(_sleepThresholdController.text.trim())
+        : null;
+
     await ref.read(databaseProvider).updateTrackable(
       widget.trackable.id,
       name: name,
@@ -407,6 +448,7 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
       halfLifeHours: Value(halfLife),
       eliminationRate: Value(eliminationRate),
       absorptionMinutes: Value(absorptionMinutes),
+      sleepThreshold: Value(sleepThreshold),
       isVisible: Value(_isVisible),
       color: Value(_selectedColor),
     );

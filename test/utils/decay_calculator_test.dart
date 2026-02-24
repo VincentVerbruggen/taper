@@ -627,4 +627,83 @@ void main() {
       }
     });
   });
+
+  group('hoursToThreshold', () {
+    test('returns 0 if already below threshold', () {
+      final result = DecayCalculator.hoursToThreshold(
+        currentActiveAmount: 40,
+        threshold: 50,
+        halfLifeHours: 5.0,
+      );
+      expect(result, 0.0);
+    });
+
+    test('calculates correct time for one half-life', () {
+      // 100mg active, 50mg threshold, 5h half-life -> should take 5h.
+      final result = DecayCalculator.hoursToThreshold(
+        currentActiveAmount: 100,
+        threshold: 50,
+        halfLifeHours: 5.0,
+      );
+      expect(result, closeTo(5.0, 0.01));
+    });
+
+    test('calculates correct time for two half-lives', () {
+      // 100mg active, 25mg threshold, 5h half-life -> should take 10h.
+      final result = DecayCalculator.hoursToThreshold(
+        currentActiveAmount: 100,
+        threshold: 25,
+        halfLifeHours: 5.0,
+      );
+      expect(result, closeTo(10.0, 0.01));
+    });
+
+    test('returns 0.0 if current amount is 0', () {
+      final result = DecayCalculator.hoursToThreshold(
+        currentActiveAmount: 0,
+        threshold: 50,
+        halfLifeHours: 5.0,
+      );
+      expect(result, 0.0);
+    });
+
+    test('returns null if threshold is 0', () {
+      final result = DecayCalculator.hoursToThreshold(
+        currentActiveAmount: 100,
+        threshold: 0,
+        halfLifeHours: 5.0,
+      );
+      expect(result, isNull);
+    });
+  });
+
+  group('hoursToThresholdLinear', () {
+    test('returns 0 if already below threshold', () {
+      final result = DecayCalculator.hoursToThresholdLinear(
+        currentActiveAmount: 10,
+        threshold: 20,
+        eliminationRate: 9.0,
+      );
+      expect(result, 0.0);
+    });
+
+    test('calculates correct time for linear elimination', () {
+      // 36ml active, 18ml threshold, 9ml/hr rate -> should take 2h.
+      final result = DecayCalculator.hoursToThresholdLinear(
+        currentActiveAmount: 36,
+        threshold: 18,
+        eliminationRate: 9.0,
+      );
+      expect(result, closeTo(2.0, 0.01));
+    });
+
+    test('returns null if rate is 0', () {
+      final result = DecayCalculator.hoursToThresholdLinear(
+        currentActiveAmount: 100,
+        threshold: 50,
+        eliminationRate: 0,
+      );
+      expect(result, isNull);
+    });
+  });
 }

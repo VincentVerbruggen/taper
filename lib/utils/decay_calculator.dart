@@ -278,4 +278,38 @@ class DecayCalculator {
 
     return points;
   }
+
+  /// Predict how many hours until the total active amount drops to [threshold].
+  ///
+  /// Formula for exponential decay: t = h * log(T / A0) / log(0.5)
+  /// Returns null if:
+  ///   - threshold is not reached (e.g., already below threshold)
+  ///   - active amount is 0
+  static double? hoursToThreshold({
+    required double currentActiveAmount,
+    required double threshold,
+    required double halfLifeHours,
+  }) {
+    if (currentActiveAmount <= threshold) return 0.0;
+    // Exponential decay never reaches 0.
+    if (threshold <= 0) return null;
+
+    // t = h * log(T / A0) / log(0.5)
+    return halfLifeHours * log(threshold / currentActiveAmount) / log(0.5);
+  }
+
+  /// Predict how many hours until the total active amount drops to [threshold]
+  /// using linear decay.
+  ///
+  /// Formula: t = (A0 - T) / r
+  static double? hoursToThresholdLinear({
+    required double currentActiveAmount,
+    required double threshold,
+    required double eliminationRate,
+  }) {
+    if (currentActiveAmount <= threshold) return 0.0;
+    if (eliminationRate <= 0) return null;
+
+    return (currentActiveAmount - threshold) / eliminationRate;
+  }
 }

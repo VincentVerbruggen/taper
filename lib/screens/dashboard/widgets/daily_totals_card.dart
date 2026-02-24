@@ -1,6 +1,5 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
@@ -10,17 +9,6 @@ import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/utils/day_boundary.dart';
 import 'package:taper/utils/taper_calculator.dart';
 
-/// Dashboard card showing daily intake totals over the past 30 days.
-///
-/// Renders a line/area chart with sample12-style visuals: gradient fill,
-/// horizontal pan/zoom, shadow glow, and full-height touch indicator line.
-///
-/// Default view: zoomed in to the last 7 days. The user can scroll left to
-/// see older data, or pinch to zoom in/out (1x = all 30 days, 15x = 2 days).
-/// Like Google Finance charts where you see a week by default but can scroll.
-///
-/// ConsumerStatefulWidget because we need a TransformationController to set
-/// the initial zoom level (show last 7 of 30 days on first render).
 class DailyTotalsCard extends ConsumerStatefulWidget {
   final int trackableId;
 
@@ -31,78 +19,7 @@ class DailyTotalsCard extends ConsumerStatefulWidget {
 }
 
 class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
-  /// Controls the chart's zoom/pan transform. We own this controller so we
-  /// can set an initial zoom showing the last 7 days (instead of all 30).
-  /// Like setting `initialScrollOffset` on a ScrollController.
-  late TransformationController _chartController;
-
-  /// GlobalKey on the chart SizedBox — used to measure the chart's pixel width
-  /// so we can calculate the correct initial zoom transform.
-  final _chartSizeKey = GlobalKey();
-
-  /// Guard to only apply the initial zoom once (on first layout).
-  /// Without this, every rebuild would reset the user's scroll position.
-  bool _initialZoomApplied = false;
-
-  /// How many of the 30 total days to show in the default viewport.
-  /// 7 = one week visible, user scrolls left for history.
-  static const _defaultVisibleDays = 7;
-
-  /// Total days of data loaded.
   static const _totalDays = 30;
-
-  @override
-  void initState() {
-    super.initState();
-    _chartController = TransformationController();
-  }
-
-  @override
-  void dispose() {
-    _chartController.dispose();
-    super.dispose();
-  }
-
-  /// Applies the initial zoom/pan to show the last 7 of 30 days.
-  ///
-  /// Called via addPostFrameCallback after the chart renders for the first time.
-  /// We need the chart's actual pixel width to calculate the correct translateX.
-  ///
-  /// The TransformationController matrix maps child → viewport coordinates:
-  ///   viewportX = scaleX * childX + translateX
-  ///
-  /// To show the rightmost 7/30 of the chart:
-  ///   scaleX = 30/7 ≈ 4.286 (zoom in so 7 days fill the viewport)
-  ///   translateX = -(scaleX - 1) * chartInnerWidth (scroll to the right end)
-  ///
-  /// The "chartInnerWidth" is the chart area excluding axis titles. fl_chart's
-  /// scaffold applies a margin for the left axis (reservedSize=40), so the
-  /// inner width = measured SizedBox width - 40.
-  void _applyInitialZoom() {
-    if (_initialZoomApplied) return;
-
-    final box =
-        _chartSizeKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-
-    // The SizedBox includes the left axis title area (40px reservedSize).
-    // The TransformationController operates on the inner chart area only.
-    const leftAxisReservedSize = 40.0;
-    final chartInnerWidth = box.size.width - leftAxisReservedSize;
-    if (chartInnerWidth <= 0) return;
-
-    final scale = _totalDays / _defaultVisibleDays;
-    // Negative translateX scrolls the viewport to the right (showing later days).
-    final tx = -(scale - 1.0) * chartInnerWidth;
-
-    // Set the matrix directly: [scaleX, 0, 0, tx; 0, 1, 0, 0; ...]
-    // Using setEntry avoids matrix multiplication order confusion.
-    _chartController.value = Matrix4.identity()
-      ..setEntry(0, 0, scale) // scaleX = 30/7
-      ..setEntry(0, 3, tx); // translateX = scroll to right end
-
-    _initialZoomApplied = true;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,23 +41,27 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
             .firstOrNull;
         if (trackable == null) return const SizedBox.shrink();
 
+        // Watch the active taper plan so the chart can overlay a target line.
+        // `.value` is null both while loading and when no plan exists, which is
+        // fine here because the chart should simply omit the overlay in both cases.
+        final activePlan = ref
+            .watch(activeTaperPlanProvider(trackable.id))
+            .value;
         final trackableColor = Color(trackable.color);
-        final now = DateTime.now();
+        // Use the shared "now" provider so tests can freeze time and keep
+        // chart date windows deterministic across calendar days.
+        final now = ref.watch(nowProvider)();
         final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
 
-        // Date range: 30 days back from today's day boundary.
         final startBoundary = DateTime(
           todayBoundary.year,
           todayBoundary.month,
           todayBoundary.day - (_totalDays - 1),
           todayBoundary.hour,
         );
-        // End = next day boundary (so we include all of today's doses).
-        final endBoundary =
-            nextDayBoundary(now, boundaryHour: boundaryHour);
+        final endBoundary = nextDayBoundary(now, boundaryHour: boundaryHour);
 
         return GestureDetector(
-          // Tap the title area to navigate to the full log.
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
@@ -150,7 +71,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
           child: Card(
             clipBehavior: Clip.antiAlias,
             child: Container(
-              // Left border accent in the trackable's color.
               decoration: BoxDecoration(
                 border: Border(
                   left: BorderSide(color: trackableColor, width: 4),
@@ -161,7 +81,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title row: "{Name} — Daily Totals" + "30 days".
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
@@ -169,9 +88,7 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                         Flexible(
                           child: Text(
                             '${trackable.name} — Daily Totals',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -179,21 +96,18 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                         const SizedBox(width: 12),
                         Text(
                           '30 days',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
+                          style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                          ),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ),
 
                     const SizedBox(height: 4),
 
-                    // StreamBuilder: reactively update when doses change.
                     StreamBuilder<List<DoseLog>>(
                       stream: db.watchDosesBetween(
                         trackable.id,
@@ -205,34 +119,28 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
 
                         if (doses.isEmpty) {
                           return Padding(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 24),
+                            padding: const EdgeInsets.symmetric(vertical: 24),
                             child: Text(
                               'No doses in the last 30 days.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyMedium
+                              style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
                             ),
                           );
                         }
 
-                        // Convert to DoseLogLike for TaperCalculator.
                         final adapters = doses
                             .map((d) => _DoseLogAdapter(d))
                             .toList();
 
-                        // Group by day boundary and sum amounts.
                         final dailyTotals = TaperCalculator.dailyTotals(
                           doses: adapters,
                           boundaryHour: boundaryHour,
                         );
 
-                        // Build FlSpots: one per day (0..29), Y = daily total.
                         final spots = <FlSpot>[];
                         var totalSum = 0.0;
                         for (var i = 0; i < _totalDays; i++) {
@@ -247,50 +155,33 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                           totalSum += amount;
                         }
 
-                        // Average over all 30 days for a true daily average.
                         final daysWithData = dailyTotals.values
                             .where((v) => v > 0)
                             .length;
                         final avg = totalSum / _totalDays;
 
-                        // Schedule the initial zoom after the chart renders.
-                        // addPostFrameCallback ensures the RenderBox exists
-                        // and has been laid out before we try to measure it.
-                        if (!_initialZoomApplied) {
-                          SchedulerBinding.instance
-                              .addPostFrameCallback((_) {
-                            if (mounted) _applyInitialZoom();
-                          });
-                        }
-
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Subtitle: average daily intake.
                             Text(
                               'avg: ${avg.toStringAsFixed(0)} ${trackable.unit}/day'
                               '${daysWithData < _totalDays ? ' ($daysWithData days with doses)' : ''}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
+                              style: Theme.of(context).textTheme.bodySmall
                                   ?.copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
                             ),
 
                             const SizedBox(height: 12),
 
-                            // Chart: 200px, sample12-style with pan/zoom.
-                            // Key on the SizedBox to measure width for initial zoom.
-                            // NOT wrapped in IgnorePointer — user can pan/zoom/scrub.
                             SizedBox(
-                              key: _chartSizeKey,
                               height: 200,
                               child: _buildChart(
                                 context,
                                 spots: spots,
+                                activePlan: activePlan,
                                 trackableColor: trackableColor,
                                 trackableUnit: trackable.unit,
                                 startBoundary: startBoundary,
@@ -311,19 +202,10 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
     );
   }
 
-  /// Builds the sample12-style line chart for daily totals.
-  ///
-  /// Features:
-  /// - Gradient area fill (trackable color, 20% → 0% alpha)
-  /// - Line shadow for glow effect
-  /// - Horizontal pan/zoom via FlTransformationConfig with our controller
-  /// - Full-height vertical touch indicator line
-  /// - Touch tooltip with date + amount
-  /// - Small dots at every data point
-  /// - "Today" vertical dashed line
   Widget _buildChart(
     BuildContext context, {
     required List<FlSpot> spots,
+    required TaperPlan? activePlan,
     required Color trackableColor,
     required String trackableUnit,
     required DateTime startBoundary,
@@ -331,11 +213,40 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
   }) {
     final axisColor = Theme.of(context).colorScheme.onSurfaceVariant;
 
-    // Max Y for scaling: highest value + 10% headroom.
+    // Build one target point per day for the same X-axis as the totals series.
+    // This mirrors the taper-progress chart logic, so "actual vs target" means
+    // the same thing across both widgets.
+    final taperTargetSpots = <FlSpot>[];
+    if (activePlan != null) {
+      for (var i = 0; i < _totalDays; i++) {
+        final date = DateTime(
+          startBoundary.year,
+          startBoundary.month,
+          startBoundary.day + i,
+          startBoundary.hour,
+        );
+        final target = TaperCalculator.dailyTarget(
+          startAmount: activePlan.startAmount,
+          targetAmount: activePlan.targetAmount,
+          startDate: activePlan.startDate,
+          endDate: activePlan.endDate,
+          queryDate: date,
+        );
+        taperTargetSpots.add(FlSpot(i.toDouble(), target));
+      }
+    }
+
     var maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
+    // Include taper targets in Y scaling so the dashed line never gets clipped.
+    if (taperTargetSpots.isNotEmpty) {
+      final taperMax = taperTargetSpots.fold<double>(
+        0,
+        (max, s) => s.y > max ? s.y : max,
+      );
+      if (taperMax > maxY) maxY = taperMax;
+    }
     final adjustedMaxY = maxY > 0 ? maxY * 1.1 : 1.0;
 
-    // "Today" vertical line position (days from start boundary).
     final todayX = todayBoundary
         .difference(startBoundary)
         .inDays
@@ -343,15 +254,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
         .clamp(0.0, (_totalDays - 1).toDouble());
 
     return LineChart(
-      // Horizontal pan/zoom with our controller that starts zoomed to last 7 days.
-      // maxScale = 15: from 7-day default, user can zoom in to ~2 days visible.
-      // minScale = 1: user can zoom out to see all 30 days.
-      transformationConfig: FlTransformationConfig(
-        scaleAxis: FlScaleAxis.horizontal,
-        minScale: 1.0,
-        maxScale: 15.0,
-        transformationController: _chartController,
-      ),
       LineChartData(
         clipData: const FlClipData.all(),
         minX: 0,
@@ -360,18 +262,25 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
         maxY: adjustedMaxY,
 
         lineBarsData: [
+          // Dashed target line for the active taper plan.
+          // This is intentionally muted so the solid totals series remains primary.
+          if (taperTargetSpots.isNotEmpty)
+            LineChartBarData(
+              spots: taperTargetSpots,
+              isCurved: false,
+              color: axisColor.withAlpha(140),
+              barWidth: 2,
+              dashArray: [6, 4],
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(show: false),
+            ),
           LineChartBarData(
             spots: spots,
             isCurved: true,
             curveSmoothness: 0.3,
             color: trackableColor,
             barWidth: 2,
-            // Shadow for glow effect (sample12 style).
-            shadow: Shadow(
-              color: trackableColor.withAlpha(80),
-              blurRadius: 4,
-            ),
-            // Small dots at every data point.
+            shadow: Shadow(color: trackableColor.withAlpha(80), blurRadius: 4),
             dotData: FlDotData(
               show: true,
               getDotPainter: (spot, percent, bar, index) {
@@ -382,7 +291,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                 );
               },
             ),
-            // Gradient area fill: 20% alpha → transparent.
             belowBarData: BarAreaData(
               show: true,
               gradient: LinearGradient(
@@ -397,7 +305,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
           ),
         ],
 
-        // "Today" vertical dashed line.
         extraLinesData: ExtraLinesData(
           verticalLines: [
             VerticalLine(
@@ -409,7 +316,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
           ],
         ),
 
-        // Axis labels.
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
@@ -455,15 +361,16 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
             ),
           ),
           topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false)),
+            sideTitles: SideTitles(showTitles: false),
+          ),
           rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false)),
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
 
         borderData: FlBorderData(show: false),
         gridData: const FlGridData(show: false),
 
-        // Touch tooltip: date + amount. Full-height indicator line.
         lineTouchData: LineTouchData(
           handleBuiltInTouches: true,
           getTouchLineStart: (barData, spotIndex) => -double.infinity,
@@ -480,12 +387,18 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                   startBoundary.day + dayIndex,
                 );
                 final dateStr = '${date.month}/${date.day}';
-                final amountStr =
-                    '${spot.y.toStringAsFixed(0)} $trackableUnit';
+                // Target line is inserted before totals line, so barIndex 0 means
+                // "target" whenever taperTargetSpots is present.
+                final isTargetSpot =
+                    taperTargetSpots.isNotEmpty && spot.barIndex == 0;
+                final label = isTargetSpot ? 'Target' : 'Actual';
+                final amountStr = '${spot.y.toStringAsFixed(0)} $trackableUnit';
                 return LineTooltipItem(
-                  '$dateStr\n$amountStr',
+                  '$dateStr\n$label: $amountStr',
                   TextStyle(
-                    color: trackableColor,
+                    color: isTargetSpot
+                        ? axisColor.withAlpha(220)
+                        : trackableColor,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -506,7 +419,9 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                   getDotPainter: (spot, percent, bar, idx) {
                     return FlDotCirclePainter(
                       radius: 6,
-                      color: trackableColor,
+                      // Use each series' own color so touching the dashed target
+                      // line doesn't highlight with the totals color.
+                      color: bar.color ?? trackableColor,
                       strokeWidth: 2,
                       strokeColor: Colors.white,
                     );
@@ -520,7 +435,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
     );
   }
 
-  /// Loading skeleton matching the card pattern.
   Widget _buildLoadingSkeleton(BuildContext context) {
     return Card(
       child: Padding(
@@ -552,8 +466,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
   }
 }
 
-/// Adapter bridging Drift's DoseLog to TaperCalculator's DoseLogLike interface.
-/// Same pattern as TaperProgressCard's _DoseLogAdapter.
 class _DoseLogAdapter implements DoseLogLike {
   final DoseLog _doseLog;
   _DoseLogAdapter(this._doseLog);

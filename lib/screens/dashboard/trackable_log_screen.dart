@@ -53,7 +53,9 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     // Read the configured day boundary hour from settings.
     final boundaryHour = ref.watch(dayBoundaryHourProvider);
     final trackable = widget.trackable;
-    final now = DateTime.now();
+    // Read "now" via provider so tests can override the clock and keep
+    // day-label assertions deterministic ("Today"/"Yesterday").
+    final now = ref.watch(nowProvider)();
     final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
 
     // Calculate the query window based on mode.
@@ -74,9 +76,10 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     } else {
       // Infinite scroll: recent history.
       endBoundary = nextDayBoundary(now, boundaryHour: boundaryHour);
-      startBoundary = dayBoundary(now, boundaryHour: boundaryHour).subtract(
-        Duration(days: _daysLoaded - 1),
-      );
+      startBoundary = dayBoundary(
+        now,
+        boundaryHour: boundaryHour,
+      ).subtract(Duration(days: _daysLoaded - 1));
     }
 
     return Scaffold(
@@ -152,7 +155,11 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
         child: StreamBuilder<List<DoseLog>>(
           // Watch doses within the current window. The stream re-emits
           // when doses are added/deleted within this range.
-          stream: db.watchDosesBetween(trackable.id, startBoundary, endBoundary),
+          stream: db.watchDosesBetween(
+            trackable.id,
+            startBoundary,
+            endBoundary,
+          ),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -184,7 +191,13 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
               itemCount: grouped.length,
               itemBuilder: (context, index) {
                 final entry = grouped.entries.elementAt(index);
-                return _buildDayGroup(context, entry.key, entry.value, trackable);
+                return _buildDayGroup(
+                  context,
+                  entry.key,
+                  entry.value,
+                  trackable,
+                  todayBoundary,
+                );
               },
             );
           },
@@ -197,11 +210,17 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
   /// (no OK button needed). Uses CalendarDatePicker in a dialog for immediate
   /// selection — like clicking a date cell in a web calendar filter.
   void _showDatePicker(BuildContext context, int boundaryHour) async {
-    final now = DateTime.now();
+    // Use the same provider-driven clock as build() so the picker window and
+    // day headers agree in tests and production.
+    final now = ref.read(nowProvider)();
 
     // Use the selected date or today as the initial date for the picker.
     final initialDate = _selectedDate != null
-        ? DateTime(_selectedDate!.year, _selectedDate!.month, _selectedDate!.day)
+        ? DateTime(
+            _selectedDate!.year,
+            _selectedDate!.month,
+            _selectedDate!.day,
+          )
         : DateTime(now.year, now.month, now.day);
 
     await showDialog(
@@ -247,7 +266,10 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
   /// Returns a LinkedHashMap (insertion-ordered) so days appear in
   /// reverse chronological order (most recent first).
   /// Like: Collection::groupBy() in Laravel, preserving order.
-  Map<DateTime, List<DoseLog>> _groupByDay(List<DoseLog> doses, int boundaryHour) {
+  Map<DateTime, List<DoseLog>> _groupByDay(
+    List<DoseLog> doses,
+    int boundaryHour,
+  ) {
     final grouped = <DateTime, List<DoseLog>>{};
     for (final dose in doses) {
       final boundary = dayBoundary(dose.loggedAt, boundaryHour: boundaryHour);
@@ -262,11 +284,9 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     DateTime boundary,
     List<DoseLog> doses,
     Trackable trackable,
+    DateTime todayBoundary,
   ) {
     final total = DecayCalculator.totalRawAmount(doses);
-    final now = DateTime.now();
-    final boundaryHour = ref.watch(dayBoundaryHourProvider);
-    final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
 
     // Format the day label: "Today", "Yesterday", or "Wed, Feb 19".
     final dayLabel = _formatDayLabel(boundary, todayBoundary);
@@ -294,9 +314,9 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
             children: [
               Text(
                 dayLabel,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
               ),
               // Daily total — e.g., "270 / 300 mg".
               Row(
@@ -344,8 +364,18 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     if (boundary == yesterdayBoundary) return 'Yesterday';
 
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return '${days[boundary.weekday - 1]}, ${months[boundary.month - 1]} ${boundary.day}';
@@ -355,7 +385,11 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
   ///
   /// Removed Dismissible to fix poor scrolling performance; deletion is now
   /// handled via an explicit delete button in the trailing row.
-  Widget _buildDoseEntry(BuildContext context, DoseLog dose, Trackable trackable) {
+  Widget _buildDoseEntry(
+    BuildContext context,
+    DoseLog dose,
+    Trackable trackable,
+  ) {
     // 24h NATO format: "14:30" instead of locale-dependent AM/PM.
     final h = dose.loggedAt.hour.toString().padLeft(2, '0');
     final m = dose.loggedAt.minute.toString().padLeft(2, '0');
@@ -383,8 +417,8 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
               dose.amount == 0
                   ? 'Skipped'
                   : dose.name != null
-                      ? '${dose.name!} (${dose.amount.toStringAsFixed(0)} ${trackable.unit})'
-                      : '${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
+                  ? '${dose.name!} (${dose.amount.toStringAsFixed(0)} ${trackable.unit})'
+                  : '${dose.amount.toStringAsFixed(0)} ${trackable.unit}',
             ),
             subtitle: Text(time),
             // Actions row: Copy and Delete buttons.
@@ -428,7 +462,12 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
           label: 'Undo',
           onPressed: () {
             // Re-insert with the same trackable, amount, timestamp, and preset name.
-            db.insertDoseLog(dose.trackableId, dose.amount, dose.loggedAt, name: dose.name);
+            db.insertDoseLog(
+              dose.trackableId,
+              dose.amount,
+              dose.loggedAt,
+              name: dose.name,
+            );
           },
         ),
       ),

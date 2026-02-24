@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
@@ -11,20 +10,13 @@ import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/dashboard/taper_progress_screen.dart';
 import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
+import 'package:taper/utils/decay_calculator.dart';
 
 /// Chart viewing mode for the trackable card.
-///
-/// Like a PHP enum: enum ChartMode: string { case Decay = 'decay'; case Total = 'total'; }
 enum ChartMode {
-  /// Decay focus: primary line = active amount curve, secondary = cumulative dashed.
-  /// Y-axis scales to max active amount. Stats show "42 / 180 mg".
   decay,
-
-  /// Total focus: primary line = cumulative staircase, secondary = decay dashed.
-  /// Y-axis scales to max cumulative amount. Stats show "180 mg today".
   total;
 
-  /// Parse from config JSON string. Returns decay as default.
   static ChartMode fromConfig(String configJson) {
     try {
       final map = jsonDecode(configJson) as Map<String, dynamic>;
@@ -35,25 +27,9 @@ enum ChartMode {
   }
 }
 
-/// Dashboard card showing a trackable's current status with enhanced visuals.
-///
-/// Features:
-///   - Dual-mode chart (decay focus / total focus) with toggle
-///   - Multi-day view: shows 6h carry-over from yesterday and 6h projection into tomorrow
-///   - Pan/zoom enabled, default viewport focuses on today's 24h period
-///   - Day boundary markers at today's start and end
-///
-/// ConsumerStatefulWidget because it manages a TransformationController
-/// for the chart's initial viewport (scroll to show today's period).
 class TrackableCard extends ConsumerStatefulWidget {
   final int trackableId;
-
-  /// The dashboard widget's DB row ID — needed to persist config changes.
-  /// Null in tests where the card is rendered standalone.
   final int? widgetId;
-
-  /// The dashboard widget's config JSON string from the DB.
-  /// Contains {"mode": "decay"} or {"mode": "total"}.
   final String config;
 
   const TrackableCard({
@@ -68,67 +44,11 @@ class TrackableCard extends ConsumerStatefulWidget {
 }
 
 class _TrackableCardState extends ConsumerState<TrackableCard> {
-  /// Controls the chart's initial pan position so the viewport starts on
-  /// today's 24h period, with yesterday's carry-over scrollable to the left.
-  /// Like a ScrollController for a horizontally scrollable chart.
-  final _chartController = TransformationController();
-
-  /// Key for the chart's SizedBox — used to measure pixel width for
-  /// calculating the initial viewport offset.
-  final _chartKey = GlobalKey();
-
-  /// Prevents re-applying the initial zoom on every rebuild.
-  bool _initialZoomApplied = false;
-
-  @override
-  void dispose() {
-    _chartController.dispose();
-    super.dispose();
-  }
-
-  /// Applies the initial viewport position after the first frame renders.
-  ///
-  /// The chart data spans ~36h (-6h to +30h from day boundary), but the
-  /// default view should show today's 24h period (0h to 24h). We calculate
-  /// a horizontal scale and translate to achieve this.
-  ///
-  /// Same pattern as DailyTotalsCard: measure RenderBox width post-frame,
-  /// then set the TransformationController's Matrix4.
-  void _applyInitialZoom(double totalHours) {
-    if (_initialZoomApplied) return;
-    _initialZoomApplied = true;
-
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      final renderBox =
-          _chartKey.currentContext?.findRenderObject() as RenderBox?;
-      if (renderBox == null || !renderBox.hasSize) return;
-
-      // Chart inner width = total width - left axis reserved space (36px).
-      final chartInnerWidth = renderBox.size.width - 36;
-      if (chartInnerWidth <= 0) return;
-
-      // Scale so 24h fills the viewport (out of ~36h total).
-      // E.g., 36h / 24h = 1.5x scale.
-      const visibleHours = 24.0;
-      final scale = totalHours / visibleHours;
-      if (scale <= 1.0) return; // No need to zoom if data fits.
-
-      // Translate to start at the day boundary (6h into the data).
-      // 6h out of 36h total = 6/36 = 1/6 of the way through.
-      // In pixels: (6 / 36) * chartInnerWidth * scale.
-      final offsetFraction = 6.0 / totalHours;
-      final tx = -(offsetFraction * chartInnerWidth * scale);
-
-      _chartController.value = Matrix4.identity()
-        ..setEntry(0, 0, scale)
-        ..setEntry(0, 3, tx);
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final cardDataAsync =
-        ref.watch(trackableCardDataProvider(widget.trackableId));
+    final cardDataAsync = ref.watch(
+      trackableCardDataProvider(widget.trackableId),
+    );
 
     return cardDataAsync.when(
       loading: () => _buildLoadingSkeleton(context),
@@ -156,7 +76,6 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Compact title row: name + stats + mode toggle + overflow menu ---
             Row(
               children: [
                 Expanded(
@@ -167,9 +86,7 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
                       Flexible(
                         child: Text(
                           trackable.name,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.bold),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -177,10 +94,8 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
                       const SizedBox(width: 12),
                       Text(
                         _buildStatsText(data, mode),
-                        style:
-                            Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -192,11 +107,9 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
               ],
             ),
 
-            // --- Chart area ---
             if (hasDecay && data.curvePoints.isNotEmpty) ...[
               const SizedBox(height: 12),
               SizedBox(
-                key: _chartKey,
                 height: 200,
                 child: _buildDualModeChart(
                   context,
@@ -209,7 +122,6 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
 
             const SizedBox(height: 8),
 
-            // --- Toolbar row ---
             Wrap(
               spacing: 8,
               children: [
@@ -243,7 +155,6 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
     );
   }
 
-  /// Mode toggle button: flips between decay and total focus.
   Widget _buildModeToggle(BuildContext context, ChartMode mode) {
     return IconButton(
       icon: Icon(
@@ -266,19 +177,16 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
           configMap = {};
         }
         configMap['mode'] = newMode;
-        ref.read(databaseProvider).updateDashboardWidgetConfig(
-          widget.widgetId!,
-          jsonEncode(configMap),
-        );
+        ref
+            .read(databaseProvider)
+            .updateDashboardWidgetConfig(
+              widget.widgetId!,
+              jsonEncode(configMap),
+            );
       },
     );
   }
 
-  /// Builds the dual-mode chart with extended multi-day data.
-  ///
-  /// The data spans ~36h: 6h before day boundary → 6h after next boundary.
-  /// Default viewport shows today's 24h period; user can pan to see carry-over.
-  /// Faint vertical dashed lines mark the day boundaries (5 AM today, 5 AM tomorrow).
   Widget _buildDualModeChart(
     BuildContext context, {
     required TrackableCardData data,
@@ -286,28 +194,25 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
     required ChartMode mode,
   }) {
     final axisColor = Theme.of(context).colorScheme.onSurfaceVariant;
-    // Use the day boundary as the X-axis zero reference.
-    // Points before the boundary have negative X values (yesterday's carry-over).
     final chartStartTime = data.dayBoundaryTime;
+    // Targets are "active amount at a specific clock time", so they belong on
+    // the decay view. We intentionally keep total mode focused on cumulative
+    // intake + optional daily-total thresholds.
+    final showTargets = mode == ChartMode.decay;
 
-    // Convert curve points to FlSpot(hours from day boundary, amount).
     final decaySpots = data.curvePoints.map((p) {
-      final hoursFromStart =
-          p.time.difference(chartStartTime).inMinutes / 60.0;
+      final hoursFromStart = p.time.difference(chartStartTime).inMinutes / 60.0;
       return FlSpot(hoursFromStart, p.amount);
     }).toList();
 
     final cumulativeSpots = data.cumulativePoints.map((p) {
-      final hoursFromStart =
-          p.time.difference(chartStartTime).inMinutes / 60.0;
+      final hoursFromStart = p.time.difference(chartStartTime).inMinutes / 60.0;
       return FlSpot(hoursFromStart, p.amount);
     }).toList();
 
-    // Calculate max Y.
     double maxY;
     if (mode == ChartMode.total && cumulativeSpots.isNotEmpty) {
-      maxY = cumulativeSpots.fold<double>(
-          0, (max, s) => s.y > max ? s.y : max);
+      maxY = cumulativeSpots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
       for (final s in decaySpots) {
         if (s.y > maxY) maxY = s.y;
       }
@@ -318,158 +223,124 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
       }
     }
 
-    // Filter thresholds by chart mode.
-    final relevantComparisonType =
-        mode == ChartMode.decay ? 'active_amount' : 'daily_total';
+    final relevantComparisonType = mode == ChartMode.decay
+        ? 'active_amount'
+        : 'daily_total';
     final visibleThresholds = data.thresholds
         .where((t) => t.comparisonType == relevantComparisonType)
         .toList();
 
-    for (final t in visibleThresholds) {
-      if (t.amount > maxY) maxY = t.amount;
-    }
-    if (data.taperTarget != null && data.taperTarget! > maxY) {
-      maxY = data.taperTarget!;
-    }
-    final adjustedMaxY = maxY > 0 ? maxY * 1.1 : 1.0;
-
-    // X range: first and last data points (typically -6h to +30h from boundary).
     final minX = decaySpots.first.x;
     final maxX = decaySpots.last.x;
-    final totalHours = maxX - minX;
 
-    // "Now" indicator position.
-    final isLive = ref.watch(selectedDateProvider) == null;
-    final double? clampedNowHours;
-    if (isLive) {
-      final now = DateTime.now();
-      final nowHours = now.difference(chartStartTime).inMinutes / 60.0;
-      clampedNowHours = nowHours.clamp(minX, maxX);
-    } else {
-      clampedNowHours = null;
+    final targetSpots = showTargets
+        ? data.targets
+              .map(
+                (target) => _targetToChartSpot(
+                  target: target,
+                  chartStartTime: chartStartTime,
+                  minX: minX,
+                  maxX: maxX,
+                ),
+              )
+              .whereType<FlSpot>()
+              .toList()
+        : <FlSpot>[];
+
+    // Include only the things we actually render in current mode.
+    for (final threshold in visibleThresholds) {
+      if (threshold.amount > maxY) maxY = threshold.amount;
     }
+    if (showTargets) {
+      for (final spot in targetSpots) {
+        if (spot.y > maxY) maxY = spot.y;
+      }
+    }
+    final adjustedVisibleMaxY = maxY > 0 ? maxY * 1.1 : 1.0;
 
-    // Day boundary markers: vertical lines at X=0 (today's start) and
-    // X=hours-to-next-boundary (tomorrow's start).
-    final nextBoundaryHours =
-        data.nextDayBoundaryTime.difference(chartStartTime).inMinutes / 60.0;
-
-    // Apply initial zoom to focus on today's 24h period.
-    _applyInitialZoom(totalHours);
-
-    // Build line bars based on mode.
     final lineBars = <LineChartBarData>[];
     if (mode == ChartMode.decay) {
       lineBars.add(
-          _buildPrimaryLine(decaySpots, trackableColor, isCurved: true));
+        _buildPrimaryLine(decaySpots, trackableColor, isCurved: true),
+      );
       if (cumulativeSpots.isNotEmpty) {
-        lineBars.add(_buildSecondaryLine(
-            cumulativeSpots, trackableColor,
-            isCurved: false));
+        lineBars.add(
+          _buildSecondaryLine(cumulativeSpots, trackableColor, isCurved: false),
+        );
       }
     } else {
       if (cumulativeSpots.isNotEmpty) {
-        lineBars.add(_buildPrimaryLine(
-            cumulativeSpots, trackableColor,
-            isCurved: false));
+        lineBars.add(
+          _buildPrimaryLine(cumulativeSpots, trackableColor, isCurved: false),
+        );
       }
       lineBars.add(
-          _buildSecondaryLine(decaySpots, trackableColor, isCurved: true));
+        _buildSecondaryLine(decaySpots, trackableColor, isCurved: true),
+      );
     }
 
+    // Draw targets as dots (no connecting line). This keeps the chart readable
+    // while still making target events visible in decay mode.
+    int? targetBarIndex;
+    if (showTargets && targetSpots.isNotEmpty) {
+      lineBars.add(_buildTargetPointsLine(targetSpots, axisColor));
+      targetBarIndex = lineBars.length - 1;
+    }
+
+    final thresholdLines = visibleThresholds
+        .map(
+          (threshold) => HorizontalLine(
+            y: threshold.amount,
+            color: axisColor.withAlpha(120),
+            strokeWidth: 1,
+            dashArray: [6, 4],
+          ),
+        )
+        .toList();
+
     return LineChart(
-      transformationConfig: FlTransformationConfig(
-        scaleAxis: FlScaleAxis.horizontal,
-        minScale: 1.0,
-        maxScale: 10.0,
-        transformationController: _chartController,
-      ),
       LineChartData(
         clipData: const FlClipData.all(),
         minX: minX,
         maxX: maxX,
         minY: 0,
-        maxY: adjustedMaxY,
-
+        maxY: adjustedVisibleMaxY,
         lineBarsData: lineBars,
-
-        extraLinesData: ExtraLinesData(
-          verticalLines: [
-            // Day boundary marker: start of today (X=0).
-            VerticalLine(
-              x: 0,
-              color: axisColor.withAlpha(60),
-              strokeWidth: 1,
-              dashArray: [4, 4],
-            ),
-            // Day boundary marker: start of tomorrow.
-            VerticalLine(
-              x: nextBoundaryHours,
-              color: axisColor.withAlpha(60),
-              strokeWidth: 1,
-              dashArray: [4, 4],
-            ),
-            // "Now" indicator — only in live mode.
-            if (clampedNowHours != null)
-              VerticalLine(
-                x: clampedNowHours,
-                color: axisColor.withAlpha(100),
-                strokeWidth: 1,
-                dashArray: [4, 4],
-              ),
-          ],
-          horizontalLines: [
-            for (final t in visibleThresholds)
-              HorizontalLine(
-                y: t.amount,
-                color: axisColor.withAlpha(120),
-                strokeWidth: 1,
-                dashArray: [6, 4],
-                label: HorizontalLineLabel(
-                  show: true,
-                  alignment: Alignment.topRight,
-                  padding: const EdgeInsets.only(right: 4, bottom: 2),
-                  style: TextStyle(
-                    color: axisColor.withAlpha(180),
-                    fontSize: 9,
-                  ),
-                  labelResolver: (_) => t.name,
-                ),
-              ),
-            if (data.taperTarget != null)
-              HorizontalLine(
-                y: data.taperTarget!,
-                color: axisColor.withAlpha(120),
-                strokeWidth: 1,
-                dashArray: [6, 4],
-                label: HorizontalLineLabel(
-                  show: true,
-                  alignment: Alignment.topRight,
-                  padding: const EdgeInsets.only(right: 4, bottom: 2),
-                  style: TextStyle(
-                    color: axisColor.withAlpha(180),
-                    fontSize: 9,
-                  ),
-                  labelResolver: (_) => 'Target',
-                ),
-              ),
-          ],
-        ),
-
+        // Thresholds are horizontal guide lines (active-amount in decay mode,
+        // daily-total in total mode), matching the selected chart context.
+        extraLinesData: ExtraLinesData(horizontalLines: thresholdLines),
+        // Explicitly disable the default grid/border lines from fl_chart.
+        // Without this, fl_chart auto-generates a full grid that adds visual
+        // noise on top of the decay/total series.
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(show: false),
+        // Match the totals chart axis style: bottom time labels + left Y labels.
+        // Right/top remain hidden to avoid duplicate information.
         titlesData: FlTitlesData(
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 22,
-              interval: 4,
+              reservedSize: 24,
+              // Use 1h sampling, then filter in getTitlesWidget.
+              //
+              // Why: the chart X-axis is "hours since day boundary" (usually 05:00),
+              // but users read the axis as wall-clock time. A fixed 6h interval from
+              // the boundary (05, 11, 17, 23...) feels shifted. Sampling hourly and
+              // only rendering labels at real clock anchors (00, 06, 12, 18) keeps
+              // numbering intuitive regardless of the configured day boundary.
+              interval: 1,
               getTitlesWidget: (value, meta) {
-                final time = chartStartTime.add(
-                  Duration(minutes: (value * 60).round()),
-                );
+                if (value < minX || value > maxX) {
+                  return const SizedBox.shrink();
+                }
+                final labelTime = _timeFromChartX(chartStartTime, value);
+                if (!_shouldShowBottomHourLabel(labelTime)) {
+                  return const SizedBox.shrink();
+                }
                 return Text(
-                  time.hour.toString().padLeft(2, '0'),
+                  _formatHourLabel(labelTime),
                   style: TextStyle(
-                    color: axisColor.withAlpha(150),
+                    color: axisColor.withAlpha(170),
                     fontSize: 10,
                   ),
                 );
@@ -479,7 +350,7 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 36,
+              reservedSize: 40,
               getTitlesWidget: (value, meta) {
                 if (value == meta.min || value == meta.max) {
                   return const SizedBox.shrink();
@@ -494,51 +365,34 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
               },
             ),
           ),
-          topTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
-
-        borderData: FlBorderData(show: false),
-        gridData: const FlGridData(show: false),
-
+        // Replace generic numeric tooltips with clock time + amount, so the
+        // touched point reflects the same hour labels the user sees on the axis.
         lineTouchData: LineTouchData(
-          handleBuiltInTouches: true,
-          getTouchLineStart: (barData, spotIndex) => -double.infinity,
-          getTouchLineEnd: (barData, spotIndex) => double.infinity,
           touchTooltipData: LineTouchTooltipData(
             getTooltipColor: (_) =>
                 Theme.of(context).colorScheme.surfaceContainerHighest,
             getTooltipItems: (spots) {
-              final hasTwo = spots.length == 2;
-              final List<String?> labels;
-              if (hasTwo) {
-                labels = mode == ChartMode.decay
-                    ? ['Active', 'Total']
-                    : ['Total', 'Active'];
-              } else {
-                labels = [null];
-              }
-              return spots.asMap().entries.map((entry) {
-                final index = entry.key;
-                final spot = entry.value;
-                final spotTime = chartStartTime.add(
-                  Duration(minutes: (spot.x * 60).round()),
-                );
+              return spots.map((spot) {
+                final spotTime = _timeFromChartX(chartStartTime, spot.x);
                 final timeStr =
                     '${spotTime.hour.toString().padLeft(2, '0')}:${spotTime.minute.toString().padLeft(2, '0')}';
-                final label =
-                    index < labels.length ? labels[index] : null;
-                final valueStr = label != null
-                    ? '$label: ${spot.y.toStringAsFixed(1)}'
-                    : spot.y.toStringAsFixed(1);
-                final text =
-                    index == 0 ? '$valueStr\n$timeStr' : valueStr;
+                final amount = spot.y.toStringAsFixed(0);
+                final isTargetSpot =
+                    targetBarIndex != null && spot.barIndex == targetBarIndex;
+                final label = isTargetSpot ? 'Target' : 'Amount';
                 return LineTooltipItem(
-                  text,
+                  '$timeStr\n$label: $amount ${data.trackable.unit}',
                   TextStyle(
-                    color: spot.bar.color ?? trackableColor,
+                    color: isTargetSpot
+                        ? axisColor.withAlpha(220)
+                        : trackableColor,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -546,34 +400,94 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
               }).toList();
             },
           ),
-          getTouchedSpotIndicator: (barData, spotIndexes) {
-            return spotIndexes.map((index) {
-              return TouchedSpotIndicatorData(
-                FlLine(
-                  color: axisColor.withAlpha(80),
-                  strokeWidth: 1,
-                  dashArray: [3, 3],
-                ),
-                FlDotData(
-                  show: true,
-                  getDotPainter: (spot, percent, bar, idx) {
-                    return FlDotCirclePainter(
-                      radius: 6,
-                      color: trackableColor,
-                      strokeWidth: 2,
-                      strokeColor: Colors.white,
-                    );
-                  },
-                ),
-              );
-            }).toList();
-          },
         ),
       ),
     );
   }
 
-  /// Primary (focused) line: solid with gradient fill and shadow glow.
+  /// Convert chart-space X (hours from start) back into a real DateTime.
+  ///
+  /// We round to whole minutes so labels/tooltips stay stable and readable
+  /// even if fl_chart gives us fractional X values while panning/touching.
+  DateTime _timeFromChartX(DateTime chartStartTime, double chartX) {
+    return chartStartTime.add(Duration(minutes: (chartX * 60).round()));
+  }
+
+  /// Bottom-axis label formatter for the decay chart.
+  ///
+  /// Uses fixed 24h clock style to avoid locale AM/PM variations in charts.
+  String _formatHourLabel(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:00';
+  }
+
+  /// Parse a stored target ("HH:mm") and convert it to chart-space X.
+  ///
+  /// Returns null for malformed/out-of-range times so one bad row doesn't break
+  /// chart rendering.
+  FlSpot? _targetToChartSpot({
+    required Target target,
+    required DateTime chartStartTime,
+    required double minX,
+    required double maxX,
+  }) {
+    final timeParts = target.time.split(':');
+    if (timeParts.length != 2) return null;
+    final hour = int.tryParse(timeParts[0]);
+    final minute = int.tryParse(timeParts[1]);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+    final targetTime = DateTime(
+      chartStartTime.year,
+      chartStartTime.month,
+      chartStartTime.day,
+      hour,
+      minute,
+    );
+
+    final adjustedTargetTime = targetTime.isBefore(chartStartTime)
+        ? targetTime.add(const Duration(days: 1))
+        : targetTime;
+    final hoursFromStart =
+        adjustedTargetTime.difference(chartStartTime).inMinutes / 60.0;
+
+    if (hoursFromStart < minX || hoursFromStart > maxX) return null;
+    return FlSpot(hoursFromStart, target.amount);
+  }
+
+  /// True when this timestamp should be shown on the bottom axis.
+  ///
+  /// We keep labels sparse and familiar by only showing midnight/noon-style
+  /// anchors every 6 hours (00, 06, 12, 18).
+  bool _shouldShowBottomHourLabel(DateTime time) {
+    return time.minute == 0 && time.hour % 6 == 0;
+  }
+
+  /// Render targets as emphasized dots without connecting segments.
+  ///
+  /// Think of these like "milestone markers" on top of the decay curve.
+  LineChartBarData _buildTargetPointsLine(List<FlSpot> spots, Color axisColor) {
+    return LineChartBarData(
+      spots: spots,
+      isCurved: false,
+      // 0-width hides the connecting polyline; only dots remain visible.
+      barWidth: 0,
+      color: axisColor.withAlpha(220),
+      dotData: FlDotData(
+        show: true,
+        getDotPainter: (spot, percent, bar, index) {
+          return FlDotCirclePainter(
+            radius: 3.5,
+            color: axisColor.withAlpha(220),
+            strokeWidth: 1.2,
+            strokeColor: Colors.white,
+          );
+        },
+      ),
+      belowBarData: BarAreaData(show: false),
+    );
+  }
+
   LineChartBarData _buildPrimaryLine(
     List<FlSpot> spots,
     Color color, {
@@ -585,26 +499,19 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
       curveSmoothness: isCurved ? 0.35 : 0,
       color: color,
       barWidth: 1,
-      shadow: Shadow(
-        color: color.withAlpha(80),
-        blurRadius: 4,
-      ),
+      shadow: Shadow(color: color.withAlpha(80), blurRadius: 4),
       dotData: const FlDotData(show: false),
       belowBarData: BarAreaData(
         show: true,
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            color.withAlpha(50),
-            color.withAlpha(0),
-          ],
+          colors: [color.withAlpha(50), color.withAlpha(0)],
         ),
       ),
     );
   }
 
-  /// Secondary (background) line: dashed, muted, no fill.
   LineChartBarData _buildSecondaryLine(
     List<FlSpot> spots,
     Color color, {
@@ -622,7 +529,6 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
     );
   }
 
-  /// Three-dot overflow menu mirroring the toolbar buttons.
   Widget _buildOverflowMenu(BuildContext context, TrackableCardData data) {
     return PopupMenuButton<String>(
       icon: Icon(
@@ -687,7 +593,6 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
     );
   }
 
-  /// Stats text — changes based on chart mode.
   String _buildStatsText(TrackableCardData data, ChartMode mode) {
     final unit = data.trackable.unit;
     final totalStr = data.totalToday.toStringAsFixed(0);
@@ -710,8 +615,6 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
 
     return base;
   }
-
-  // --- Toolbar actions ---
 
   void _repeatLast(BuildContext context, TrackableCardData data) async {
     final lastDose = data.lastDose!;

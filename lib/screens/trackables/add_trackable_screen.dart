@@ -24,6 +24,7 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
   late final TextEditingController _halfLifeController;
   late final TextEditingController _eliminationRateController;
   late final TextEditingController _absorptionMinutesController;
+  late final TextEditingController _sleepThresholdController;
 
   /// The currently selected decay model in the dropdown.
   DecayModel _selectedDecayModel = DecayModel.none;
@@ -39,6 +40,7 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
     _halfLifeController = TextEditingController();
     _eliminationRateController = TextEditingController();
     _absorptionMinutesController = TextEditingController();
+    _sleepThresholdController = TextEditingController();
   }
 
   @override
@@ -48,6 +50,7 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
     _halfLifeController.dispose();
     _eliminationRateController.dispose();
     _absorptionMinutesController.dispose();
+    _sleepThresholdController.dispose();
     super.dispose();
   }
 
@@ -181,6 +184,25 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
                 ],
                 onChanged: (_) => setState(() {}),
               ),
+
+              const SizedBox(height: 16),
+
+              // --- Sleep threshold field ---
+              TextField(
+                controller: _sleepThresholdController,
+                decoration: InputDecoration(
+                  labelText: 'Sleep readiness threshold (${_unitController.text.isEmpty ? 'mg' : _unitController.text})',
+                  hintText: 'e.g. 50.0 (optional)',
+                  border: const OutlineInputBorder(),
+                  errorText: numericFieldError(_sleepThresholdController.text),
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+                ],
+                onChanged: (_) => setState(() {}),
+              ),
             ],
 
             if (_selectedDecayModel != DecayModel.none)
@@ -221,6 +243,10 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
         ? double.tryParse(_absorptionMinutesController.text.trim())
         : null;
 
+    final sleepThreshold = _selectedDecayModel != DecayModel.none
+        ? double.tryParse(_sleepThresholdController.text.trim())
+        : null;
+
     await ref.read(databaseProvider).insertTrackable(
       name,
       unit: unit,
@@ -228,6 +254,7 @@ class _AddTrackableScreenState extends ConsumerState<AddTrackableScreen> {
       halfLifeHours: halfLife,
       eliminationRate: eliminationRate,
       absorptionMinutes: absorptionMinutes,
+      sleepThreshold: sleepThreshold,
     );
 
     _saving = false;

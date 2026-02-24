@@ -85,6 +85,11 @@ class Trackables extends Table {
   // Nullable: null means instant absorption (existing default behavior).
   // Laravel equivalent: $table->double('absorption_minutes')->nullable()
   RealColumn get absorptionMinutes => real().nullable()();
+
+  // Threshold below which the user is considered "ready for sleep".
+  // E.g., 50mg for caffeine. Nullable: null means no predictor.
+  // Laravel equivalent: $table->double('sleep_threshold')->nullable()
+  RealColumn get sleepThreshold => real().nullable()();
 }
 
 /// Presets table — named dose shortcuts per trackable.
@@ -231,6 +236,20 @@ class Thresholds extends Table {
       text().withDefault(const Constant('daily_total'))();
 }
 
+/// Time-based targets, rendered as points on the decay chart.
+///
+/// Each target is a goal to be at or below a certain amount by a certain time.
+/// E.g., for Caffeine, a user might set a "Bedtime" target of <50mg by 22:00.
+/// These appear as labeled points on the chart, helping users visualize if
+/// their current decay curve will meet their goals.
+class Targets extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get trackableId => integer().references(Trackables, #id)();
+  TextColumn get name => text()(); // e.g., "Bedtime"
+  RealColumn get amount => real()(); // e.g., 50.0
+  TextColumn get time => text()(); // "HH:MM", e.g., "22:00"
+}
+
 /// Reminders table — scheduled notifications per trackable.
 ///
 /// Each trackable can have multiple reminders (e.g., "Morning dose" at 8 AM,
@@ -350,7 +369,16 @@ class DashboardWidgets extends Table {
 
 /// AppDatabase = the database singleton.
 /// Like DatabaseServiceProvider + config/database.php in Laravel.
-@DriftDatabase(tables: [Trackables, DoseLogs, Presets, Thresholds, TaperPlans, DashboardWidgets, Reminders])
+@DriftDatabase(tables: [
+  Trackables,
+  DoseLogs,
+  Presets,
+  Thresholds,
+  TaperPlans,
+  DashboardWidgets,
+  Reminders,
+  Targets,
+])
 class AppDatabase extends _$AppDatabase {
   // Default constructor uses platform-specific SQLite via drift_flutter.
   AppDatabase() : super(driftDatabase(name: 'taper'));
@@ -360,279 +388,303 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    // onCreate = fresh install. Creates all tables and seeds structural data.
-    // Only seeds the 3 default trackables — demo data (presets, thresholds,
-    // dose logs) is seeded separately by seedDemoData() on first app launch.
-    // Like php artisan migrate — schema + minimal seeds only.
-    onCreate: (Migrator m) async {
-      await m.createAll();
+        // onCreate = fresh install. Creates all tables and seeds structural data.
+        // Only seeds the 3 default trackables — demo data (presets, thresholds,
+        // dose logs) is seeded separately by seedDemoData() on first app launch.
+        // Like php artisan migrate — schema + minimal seeds only.
+        onCreate: (Migrator m) async {
+          await m.createAll();
 
-      // Caffeine: visible, exponential decay with 5h half-life and 45min absorption.
-      // halfLifeHours=5.0 = caffeine's biological half-life (used for decay curve).
-      // absorptionMinutes=45 = time for caffeine to reach peak blood levels.
-      await into(trackables).insert(
-        TrackablesCompanion.insert(
-          name: 'Caffeine',
-          isMain: const Value(true),
-          halfLifeHours: const Value(5.0),
-          absorptionMinutes: const Value(45.0),
-          unit: const Value('mg'),
-          color: trackableColorPalette[0],
-          sortOrder: const Value(1),
-          decayModel: const Value('exponential'),
-        ),
-      );
-      // Water: visible, no decay tracking (just counts totals).
-      await into(trackables).insert(
-        TrackablesCompanion.insert(
-          name: 'Water',
-          halfLifeHours: const Value(null),
-          unit: const Value('ml'),
-          color: trackableColorPalette[1],
-          sortOrder: const Value(2),
-          // decayModel defaults to 'none'
-        ),
-      );
-      // Alcohol: hidden, linear decay at 9 ml/hour.
-      // Alcohol follows zero-order kinetics: the liver processes a fixed
-      // amount per hour regardless of BAC (≈1 standard drink/hr ≈ 9 ml pure alcohol).
-      await into(trackables).insert(
-        TrackablesCompanion.insert(
-          name: 'Alcohol',
-          isVisible: const Value(false),
-          unit: const Value('ml'),
-          color: trackableColorPalette[2],
-          sortOrder: const Value(3),
-          decayModel: const Value('linear'),
-          eliminationRate: const Value(9.0),
-        ),
-      );
+          // Caffeine: visible, exponential decay with 5h half-life and 45min absorption.
+          // halfLifeHours=5.0 = caffeine's biological half-life (used for decay curve).
+          // absorptionMinutes=45 = time for caffeine to reach peak blood levels.
+          // sleepThreshold=50.0 = default threshold for sleep readiness.
+          await into(trackables).insert(
+            TrackablesCompanion.insert(
+              name: 'Caffeine',
+              isMain: const Value(true),
+              halfLifeHours: const Value(5.0),
+              absorptionMinutes: const Value(45.0),
+              unit: const Value('mg'),
+              color: trackableColorPalette[0],
+              sortOrder: const Value(1),
+              decayModel: const Value('exponential'),
+              sleepThreshold: const Value(50.0),
+            ),
+          );
+          // Water: visible, no decay tracking (just counts totals).
+          await into(trackables).insert(
+            TrackablesCompanion.insert(
+              name: 'Water',
+              halfLifeHours: const Value(null),
+              unit: const Value('ml'),
+              color: trackableColorPalette[1],
+              sortOrder: const Value(2),
+              // decayModel defaults to 'none'
+            ),
+          );
+          // Alcohol: hidden, linear decay at 9 ml/hour.
+          // Alcohol follows zero-order kinetics: the liver processes a fixed
+          // amount per hour regardless of BAC (≈1 standard drink/hr ≈ 9 ml pure alcohol).
+          await into(trackables).insert(
+            TrackablesCompanion.insert(
+              name: 'Alcohol',
+              isVisible: const Value(false),
+              unit: const Value('ml'),
+              color: trackableColorPalette[2],
+              sortOrder: const Value(3),
+              decayModel: const Value('linear'),
+              eliminationRate: const Value(9.0),
+            ),
+          );
 
-      // Seed dashboard widgets for the 2 visible trackables (Caffeine + Water).
-      // Alcohol is hidden so no widget. IDs are 1 and 2 because autoIncrement
-      // assigns them in insertion order on a fresh database.
-      // Like: DashboardWidget::insert([['type' => 'decay_card', 'trackable_id' => 1, ...]])
-      await into(dashboardWidgets).insert(
-        DashboardWidgetsCompanion.insert(
-          type: 'decay_card',
-          trackableId: const Value(1),
-          sortOrder: const Value(1),
-        ),
-      );
-      await into(dashboardWidgets).insert(
-        DashboardWidgetsCompanion.insert(
-          type: 'decay_card',
-          trackableId: const Value(2),
-          sortOrder: const Value(2),
-        ),
-      );
-    },
-
-    // onUpgrade = existing install. Runs when schemaVersion increases.
-    // Like Laravel's php artisan migrate — runs only the new migrations.
-    onUpgrade: (Migrator m, int from, int to) async {
-      if (from < 2) {
-        // v1 → v2: add the dose_logs table.
-        await m.createTable(doseLogs);
-      }
-      if (from < 3) {
-        // v2 → v3: add isMain and isVisible columns to trackables.
-        // m.addColumn() generates: ALTER TABLE trackables ADD COLUMN is_main INTEGER NOT NULL DEFAULT 0
-        // Existing rows get the default value automatically — like Laravel's migration with ->default().
-        await m.addColumn(trackables, trackables.isMain);
-        await m.addColumn(trackables, trackables.isVisible);
-
-        // Seed Water and Alcohol for existing installs too, so they have
-        // something to see the visibility difference with.
-        await into(trackables).insert(
-          TrackablesCompanion.insert(name: 'Water', color: 0),
-        );
-        await into(trackables).insert(
-          TrackablesCompanion.insert(
-            name: 'Alcohol',
-            isVisible: const Value(false),
-            color: 0,
-          ),
-        );
-      }
-      if (from < 4) {
-        // v3 → v4: Add halfLifeHours, unit, and color to trackables;
-        // rename amount_mg → amount in dose_logs.
-
-        // Nullable column — existing rows get NULL (no decay tracking yet).
-        await m.addColumn(trackables, trackables.halfLifeHours);
-
-        // Has a default value — existing rows get "mg" automatically.
-        await m.addColumn(trackables, trackables.unit);
-
-        // Non-nullable without a default can't use m.addColumn on a table
-        // with existing rows, so we use raw SQL with a temporary default.
-        // After this, we immediately update each row with its real palette color.
-        await customStatement(
-          'ALTER TABLE trackables ADD COLUMN color INTEGER NOT NULL DEFAULT 0',
-        );
-
-        // Assign colors from the palette based on creation order (by id).
-        // Like: Trackable::orderBy('id')->get()->each(fn($t, $i) => ...)
-        final existing = await (select(trackables)
-              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-            .get();
-        for (var i = 0; i < existing.length; i++) {
-          await (update(trackables)
-                ..where((t) => t.id.equals(existing[i].id)))
-              .write(TrackablesCompanion(
-            color: Value(trackableColorPalette[i % trackableColorPalette.length]),
-          ));
-        }
-
-        // Rename amount_mg → amount. SQLite 3.25+ supports RENAME COLUMN.
-        // sqlite3_flutter_libs bundles a modern SQLite, so this is safe.
-        await customStatement(
-          'ALTER TABLE dose_logs RENAME COLUMN amount_mg TO amount',
-        );
-      }
-      if (from < 5) {
-        // v4 → v5: Add sortOrder column to trackables for user-controlled ordering.
-        // Default is 0, then we immediately set each row's sortOrder = its id
-        // so existing trackables keep their insertion order.
-        await m.addColumn(trackables, trackables.sortOrder);
-
-        // Set sortOrder = id for all existing rows (preserves insertion order).
-        // Like: Trackable::orderBy('id')->get()->each(fn($t, $i) => $t->update(['sort_order' => $i + 1]))
-        final existing = await (select(trackables)
-              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-            .get();
-        for (var i = 0; i < existing.length; i++) {
-          await (update(trackables)
-                ..where((t) => t.id.equals(existing[i].id)))
-              .write(TrackablesCompanion(sortOrder: Value(i + 1)));
-        }
-      }
-      if (from < 6) {
-        // v5 → v6: Add decayModel and eliminationRate columns.
-        // decayModel defaults to 'none', eliminationRate is nullable.
-        await m.addColumn(trackables, trackables.decayModel);
-        await m.addColumn(trackables, trackables.eliminationRate);
-
-        // Backfill: trackables that have a half-life were using exponential decay.
-        // This preserves their existing behavior under the new model system.
-        await customStatement(
-          "UPDATE trackables SET decay_model = 'exponential' WHERE half_life_hours IS NOT NULL",
-        );
-
-        // Alcohol gets linear decay at 9 ml/hour (avg liver processing rate).
-        // Also clear its half-life since linear decay uses eliminationRate instead.
-        await customStatement(
-          "UPDATE trackables SET decay_model = 'linear', elimination_rate = 9.0, half_life_hours = NULL WHERE name = 'Alcohol'",
-        );
-      }
-      if (from < 7) {
-        // v6 → v7: Add presets table for named dose shortcuts.
-        await m.createTable(presets);
-      }
-      if (from < 8) {
-        // v7 → v8: Add absorptionMinutes column to trackables.
-        // Nullable — existing rows get NULL (instant absorption, unchanged behavior).
-        await m.addColumn(trackables, trackables.absorptionMinutes);
-      }
-      if (from < 9) {
-        // v8 → v9: Add thresholds table for named horizontal lines on charts.
-        // Each trackable can have multiple thresholds (e.g., "Daily max" = 400 mg).
-        await m.createTable(thresholds);
-      }
-      if (from < 10) {
-        // v9 → v10: Add optional name column to dose_logs.
-        // Stores the preset name (e.g., "Espresso") when a dose is logged via
-        // a preset chip. Nullable — manually entered doses have no name.
-        await m.addColumn(doseLogs, doseLogs.name);
-      }
-      if (from < 11) {
-        // v10 → v11: Add showCumulativeLine toggle to trackables.
-        // We use raw SQL because the column was later removed from the Dart class.
-        await customStatement(
-          'ALTER TABLE trackables ADD COLUMN show_cumulative_line INTEGER NOT NULL DEFAULT 0',
-        );
-      }
-      if (from < 12) {
-        // v11 → v12: Add taper_plans table for gradual reduction schedules.
-        // Each plan defines a linear ramp from startAmount to targetAmount.
-        await m.createTable(taperPlans);
-      }
-      if (from < 13) {
-        // v12 → v13: Add dashboard_widgets table — decouples dashboard layout
-        // from trackable visibility. Each widget is an independent card on the
-        // dashboard that shows a specific view (decay curve or taper progress)
-        // of a trackable's data.
-        await m.createTable(dashboardWidgets);
-
-        // Migrate existing visible trackables to dashboard widgets.
-        // Each visible trackable gets a 'decay_card' widget, preserving sortOrder.
-        // This keeps the dashboard looking identical to before the migration.
-        final visible = await (select(trackables)
-              ..where((t) => t.isVisible.equals(true))
-              ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
-            .get();
-
-        for (final t in visible) {
-          // Previously, we copied showCumulativeLine into the widget config.
-          // Since it's now permanently on, we just use an empty config.
-          const config = '{}';
+          // Seed dashboard widgets for the 2 visible trackables (Caffeine + Water).
+          // Alcohol is hidden so no widget. IDs are 1 and 2 because autoIncrement
+          // assigns them in insertion order on a fresh database.
+          // Like: DashboardWidget::insert([['type' => 'decay_card', 'trackable_id' => 1, ...]])
           await into(dashboardWidgets).insert(
             DashboardWidgetsCompanion.insert(
               type: 'decay_card',
-              trackableId: Value(t.id),
-              sortOrder: Value(t.sortOrder),
-              config: const Value(config),
+              trackableId: const Value(1),
+              sortOrder: const Value(1),
             ),
           );
-        }
+          // Add sleep readiness widget for Caffeine by default.
+          await into(dashboardWidgets).insert(
+            DashboardWidgetsCompanion.insert(
+              type: 'sleep_readiness',
+              trackableId: const Value(1),
+              sortOrder: const Value(2),
+            ),
+          );
+          await into(dashboardWidgets).insert(
+            DashboardWidgetsCompanion.insert(
+              type: 'decay_card',
+              trackableId: const Value(2),
+              sortOrder: const Value(3),
+            ),
+          );
+        },
 
-        // Also add taper_progress widgets for trackables with active taper plans.
-        // These go after all the decay cards (sortOrder = max + 1 and up).
-        final activePlans = await (select(taperPlans)
-              ..where((t) => t.isActive.equals(true)))
-            .get();
+        // onUpgrade = existing install. Runs when schemaVersion increases.
+        // Like Laravel's php artisan migrate — runs only the new migrations.
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            // v1 → v2: add the dose_logs table.
+            await m.createTable(doseLogs);
+          }
+          if (from < 3) {
+            // v2 → v3: add isMain and isVisible columns to trackables.
+            // m.addColumn() generates: ALTER TABLE trackables ADD COLUMN is_main INTEGER NOT NULL DEFAULT 0
+            // Existing rows get the default value automatically — like Laravel's migration with ->default().
+            await m.addColumn(trackables, trackables.isMain);
+            await m.addColumn(trackables, trackables.isVisible);
 
-        // Find the max sortOrder from the widgets we just inserted.
-        var nextSort = visible.isEmpty
-            ? 1
-            : visible.map((t) => t.sortOrder).reduce((a, b) => a > b ? a : b) + 1;
-
-        for (final plan in activePlans) {
-          // Only add if the trackable is visible (it already has a decay card).
-          final hasWidget = visible.any((t) => t.id == plan.trackableId);
-          if (hasWidget) {
-            await into(dashboardWidgets).insert(
-              DashboardWidgetsCompanion.insert(
-                type: 'taper_progress',
-                trackableId: Value(plan.trackableId),
-                sortOrder: Value(nextSort),
+            // Seed Water and Alcohol for existing installs too, so they have
+            // something to see the visibility difference with.
+            await into(trackables).insert(
+              TrackablesCompanion.insert(name: 'Water', color: 0),
+            );
+            await into(trackables).insert(
+              TrackablesCompanion.insert(
+                name: 'Alcohol',
+                isVisible: const Value(false),
+                color: 0,
               ),
             );
-            nextSort++;
           }
-        }
-      }
-      if (from < 14) {
-        // v13 → v14: Add reminders table for scheduled notifications per trackable.
-        // Supports two types: scheduled (fire at specific time) and logging_gap
-        // (fire when no dose logged for a while).
-        await m.createTable(reminders);
-      }
-      if (from < 15) {
-        // v14 → v15: Add comparisonType column to thresholds.
-        // Determines what a threshold compares against:
-        //   'daily_total'   — cumulative intake today (existing behavior)
-        //   'active_amount' — currently active (in-system) amount from decay
-        // Existing thresholds default to 'daily_total' for backward compat.
-        await m.addColumn(thresholds, thresholds.comparisonType);
-      }
-    },
-  );
+          if (from < 4) {
+            // v3 → v4: Add halfLifeHours, unit, and color to trackables;
+            // rename amount_mg → amount in dose_logs.
+
+            // Nullable column — existing rows get NULL (no decay tracking yet).
+            await m.addColumn(trackables, trackables.halfLifeHours);
+
+            // Has a default value — existing rows get "mg" automatically.
+            await m.addColumn(trackables, trackables.unit);
+
+            // Non-nullable without a default can't use m.addColumn on a table
+            // with existing rows, so we use raw SQL with a temporary default.
+            // After this, we immediately update each row with its real palette color.
+            await customStatement(
+              'ALTER TABLE trackables ADD COLUMN color INTEGER NOT NULL DEFAULT 0',
+            );
+
+            // Assign colors from the palette based on creation order (by id).
+            // Like: Trackable::orderBy('id')->get()->each(fn($t, $i) => ...)
+            final existing = await (select(trackables)
+                  ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+                .get();
+            for (var i = 0; i < existing.length; i++) {
+              await (update(trackables)
+                    ..where((t) => t.id.equals(existing[i].id)))
+                  .write(TrackablesCompanion(
+                color: Value(
+                    trackableColorPalette[i % trackableColorPalette.length]),
+              ));
+            }
+
+            // Rename amount_mg → amount. SQLite 3.25+ supports RENAME COLUMN.
+            // sqlite3_flutter_libs bundles a modern SQLite, so this is safe.
+            await customStatement(
+              'ALTER TABLE dose_logs RENAME COLUMN amount_mg TO amount',
+            );
+          }
+          if (from < 5) {
+            // v4 → v5: Add sortOrder column to trackables for user-controlled ordering.
+            // Default is 0, then we immediately set each row's sortOrder = its id
+            // so existing trackables keep their insertion order.
+            await m.addColumn(trackables, trackables.sortOrder);
+
+            // Set sortOrder = id for all existing rows (preserves insertion order).
+            // Like: Trackable::orderBy('id')->get()->each(fn($t, $i) => $t->update(['sort_order' => $i + 1]))
+            final existing = await (select(trackables)
+                  ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+                .get();
+            for (var i = 0; i < existing.length; i++) {
+              await (update(trackables)
+                    ..where((t) => t.id.equals(existing[i].id)))
+                  .write(TrackablesCompanion(sortOrder: Value(i + 1)));
+            }
+          }
+          if (from < 6) {
+            // v5 → v6: Add decayModel and eliminationRate columns.
+            // decayModel defaults to 'none', eliminationRate is nullable.
+            await m.addColumn(trackables, trackables.decayModel);
+            await m.addColumn(trackables, trackables.eliminationRate);
+
+            // Backfill: trackables that have a half-life were using exponential decay.
+            // This preserves their existing behavior under the new model system.
+            await customStatement(
+              "UPDATE trackables SET decay_model = 'exponential' WHERE half_life_hours IS NOT NULL",
+            );
+
+            // Alcohol gets linear decay at 9 ml/hour (avg liver processing rate).
+            // Also clear its half-life since linear decay uses eliminationRate instead.
+            await customStatement(
+              "UPDATE trackables SET decay_model = 'linear', elimination_rate = 9.0, half_life_hours = NULL WHERE name = 'Alcohol'",
+            );
+          }
+          if (from < 7) {
+            // v6 → v7: Add presets table for named dose shortcuts.
+            await m.createTable(presets);
+          }
+          if (from < 8) {
+            // v7 → v8: Add absorptionMinutes column to trackables.
+            // Nullable — existing rows get NULL (instant absorption, unchanged behavior).
+            await m.addColumn(trackables, trackables.absorptionMinutes);
+          }
+          if (from < 9) {
+            // v8 → v9: Add thresholds table for named horizontal lines on charts.
+            // Each trackable can have multiple thresholds (e.g., "Daily max" = 400 mg).
+            await m.createTable(thresholds);
+          }
+          if (from < 10) {
+            // v9 → v10: Add optional name column to dose_logs.
+            // Stores the preset name (e.g., "Espresso") when a dose is logged via
+            // a preset chip. Nullable — manually entered doses have no name.
+            await m.addColumn(doseLogs, doseLogs.name);
+          }
+          if (from < 11) {
+            // v10 → v11: Add showCumulativeLine toggle to trackables.
+            // We use raw SQL because the column was later removed from the Dart class.
+            await customStatement(
+              'ALTER TABLE trackables ADD COLUMN show_cumulative_line INTEGER NOT NULL DEFAULT 0',
+            );
+          }
+          if (from < 12) {
+            // v11 → v12: Add taper_plans table for gradual reduction schedules.
+            // Each plan defines a linear ramp from startAmount to targetAmount.
+            await m.createTable(taperPlans);
+          }
+          if (from < 13) {
+            // v12 → v13: Add dashboard_widgets table — decouples dashboard layout
+            // from trackable visibility. Each widget is an independent card on the
+            // dashboard that shows a specific view (decay curve or taper progress)
+            // of a trackable's data.
+            await m.createTable(dashboardWidgets);
+
+            // Migrate existing visible trackables to dashboard widgets.
+            // Each visible trackable gets a 'decay_card' widget, preserving sortOrder.
+            // This keeps the dashboard looking identical to before the migration.
+            final visible = await (select(trackables)
+                  ..where((t) => t.isVisible.equals(true))
+                  ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+                .get();
+
+            for (final t in visible) {
+              // Previously, we copied showCumulativeLine into the widget config.
+              // Since it's now permanently on, we just use an empty config.
+              const config = '{}';
+              await into(dashboardWidgets).insert(
+                DashboardWidgetsCompanion.insert(
+                  type: 'decay_card',
+                  trackableId: Value(t.id),
+                  sortOrder: Value(t.sortOrder),
+                  config: const Value(config),
+                ),
+              );
+            }
+
+            // Also add taper_progress widgets for trackables with active taper plans.
+            // These go after all the decay cards (sortOrder = max + 1 and up).
+            final activePlans = await (select(taperPlans)
+                  ..where((t) => t.isActive.equals(true)))
+                .get();
+
+            // Find the max sortOrder from the widgets we just inserted.
+            var nextSort = visible.isEmpty
+                ? 1
+                : visible.map((t) => t.sortOrder).reduce((a, b) => a > b ? a : b) +
+                    1;
+
+            for (final plan in activePlans) {
+              // Only add if the trackable is visible (it already has a decay card).
+              final hasWidget = visible.any((t) => t.id == plan.trackableId);
+              if (hasWidget) {
+                await into(dashboardWidgets).insert(
+                  DashboardWidgetsCompanion.insert(
+                    type: 'taper_progress',
+                    trackableId: Value(plan.trackableId),
+                    sortOrder: Value(nextSort),
+                  ),
+                );
+                nextSort++;
+              }
+            }
+          }
+          if (from < 14) {
+            // v13 → v14: Add reminders table for scheduled notifications per trackable.
+            // Supports two types: scheduled (fire at specific time) and logging_gap
+            // (fire when no dose logged for a while).
+            await m.createTable(reminders);
+          }
+          if (from < 15) {
+            // v14 → v15: Add comparisonType column to thresholds.
+            // Determines what a threshold compares against:
+            //   'daily_total'   — cumulative intake today (existing behavior)
+            //   'active_amount' — currently active (in-system) amount from decay
+            // Existing thresholds default to 'daily_total' for backward compat.
+            await m.addColumn(thresholds, thresholds.comparisonType);
+          }
+          if (from < 16) {
+            // v15 → v16: Add sleepThreshold column to trackables.
+            await m.addColumn(trackables, trackables.sleepThreshold);
+
+            // Set default sleep threshold for Caffeine (if it exists).
+            await customStatement(
+              "UPDATE trackables SET sleep_threshold = 50.0 WHERE name = 'Caffeine'",
+            );
+          }
+          if (from < 17) {
+            await m.createTable(targets);
+          }
+        },
+      );
 
   // --- Demo data seeder ---
 
@@ -646,29 +698,45 @@ class AppDatabase extends _$AppDatabase {
   Future<void> seedDemoData() async {
     // Fetch the seeded trackables by name (IDs may vary between installs).
     final allTrackables = await select(trackables).get();
-    final caffeine = allTrackables.where((t) => t.name == 'Caffeine').firstOrNull;
+    final caffeine =
+        allTrackables.where((t) => t.name == 'Caffeine').firstOrNull;
     final water = allTrackables.where((t) => t.name == 'Water').firstOrNull;
-    final alcohol = allTrackables.where((t) => t.name == 'Alcohol').firstOrNull;
+    final alcohol =
+        allTrackables.where((t) => t.name == 'Alcohol').firstOrNull;
 
     // --- Caffeine presets ---
     // Common drink sizes for one-tap dose entry in the quick-add dialog.
     if (caffeine != null) {
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: caffeine.id, name: 'Espresso', amount: 63, sortOrder: const Value(1),
+        trackableId: caffeine.id,
+        name: 'Espresso',
+        amount: 63,
+        sortOrder: const Value(1),
       ));
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: caffeine.id, name: 'Filter coffee', amount: 96, sortOrder: const Value(2),
+        trackableId: caffeine.id,
+        name: 'Filter coffee',
+        amount: 96,
+        sortOrder: const Value(2),
       ));
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: caffeine.id, name: 'Double espresso', amount: 126, sortOrder: const Value(3),
+        trackableId: caffeine.id,
+        name: 'Double espresso',
+        amount: 126,
+        sortOrder: const Value(3),
       ));
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: caffeine.id, name: 'Energy drink', amount: 80, sortOrder: const Value(4),
+        trackableId: caffeine.id,
+        name: 'Energy drink',
+        amount: 80,
+        sortOrder: const Value(4),
       ));
 
       // Caffeine threshold — FDA-recommended daily limit for healthy adults.
       await into(thresholds).insert(ThresholdsCompanion.insert(
-        trackableId: caffeine.id, name: 'Daily max', amount: 400,
+        trackableId: caffeine.id,
+        name: 'Daily max',
+        amount: 400,
       ));
 
       // Sample dose logs — simulate a typical day of coffee drinking.
@@ -678,17 +746,23 @@ class AppDatabase extends _$AppDatabase {
       final today = DateTime(now.year, now.month, now.day);
       // Morning espresso at 7:15 AM
       await into(doseLogs).insert(DoseLogsCompanion.insert(
-        trackableId: caffeine.id, amount: 63, loggedAt: today.add(const Duration(hours: 7, minutes: 15)),
+        trackableId: caffeine.id,
+        amount: 63,
+        loggedAt: today.add(const Duration(hours: 7, minutes: 15)),
         name: const Value('Espresso'),
       ));
       // Mid-morning filter coffee at 10:00 AM
       await into(doseLogs).insert(DoseLogsCompanion.insert(
-        trackableId: caffeine.id, amount: 96, loggedAt: today.add(const Duration(hours: 10)),
+        trackableId: caffeine.id,
+        amount: 96,
+        loggedAt: today.add(const Duration(hours: 10)),
         name: const Value('Filter coffee'),
       ));
       // After-lunch espresso at 13:30
       await into(doseLogs).insert(DoseLogsCompanion.insert(
-        trackableId: caffeine.id, amount: 63, loggedAt: today.add(const Duration(hours: 13, minutes: 30)),
+        trackableId: caffeine.id,
+        amount: 63,
+        loggedAt: today.add(const Duration(hours: 13, minutes: 30)),
         name: const Value('Espresso'),
       ));
     }
@@ -696,20 +770,30 @@ class AppDatabase extends _$AppDatabase {
     // --- Water presets + sample doses ---
     if (water != null) {
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: water.id, name: 'Glass', amount: 250, sortOrder: const Value(1),
+        trackableId: water.id,
+        name: 'Glass',
+        amount: 250,
+        sortOrder: const Value(1),
       ));
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: water.id, name: 'Bottle', amount: 500, sortOrder: const Value(2),
+        trackableId: water.id,
+        name: 'Bottle',
+        amount: 500,
+        sortOrder: const Value(2),
       ));
 
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       await into(doseLogs).insert(DoseLogsCompanion.insert(
-        trackableId: water.id, amount: 250, loggedAt: today.add(const Duration(hours: 7, minutes: 30)),
+        trackableId: water.id,
+        amount: 250,
+        loggedAt: today.add(const Duration(hours: 7, minutes: 30)),
         name: const Value('Glass'),
       ));
       await into(doseLogs).insert(DoseLogsCompanion.insert(
-        trackableId: water.id, amount: 500, loggedAt: today.add(const Duration(hours: 12)),
+        trackableId: water.id,
+        amount: 500,
+        loggedAt: today.add(const Duration(hours: 12)),
         name: const Value('Bottle'),
       ));
     }
@@ -718,10 +802,16 @@ class AppDatabase extends _$AppDatabase {
     // Standard drink equivalents in pure alcohol ml.
     if (alcohol != null) {
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: alcohol.id, name: 'Beer (330ml)', amount: 13, sortOrder: const Value(1),
+        trackableId: alcohol.id,
+        name: 'Beer (330ml)',
+        amount: 13,
+        sortOrder: const Value(1),
       ));
       await into(presets).insert(PresetsCompanion.insert(
-        trackableId: alcohol.id, name: 'Wine (150ml)', amount: 18, sortOrder: const Value(2),
+        trackableId: alcohol.id,
+        name: 'Wine (150ml)',
+        amount: 18,
+        sortOrder: const Value(2),
       ));
     }
   }
@@ -771,6 +861,7 @@ class AppDatabase extends _$AppDatabase {
     String decayModel = 'none',
     double? eliminationRate,
     double? absorptionMinutes,
+    double? sleepThreshold,
   }) async {
     // Count existing trackables to pick the next color in the palette.
     final existing = await (select(trackables)
@@ -794,6 +885,7 @@ class AppDatabase extends _$AppDatabase {
         decayModel: Value(decayModel),
         eliminationRate: Value(eliminationRate),
         absorptionMinutes: Value(absorptionMinutes),
+        sleepThreshold: Value(sleepThreshold),
       ),
     );
 
@@ -801,6 +893,11 @@ class AppDatabase extends _$AppDatabase {
     // This way new trackables immediately appear on the dashboard
     // without the user having to manually add them via edit mode.
     await insertDashboardWidget('decay_card', trackableId: trackableId);
+
+    // If a sleep threshold was provided, also auto-add a sleep_readiness widget.
+    if (sleepThreshold != null) {
+      await insertDashboardWidget('sleep_readiness', trackableId: trackableId);
+    }
 
     return trackableId;
   }
@@ -819,6 +916,7 @@ class AppDatabase extends _$AppDatabase {
     Value<double?> halfLifeHours = const Value.absent(),
     Value<double?> eliminationRate = const Value.absent(),
     Value<double?> absorptionMinutes = const Value.absent(),
+    Value<double?> sleepThreshold = const Value.absent(),
     Value<bool> isVisible = const Value.absent(),
     // Color uses the same Value pattern: absent = don't change, Value(0xFF...) = set.
     Value<int> color = const Value.absent(),
@@ -830,6 +928,7 @@ class AppDatabase extends _$AppDatabase {
       halfLifeHours: halfLifeHours,
       eliminationRate: eliminationRate,
       absorptionMinutes: absorptionMinutes,
+      sleepThreshold: sleepThreshold,
       isVisible: isVisible,
       color: color,
     );
@@ -954,7 +1053,8 @@ class AppDatabase extends _$AppDatabase {
   /// reminder) and reschedules gap reminders (pushes the gap timer forward).
   /// This single hook covers ALL dose logging paths: quick-add, add screen,
   /// notification repeat, undo restore — like a model observer in Laravel.
-  Future<int> insertDoseLog(int trackableId, double amount, DateTime loggedAt, {String? name}) async {
+  Future<int> insertDoseLog(int trackableId, double amount, DateTime loggedAt,
+      {String? name}) async {
     final id = await into(doseLogs).insert(
       DoseLogsCompanion.insert(
         trackableId: trackableId,
@@ -991,8 +1091,8 @@ class AppDatabase extends _$AppDatabase {
     DateTime loggedAt, {
     Value<String?> name = const Value.absent(),
   }) {
-    return (update(doseLogs)..where((t) => t.id.equals(id)))
-        .write(DoseLogsCompanion(
+    return (update(doseLogs)..where((t) => t.id.equals(id))).write(
+        DoseLogsCompanion(
           trackableId: Value(trackableId),
           amount: Value(amount),
           loggedAt: Value(loggedAt),
@@ -1289,8 +1389,7 @@ class AppDatabase extends _$AppDatabase {
   /// Used at app start to schedule all active reminders.
   /// Like: Reminder::where('is_enabled', true)->get()
   Future<List<Reminder>> getAllEnabledReminders() {
-    return (select(reminders)
-          ..where((t) => t.isEnabled.equals(true)))
+    return (select(reminders)..where((t) => t.isEnabled.equals(true)))
         .get();
   }
 
@@ -1356,14 +1455,61 @@ class AppDatabase extends _$AppDatabase {
       windowEnd: windowEnd,
       gapMinutes: gapMinutes,
     );
-    return (update(reminders)..where((t) => t.id.equals(id)))
-        .write(companion);
+    return (update(reminders)..where((t) => t.id.equals(id))).write(companion);
   }
 
   /// Delete a reminder by ID.
   /// Like: Reminder::destroy($id)
   Future<int> deleteReminder(int id) {
     return (delete(reminders)..where((t) => t.id.equals(id))).go();
+  }
+
+  // --- Target queries ---
+
+  /// Watch targets for a trackable, sorted by time ascending.
+  Stream<List<Target>> watchTargets(int trackableId) {
+    return (select(targets)
+          ..where((t) => t.trackableId.equals(trackableId))
+          ..orderBy([(t) => OrderingTerm.asc(t.time)]))
+        .watch();
+  }
+
+  /// Insert a new target.
+  Future<int> insertTarget({
+    required int trackableId,
+    required String name,
+    required double amount,
+    required String time,
+  }) {
+    return into(targets).insert(
+      TargetsCompanion.insert(
+        trackableId: trackableId,
+        name: name,
+        amount: amount,
+        time: time,
+      ),
+    );
+  }
+
+  /// Update a target.
+  Future<int> updateTarget(
+    int id, {
+    String? name,
+    double? amount,
+    String? time,
+  }) {
+    return (update(targets)..where((t) => t.id.equals(id))).write(
+      TargetsCompanion(
+        name: name != null ? Value(name) : const Value.absent(),
+        amount: amount != null ? Value(amount) : const Value.absent(),
+        time: time != null ? Value(time) : const Value.absent(),
+      ),
+    );
+  }
+
+  /// Delete a target by ID.
+  Future<int> deleteTarget(int id) {
+    return (delete(targets)..where((t) => t.id.equals(id))).go();
   }
 
   /// Watch recent dose logs (last 50), newest first, with trackable name.

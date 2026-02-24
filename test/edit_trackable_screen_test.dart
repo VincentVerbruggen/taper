@@ -26,9 +26,7 @@ void main() {
   Widget buildTestWidget(Trackable trackable) {
     return ProviderScope(
       overrides: [databaseProvider.overrideWithValue(db)],
-      child: MaterialApp(
-        home: EditTrackableScreen(trackable: trackable),
-      ),
+      child: MaterialApp(home: EditTrackableScreen(trackable: trackable)),
     );
   }
 
@@ -145,20 +143,28 @@ void main() {
     // Caffeine is visible by default — switch should be on.
     expect(find.text('Visible in log form'), findsOneWidget);
     // Find the visibility SwitchListTile specifically (not the cumulative toggle).
-    final visibilitySwitch = find.widgetWithText(SwitchListTile, 'Visible in log form');
+    final visibilitySwitch = find.widgetWithText(
+      SwitchListTile,
+      'Visible in log form',
+    );
     expect(visibilitySwitch, findsOneWidget);
 
     await cleanUp(tester);
   });
 
-  testWidgets('visibility toggle for hidden trackable shows off', (tester) async {
+  testWidgets('visibility toggle for hidden trackable shows off', (
+    tester,
+  ) async {
     final alcohol = await getAlcohol();
     await tester.pumpWidget(buildTestWidget(alcohol));
     await pumpAndWait(tester);
 
     // Alcohol is hidden (isVisible = false) — the visibility switch should be off.
     // Use text matcher to find the specific SwitchListTile (not the cumulative toggle).
-    final visibilitySwitch = find.widgetWithText(SwitchListTile, 'Visible in log form');
+    final visibilitySwitch = find.widgetWithText(
+      SwitchListTile,
+      'Visible in log form',
+    );
     final switchWidget = tester.widget<SwitchListTile>(visibilitySwitch);
     expect(switchWidget.value, false);
 
@@ -265,7 +271,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('tapping a different color selects it and saving persists it', (tester) async {
+  testWidgets('tapping a different color selects it and saving persists it', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
@@ -333,7 +341,10 @@ void main() {
 
     // Scroll to and toggle visibility off.
     // Find the specific visibility SwitchListTile (not the cumulative toggle).
-    final visibilitySwitch = find.widgetWithText(SwitchListTile, 'Visible in log form');
+    final visibilitySwitch = find.widgetWithText(
+      SwitchListTile,
+      'Visible in log form',
+    );
     await tester.ensureVisible(visibilitySwitch);
     await tester.tap(visibilitySwitch);
     await tester.pump();
@@ -353,12 +364,14 @@ void main() {
 
   // --- Navigation tile tests ---
   // The edit screen now shows ListTile navigation rows for Presets,
-  // Thresholds, Taper Plans, and Reminders instead of inline management
+  // Thresholds, Targets, Taper Plans, and Reminders instead of inline management
   // sections. Each tile shows a count summary and a chevron_right icon.
   // Tapping a tile would push to a sub-screen (not tested here since
   // we'd need to mock Navigator or the sub-screen itself).
 
-  testWidgets('shows Presets nav tile with "No presets" when empty', (tester) async {
+  testWidgets('shows Presets nav tile with "No presets" when empty', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
@@ -372,7 +385,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Presets nav tile shows "1 preset" with one preset', (tester) async {
+  testWidgets('Presets nav tile shows "1 preset" with one preset', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     // Insert one preset into the database before building the widget.
     await db.insertPreset(caffeine.id, 'Espresso', 90);
@@ -386,7 +401,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Presets nav tile shows "3 presets" with multiple presets', (tester) async {
+  testWidgets('Presets nav tile shows "3 presets" with multiple presets', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     // Insert three presets.
     await db.insertPreset(caffeine.id, 'Espresso', 90);
@@ -401,7 +418,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('shows Thresholds nav tile with "No thresholds" when empty', (tester) async {
+  testWidgets('shows Thresholds nav tile with "No thresholds" when empty', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
@@ -413,7 +432,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Thresholds nav tile shows "1 threshold" with one threshold', (tester) async {
+  testWidgets('Thresholds nav tile shows "1 threshold" with one threshold', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await db.insertThreshold(caffeine.id, 'Daily max', 400);
     await tester.pumpWidget(buildTestWidget(caffeine));
@@ -425,7 +446,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Thresholds nav tile shows "2 thresholds" with multiple', (tester) async {
+  testWidgets('Thresholds nav tile shows "2 thresholds" with multiple', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await db.insertThreshold(caffeine.id, 'Daily max', 400);
     await db.insertThreshold(caffeine.id, 'Warning', 300);
@@ -437,7 +460,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('shows Taper Plans nav tile with "No plans" when empty', (tester) async {
+  testWidgets('shows Taper Plans nav tile with "No plans" when empty', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
@@ -449,7 +474,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Taper Plans nav tile shows "1 active plan" with active plan', (tester) async {
+  testWidgets('Taper Plans nav tile shows "1 active plan" with active plan', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     // Insert an active taper plan (isActive defaults to true).
     await db.insertTaperPlan(
@@ -468,7 +495,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('shows Reminders nav tile with "No reminders" when empty', (tester) async {
+  testWidgets('shows Reminders nav tile with "No reminders" when empty', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
@@ -480,7 +509,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Reminders nav tile shows "1 reminder" with one reminder', (tester) async {
+  testWidgets('Reminders nav tile shows "1 reminder" with one reminder', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     // Insert a scheduled reminder.
     await db.insertReminder(
@@ -498,7 +529,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Reminders nav tile shows "2 reminders" with multiple', (tester) async {
+  testWidgets('Reminders nav tile shows "2 reminders" with multiple', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await db.insertReminder(
       trackableId: caffeine.id,
@@ -520,24 +553,28 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('all four nav tiles are present on the edit screen', (tester) async {
+  testWidgets('all five nav tiles are present on the edit screen', (
+    tester,
+  ) async {
     final caffeine = await getCaffeine();
     await tester.pumpWidget(buildTestWidget(caffeine));
     await pumpAndWait(tester);
 
-    // All four navigation tiles should be rendered.
+    // All five navigation tiles should be rendered.
     expect(find.text('Presets'), findsOneWidget);
     expect(find.text('Thresholds'), findsOneWidget);
+    expect(find.text('Targets'), findsOneWidget);
     expect(find.text('Taper Plans'), findsOneWidget);
     expect(find.text('Reminders'), findsOneWidget);
 
     // Each tile should have a chevron_right icon indicating navigation.
-    // There should be 4 chevron_right icons (one per tile).
-    expect(find.byIcon(Icons.chevron_right), findsNWidgets(4));
+    // There should be 5 chevron_right icons (one per tile).
+    expect(find.byIcon(Icons.chevron_right), findsNWidgets(5));
 
     // Each tile should have its leading icon.
     expect(find.byIcon(Icons.bolt), findsOneWidget);
     expect(find.byIcon(Icons.horizontal_rule), findsOneWidget);
+    expect(find.byIcon(Icons.my_location), findsOneWidget);
     expect(find.byIcon(Icons.trending_down), findsOneWidget);
     expect(find.byIcon(Icons.notifications_outlined), findsOneWidget);
 
@@ -564,6 +601,12 @@ void main() {
     final thresholdsListTile = tester.widget<ListTile>(thresholdsTile);
     final thresholdsIcon = thresholdsListTile.leading as Icon;
     expect(thresholdsIcon.icon, Icons.horizontal_rule);
+
+    // Targets tile should have the my_location icon.
+    final targetsTile = find.widgetWithText(ListTile, 'Targets');
+    final targetsListTile = tester.widget<ListTile>(targetsTile);
+    final targetsIcon = targetsListTile.leading as Icon;
+    expect(targetsIcon.icon, Icons.my_location);
 
     // Taper Plans tile should have the trending_down icon.
     final taperTile = find.widgetWithText(ListTile, 'Taper Plans');

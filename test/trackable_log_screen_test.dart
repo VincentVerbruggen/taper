@@ -15,6 +15,7 @@ void main() {
   late AppDatabase db;
   late Trackable caffeine;
   late SharedPreferences prefs;
+  final fixedNow = DateTime(2026, 2, 23, 12);
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -35,10 +36,10 @@ void main() {
       overrides: [
         databaseProvider.overrideWithValue(db),
         sharedPreferencesProvider.overrideWithValue(prefs),
+        // Freeze "now" so day labels stay stable regardless of the real date.
+        nowProvider.overrideWithValue(() => fixedNow),
       ],
-      child: MaterialApp(
-        home: TrackableLogScreen(trackable: caffeine),
-      ),
+      child: MaterialApp(home: TrackableLogScreen(trackable: caffeine)),
     );
   }
 
@@ -81,9 +82,13 @@ void main() {
   });
 
   testWidgets('shows doses grouped by day', (tester) async {
-    final now = DateTime(2026, 2, 23, 12); // Noon
+    final now = fixedNow; // Noon
     await db.insertDoseLog(caffeine.id, 90, now);
-    await db.insertDoseLog(caffeine.id, 90, now.subtract(const Duration(hours: 1)));
+    await db.insertDoseLog(
+      caffeine.id,
+      90,
+      now.subtract(const Duration(hours: 1)),
+    );
 
     await tester.pumpWidget(buildTestWidget());
     await tester.pumpAndSettle();
@@ -95,9 +100,13 @@ void main() {
   });
 
   testWidgets('daily total shown in header', (tester) async {
-    final now = DateTime(2026, 2, 23, 12); // Noon
+    final now = fixedNow; // Noon
     await db.insertDoseLog(caffeine.id, 90, now);
-    await db.insertDoseLog(caffeine.id, 60, now.subtract(const Duration(hours: 1)));
+    await db.insertDoseLog(
+      caffeine.id,
+      60,
+      now.subtract(const Duration(hours: 1)),
+    );
 
     await tester.pumpWidget(buildTestWidget());
     await tester.pumpAndSettle();
@@ -109,10 +118,10 @@ void main() {
   });
 
   testWidgets('shows tapering target when plan exists', (tester) async {
-    final now = DateTime(2026, 2, 23, 12);
+    final now = fixedNow;
     final boundaryHour = 5;
     final boundary = DateTime(now.year, now.month, now.day, boundaryHour);
-    
+
     // Insert a tapering plan for caffeine.
     await db.insertTaperPlan(
       caffeine.id,
@@ -121,7 +130,7 @@ void main() {
       boundary,
       boundary.add(const Duration(days: 30)),
     );
-    
+
     await db.insertDoseLog(caffeine.id, 90, now);
 
     await tester.pumpWidget(buildTestWidget());
@@ -135,8 +144,10 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('tap delete icon removes dose and shows undo SnackBar', (tester) async {
-    final now = DateTime(2026, 2, 23, 12);
+  testWidgets('tap delete icon removes dose and shows undo SnackBar', (
+    tester,
+  ) async {
+    final now = fixedNow;
     await db.insertDoseLog(caffeine.id, 100, now);
 
     await tester.pumpWidget(buildTestWidget());
@@ -147,12 +158,15 @@ void main() {
 
     // Tap the delete icon button.
     await tester.tap(find.byIcon(Icons.delete_outline));
-    
+
     // Wait for animation and DB update.
     await tester.pumpAndSettle();
 
     expect(
-      find.descendant(of: find.byType(ListView), matching: find.textContaining('100')),
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.textContaining('100'),
+      ),
       findsNothing,
     );
     expect(find.text('No doses logged yet.'), findsOneWidget);
@@ -168,7 +182,7 @@ void main() {
   });
 
   testWidgets('undo re-inserts deleted dose', (tester) async {
-    final now = DateTime(2026, 2, 23, 12);
+    final now = fixedNow;
     await db.insertDoseLog(caffeine.id, 100, now);
 
     await tester.pumpWidget(buildTestWidget());
@@ -181,7 +195,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.descendant(of: find.byType(ListView), matching: find.textContaining('100')),
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.textContaining('100'),
+      ),
       findsNothing,
     );
 
@@ -200,16 +217,13 @@ void main() {
   });
 
   testWidgets('tap navigates to edit screen', (tester) async {
-    await db.insertDoseLog(caffeine.id, 75, DateTime.now());
+    await db.insertDoseLog(caffeine.id, 75, fixedNow);
 
     await tester.pumpWidget(buildTestWidget());
     await tester.pumpAndSettle();
 
     await tester.tap(
-      find.ancestor(
-        of: find.text('75 mg'),
-        matching: find.byType(ListTile),
-      ),
+      find.ancestor(of: find.text('75 mg'), matching: find.byType(ListTile)),
     );
     await tester.pumpAndSettle();
 
@@ -233,7 +247,7 @@ void main() {
 
   testWidgets('selecting a date filters doses to that day', (tester) async {
     // Log doses on two different days.
-    final now = DateTime(2026, 2, 23, 12);
+    final now = fixedNow;
     final yesterday = now.subtract(const Duration(days: 1));
     await db.insertDoseLog(caffeine.id, 90, now);
     await db.insertDoseLog(caffeine.id, 60, yesterday);
@@ -318,7 +332,7 @@ void main() {
   });
 
   testWidgets('zero-dose shows "Skipped" instead of amount', (tester) async {
-    final now = DateTime(2026, 2, 23, 12);
+    final now = fixedNow;
     await db.insertDoseLog(caffeine.id, 0, now);
 
     await tester.pumpWidget(buildTestWidget());

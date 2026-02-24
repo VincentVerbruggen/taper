@@ -21,6 +21,7 @@ import 'helpers/test_database.dart';
 void main() {
   late AppDatabase db;
   late SharedPreferences prefs;
+  final fixedNow = DateTime(2026, 2, 23, 12);
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -39,6 +40,8 @@ void main() {
       overrides: [
         databaseProvider.overrideWithValue(db),
         sharedPreferencesProvider.overrideWithValue(prefs),
+        // Freeze time so chart windows and taper-target sampling stay stable.
+        nowProvider.overrideWithValue(() => fixedNow),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -65,8 +68,9 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('renders with trackable name and Daily Totals label',
-      (tester) async {
+  testWidgets('renders with trackable name and Daily Totals label', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildTestWidget(trackableId: 1));
     await pumpAndWaitLong(tester);
 
@@ -93,11 +97,9 @@ void main() {
 
   testWidgets('shows chart and average when doses exist', (tester) async {
     // Insert doses on different days within the last 30 days.
-    final now = DateTime.now();
-    await db.insertDoseLog(
-        1, 90, now.subtract(const Duration(days: 1)));
-    await db.insertDoseLog(
-        1, 180, now.subtract(const Duration(days: 2)));
+    final now = fixedNow;
+    await db.insertDoseLog(1, 90, now.subtract(const Duration(days: 1)));
+    await db.insertDoseLog(1, 180, now.subtract(const Duration(days: 2)));
     await db.insertDoseLog(1, 90, now);
 
     await tester.pumpWidget(buildTestWidget(trackableId: 1));
@@ -109,13 +111,17 @@ void main() {
     expect(find.textContaining('avg:'), findsOneWidget);
     expect(find.textContaining('/day'), findsOneWidget);
 
+    // Without an active plan, the chart should render only the totals line.
+    final chart = tester.widget<LineChart>(find.byType(LineChart));
+    expect(chart.data.lineBarsData, hasLength(1));
+
     await cleanUp(tester);
   });
 
   testWidgets('renders for Water trackable (no half-life)', (tester) async {
     // Water is trackable ID 2 from the seeder (no decay model).
     // Daily totals should still work — it just sums amounts per day.
-    await db.insertDoseLog(2, 500, DateTime.now());
+    await db.insertDoseLog(2, 500, fixedNow);
 
     await tester.pumpWidget(buildTestWidget(trackableId: 2));
     await pumpAndWaitLong(tester);
@@ -124,6 +130,35 @@ void main() {
     expect(find.textContaining('Daily Totals'), findsOneWidget);
     // Chart should render.
     expect(find.byType(LineChart), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('draws dashed taper target line when active plan exists', (
+    tester,
+  ) async {
+    // Add at least one dose so the totals chart renders (non-empty state).
+    await db.insertDoseLog(1, 120, fixedNow);
+    // Active plan spanning the fixed "now" window.
+    await db.insertTaperPlan(
+      1,
+      400,
+      100,
+      DateTime(2026, 2, 1, 5),
+      DateTime(2026, 3, 15, 5),
+    );
+
+    await tester.pumpWidget(buildTestWidget(trackableId: 1));
+    await pumpAndWaitLong(tester);
+
+    final chart = tester.widget<LineChart>(find.byType(LineChart));
+    // Totals line + taper target overlay.
+    expect(chart.data.lineBarsData, hasLength(2));
+
+    final taperLine = chart.data.lineBarsData.first;
+    expect(taperLine.dashArray, isNotNull);
+    expect(taperLine.dashArray, containsAllInOrder([6, 4]));
+    expect(taperLine.isCurved, isFalse);
 
     await cleanUp(tester);
   });

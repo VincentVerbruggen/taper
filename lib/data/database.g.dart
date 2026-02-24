@@ -136,6 +136,17 @@ class $TrackablesTable extends Trackables
         type: DriftSqlType.double,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _sleepThresholdMeta = const VerificationMeta(
+    'sleepThreshold',
+  );
+  @override
+  late final GeneratedColumn<double> sleepThreshold = GeneratedColumn<double>(
+    'sleep_threshold',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -149,6 +160,7 @@ class $TrackablesTable extends Trackables
     decayModel,
     eliminationRate,
     absorptionMinutes,
+    sleepThreshold,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -238,6 +250,15 @@ class $TrackablesTable extends Trackables
         ),
       );
     }
+    if (data.containsKey('sleep_threshold')) {
+      context.handle(
+        _sleepThresholdMeta,
+        sleepThreshold.isAcceptableOrUnknown(
+          data['sleep_threshold']!,
+          _sleepThresholdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -291,6 +312,10 @@ class $TrackablesTable extends Trackables
         DriftSqlType.double,
         data['${effectivePrefix}absorption_minutes'],
       ),
+      sleepThreshold: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}sleep_threshold'],
+      ),
     );
   }
 
@@ -312,6 +337,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
   final String decayModel;
   final double? eliminationRate;
   final double? absorptionMinutes;
+  final double? sleepThreshold;
   const Trackable({
     required this.id,
     required this.name,
@@ -324,6 +350,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     required this.decayModel,
     this.eliminationRate,
     this.absorptionMinutes,
+    this.sleepThreshold,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -344,6 +371,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     }
     if (!nullToAbsent || absorptionMinutes != null) {
       map['absorption_minutes'] = Variable<double>(absorptionMinutes);
+    }
+    if (!nullToAbsent || sleepThreshold != null) {
+      map['sleep_threshold'] = Variable<double>(sleepThreshold);
     }
     return map;
   }
@@ -367,6 +397,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       absorptionMinutes: absorptionMinutes == null && nullToAbsent
           ? const Value.absent()
           : Value(absorptionMinutes),
+      sleepThreshold: sleepThreshold == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sleepThreshold),
     );
   }
 
@@ -389,6 +422,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       absorptionMinutes: serializer.fromJson<double?>(
         json['absorptionMinutes'],
       ),
+      sleepThreshold: serializer.fromJson<double?>(json['sleepThreshold']),
     );
   }
   @override
@@ -406,6 +440,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       'decayModel': serializer.toJson<String>(decayModel),
       'eliminationRate': serializer.toJson<double?>(eliminationRate),
       'absorptionMinutes': serializer.toJson<double?>(absorptionMinutes),
+      'sleepThreshold': serializer.toJson<double?>(sleepThreshold),
     };
   }
 
@@ -421,6 +456,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     String? decayModel,
     Value<double?> eliminationRate = const Value.absent(),
     Value<double?> absorptionMinutes = const Value.absent(),
+    Value<double?> sleepThreshold = const Value.absent(),
   }) => Trackable(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -439,6 +475,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     absorptionMinutes: absorptionMinutes.present
         ? absorptionMinutes.value
         : this.absorptionMinutes,
+    sleepThreshold: sleepThreshold.present
+        ? sleepThreshold.value
+        : this.sleepThreshold,
   );
   Trackable copyWithCompanion(TrackablesCompanion data) {
     return Trackable(
@@ -461,6 +500,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       absorptionMinutes: data.absorptionMinutes.present
           ? data.absorptionMinutes.value
           : this.absorptionMinutes,
+      sleepThreshold: data.sleepThreshold.present
+          ? data.sleepThreshold.value
+          : this.sleepThreshold,
     );
   }
 
@@ -477,7 +519,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           ..write('sortOrder: $sortOrder, ')
           ..write('decayModel: $decayModel, ')
           ..write('eliminationRate: $eliminationRate, ')
-          ..write('absorptionMinutes: $absorptionMinutes')
+          ..write('absorptionMinutes: $absorptionMinutes, ')
+          ..write('sleepThreshold: $sleepThreshold')
           ..write(')'))
         .toString();
   }
@@ -495,6 +538,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     decayModel,
     eliminationRate,
     absorptionMinutes,
+    sleepThreshold,
   );
   @override
   bool operator ==(Object other) =>
@@ -510,7 +554,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           other.sortOrder == this.sortOrder &&
           other.decayModel == this.decayModel &&
           other.eliminationRate == this.eliminationRate &&
-          other.absorptionMinutes == this.absorptionMinutes);
+          other.absorptionMinutes == this.absorptionMinutes &&
+          other.sleepThreshold == this.sleepThreshold);
 }
 
 class TrackablesCompanion extends UpdateCompanion<Trackable> {
@@ -525,6 +570,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
   final Value<String> decayModel;
   final Value<double?> eliminationRate;
   final Value<double?> absorptionMinutes;
+  final Value<double?> sleepThreshold;
   const TrackablesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -537,6 +583,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.decayModel = const Value.absent(),
     this.eliminationRate = const Value.absent(),
     this.absorptionMinutes = const Value.absent(),
+    this.sleepThreshold = const Value.absent(),
   });
   TrackablesCompanion.insert({
     this.id = const Value.absent(),
@@ -550,6 +597,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.decayModel = const Value.absent(),
     this.eliminationRate = const Value.absent(),
     this.absorptionMinutes = const Value.absent(),
+    this.sleepThreshold = const Value.absent(),
   }) : name = Value(name),
        color = Value(color);
   static Insertable<Trackable> custom({
@@ -564,6 +612,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Expression<String>? decayModel,
     Expression<double>? eliminationRate,
     Expression<double>? absorptionMinutes,
+    Expression<double>? sleepThreshold,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -577,6 +626,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       if (decayModel != null) 'decay_model': decayModel,
       if (eliminationRate != null) 'elimination_rate': eliminationRate,
       if (absorptionMinutes != null) 'absorption_minutes': absorptionMinutes,
+      if (sleepThreshold != null) 'sleep_threshold': sleepThreshold,
     });
   }
 
@@ -592,6 +642,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Value<String>? decayModel,
     Value<double?>? eliminationRate,
     Value<double?>? absorptionMinutes,
+    Value<double?>? sleepThreshold,
   }) {
     return TrackablesCompanion(
       id: id ?? this.id,
@@ -605,6 +656,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       decayModel: decayModel ?? this.decayModel,
       eliminationRate: eliminationRate ?? this.eliminationRate,
       absorptionMinutes: absorptionMinutes ?? this.absorptionMinutes,
+      sleepThreshold: sleepThreshold ?? this.sleepThreshold,
     );
   }
 
@@ -644,6 +696,9 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     if (absorptionMinutes.present) {
       map['absorption_minutes'] = Variable<double>(absorptionMinutes.value);
     }
+    if (sleepThreshold.present) {
+      map['sleep_threshold'] = Variable<double>(sleepThreshold.value);
+    }
     return map;
   }
 
@@ -660,7 +715,8 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
           ..write('sortOrder: $sortOrder, ')
           ..write('decayModel: $decayModel, ')
           ..write('eliminationRate: $eliminationRate, ')
-          ..write('absorptionMinutes: $absorptionMinutes')
+          ..write('absorptionMinutes: $absorptionMinutes, ')
+          ..write('sleepThreshold: $sleepThreshold')
           ..write(')'))
         .toString();
   }
@@ -3347,6 +3403,353 @@ class RemindersCompanion extends UpdateCompanion<Reminder> {
   }
 }
 
+class $TargetsTable extends Targets with TableInfo<$TargetsTable, Target> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TargetsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _trackableIdMeta = const VerificationMeta(
+    'trackableId',
+  );
+  @override
+  late final GeneratedColumn<int> trackableId = GeneratedColumn<int>(
+    'trackable_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES trackables (id)',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _timeMeta = const VerificationMeta('time');
+  @override
+  late final GeneratedColumn<String> time = GeneratedColumn<String>(
+    'time',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, trackableId, name, amount, time];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'targets';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Target> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('trackable_id')) {
+      context.handle(
+        _trackableIdMeta,
+        trackableId.isAcceptableOrUnknown(
+          data['trackable_id']!,
+          _trackableIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_trackableIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('time')) {
+      context.handle(
+        _timeMeta,
+        time.isAcceptableOrUnknown(data['time']!, _timeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_timeMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Target map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Target(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      trackableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}trackable_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+      time: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}time'],
+      )!,
+    );
+  }
+
+  @override
+  $TargetsTable createAlias(String alias) {
+    return $TargetsTable(attachedDatabase, alias);
+  }
+}
+
+class Target extends DataClass implements Insertable<Target> {
+  final int id;
+  final int trackableId;
+  final String name;
+  final double amount;
+  final String time;
+  const Target({
+    required this.id,
+    required this.trackableId,
+    required this.name,
+    required this.amount,
+    required this.time,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['trackable_id'] = Variable<int>(trackableId);
+    map['name'] = Variable<String>(name);
+    map['amount'] = Variable<double>(amount);
+    map['time'] = Variable<String>(time);
+    return map;
+  }
+
+  TargetsCompanion toCompanion(bool nullToAbsent) {
+    return TargetsCompanion(
+      id: Value(id),
+      trackableId: Value(trackableId),
+      name: Value(name),
+      amount: Value(amount),
+      time: Value(time),
+    );
+  }
+
+  factory Target.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Target(
+      id: serializer.fromJson<int>(json['id']),
+      trackableId: serializer.fromJson<int>(json['trackableId']),
+      name: serializer.fromJson<String>(json['name']),
+      amount: serializer.fromJson<double>(json['amount']),
+      time: serializer.fromJson<String>(json['time']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'trackableId': serializer.toJson<int>(trackableId),
+      'name': serializer.toJson<String>(name),
+      'amount': serializer.toJson<double>(amount),
+      'time': serializer.toJson<String>(time),
+    };
+  }
+
+  Target copyWith({
+    int? id,
+    int? trackableId,
+    String? name,
+    double? amount,
+    String? time,
+  }) => Target(
+    id: id ?? this.id,
+    trackableId: trackableId ?? this.trackableId,
+    name: name ?? this.name,
+    amount: amount ?? this.amount,
+    time: time ?? this.time,
+  );
+  Target copyWithCompanion(TargetsCompanion data) {
+    return Target(
+      id: data.id.present ? data.id.value : this.id,
+      trackableId: data.trackableId.present
+          ? data.trackableId.value
+          : this.trackableId,
+      name: data.name.present ? data.name.value : this.name,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      time: data.time.present ? data.time.value : this.time,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Target(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('name: $name, ')
+          ..write('amount: $amount, ')
+          ..write('time: $time')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, trackableId, name, amount, time);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Target &&
+          other.id == this.id &&
+          other.trackableId == this.trackableId &&
+          other.name == this.name &&
+          other.amount == this.amount &&
+          other.time == this.time);
+}
+
+class TargetsCompanion extends UpdateCompanion<Target> {
+  final Value<int> id;
+  final Value<int> trackableId;
+  final Value<String> name;
+  final Value<double> amount;
+  final Value<String> time;
+  const TargetsCompanion({
+    this.id = const Value.absent(),
+    this.trackableId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.time = const Value.absent(),
+  });
+  TargetsCompanion.insert({
+    this.id = const Value.absent(),
+    required int trackableId,
+    required String name,
+    required double amount,
+    required String time,
+  }) : trackableId = Value(trackableId),
+       name = Value(name),
+       amount = Value(amount),
+       time = Value(time);
+  static Insertable<Target> custom({
+    Expression<int>? id,
+    Expression<int>? trackableId,
+    Expression<String>? name,
+    Expression<double>? amount,
+    Expression<String>? time,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (trackableId != null) 'trackable_id': trackableId,
+      if (name != null) 'name': name,
+      if (amount != null) 'amount': amount,
+      if (time != null) 'time': time,
+    });
+  }
+
+  TargetsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? trackableId,
+    Value<String>? name,
+    Value<double>? amount,
+    Value<String>? time,
+  }) {
+    return TargetsCompanion(
+      id: id ?? this.id,
+      trackableId: trackableId ?? this.trackableId,
+      name: name ?? this.name,
+      amount: amount ?? this.amount,
+      time: time ?? this.time,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (trackableId.present) {
+      map['trackable_id'] = Variable<int>(trackableId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (time.present) {
+      map['time'] = Variable<String>(time.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TargetsCompanion(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('name: $name, ')
+          ..write('amount: $amount, ')
+          ..write('time: $time')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3359,6 +3762,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $RemindersTable reminders = $RemindersTable(this);
+  late final $TargetsTable targets = $TargetsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3371,6 +3775,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     taperPlans,
     dashboardWidgets,
     reminders,
+    targets,
   ];
 }
 
@@ -3387,6 +3792,7 @@ typedef $$TrackablesTableCreateCompanionBuilder =
       Value<String> decayModel,
       Value<double?> eliminationRate,
       Value<double?> absorptionMinutes,
+      Value<double?> sleepThreshold,
     });
 typedef $$TrackablesTableUpdateCompanionBuilder =
     TrackablesCompanion Function({
@@ -3401,6 +3807,7 @@ typedef $$TrackablesTableUpdateCompanionBuilder =
       Value<String> decayModel,
       Value<double?> eliminationRate,
       Value<double?> absorptionMinutes,
+      Value<double?> sleepThreshold,
     });
 
 final class $$TrackablesTableReferences
@@ -3527,6 +3934,25 @@ final class $$TrackablesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$TargetsTable, List<Target>> _targetsRefsTable(
+    _$AppDatabase db,
+  ) => MultiTypedResultKey.fromTable(
+    db.targets,
+    aliasName: $_aliasNameGenerator(db.trackables.id, db.targets.trackableId),
+  );
+
+  $$TargetsTableProcessedTableManager get targetsRefs {
+    final manager = $$TargetsTableTableManager(
+      $_db,
+      $_db.targets,
+    ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_targetsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$TrackablesTableFilterComposer
@@ -3590,6 +4016,11 @@ class $$TrackablesTableFilterComposer
 
   ColumnFilters<double> get absorptionMinutes => $composableBuilder(
     column: $table.absorptionMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get sleepThreshold => $composableBuilder(
+    column: $table.sleepThreshold,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3742,6 +4173,31 @@ class $$TrackablesTableFilterComposer
     );
     return f(composer);
   }
+
+  Expression<bool> targetsRefs(
+    Expression<bool> Function($$TargetsTableFilterComposer f) f,
+  ) {
+    final $$TargetsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.targets,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TargetsTableFilterComposer(
+            $db: $db,
+            $table: $db.targets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TrackablesTableOrderingComposer
@@ -3807,6 +4263,11 @@ class $$TrackablesTableOrderingComposer
     column: $table.absorptionMinutes,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get sleepThreshold => $composableBuilder(
+    column: $table.sleepThreshold,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TrackablesTableAnnotationComposer
@@ -3856,6 +4317,11 @@ class $$TrackablesTableAnnotationComposer
 
   GeneratedColumn<double> get absorptionMinutes => $composableBuilder(
     column: $table.absorptionMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get sleepThreshold => $composableBuilder(
+    column: $table.sleepThreshold,
     builder: (column) => column,
   );
 
@@ -4008,6 +4474,31 @@ class $$TrackablesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> targetsRefs<T extends Object>(
+    Expression<T> Function($$TargetsTableAnnotationComposer a) f,
+  ) {
+    final $$TargetsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.targets,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TargetsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.targets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TrackablesTableTableManager
@@ -4030,6 +4521,7 @@ class $$TrackablesTableTableManager
             bool taperPlansRefs,
             bool dashboardWidgetsRefs,
             bool remindersRefs,
+            bool targetsRefs,
           })
         > {
   $$TrackablesTableTableManager(_$AppDatabase db, $TrackablesTable table)
@@ -4056,6 +4548,7 @@ class $$TrackablesTableTableManager
                 Value<String> decayModel = const Value.absent(),
                 Value<double?> eliminationRate = const Value.absent(),
                 Value<double?> absorptionMinutes = const Value.absent(),
+                Value<double?> sleepThreshold = const Value.absent(),
               }) => TrackablesCompanion(
                 id: id,
                 name: name,
@@ -4068,6 +4561,7 @@ class $$TrackablesTableTableManager
                 decayModel: decayModel,
                 eliminationRate: eliminationRate,
                 absorptionMinutes: absorptionMinutes,
+                sleepThreshold: sleepThreshold,
               ),
           createCompanionCallback:
               ({
@@ -4082,6 +4576,7 @@ class $$TrackablesTableTableManager
                 Value<String> decayModel = const Value.absent(),
                 Value<double?> eliminationRate = const Value.absent(),
                 Value<double?> absorptionMinutes = const Value.absent(),
+                Value<double?> sleepThreshold = const Value.absent(),
               }) => TrackablesCompanion.insert(
                 id: id,
                 name: name,
@@ -4094,6 +4589,7 @@ class $$TrackablesTableTableManager
                 decayModel: decayModel,
                 eliminationRate: eliminationRate,
                 absorptionMinutes: absorptionMinutes,
+                sleepThreshold: sleepThreshold,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -4111,6 +4607,7 @@ class $$TrackablesTableTableManager
                 taperPlansRefs = false,
                 dashboardWidgetsRefs = false,
                 remindersRefs = false,
+                targetsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -4121,6 +4618,7 @@ class $$TrackablesTableTableManager
                     if (taperPlansRefs) db.taperPlans,
                     if (dashboardWidgetsRefs) db.dashboardWidgets,
                     if (remindersRefs) db.reminders,
+                    if (targetsRefs) db.targets,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -4251,6 +4749,27 @@ class $$TrackablesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (targetsRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          Target
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._targetsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).targetsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4278,6 +4797,7 @@ typedef $$TrackablesTableProcessedTableManager =
         bool taperPlansRefs,
         bool dashboardWidgetsRefs,
         bool remindersRefs,
+        bool targetsRefs,
       })
     >;
 typedef $$DoseLogsTableCreateCompanionBuilder =
@@ -6377,6 +6897,319 @@ typedef $$RemindersTableProcessedTableManager =
       Reminder,
       PrefetchHooks Function({bool trackableId})
     >;
+typedef $$TargetsTableCreateCompanionBuilder =
+    TargetsCompanion Function({
+      Value<int> id,
+      required int trackableId,
+      required String name,
+      required double amount,
+      required String time,
+    });
+typedef $$TargetsTableUpdateCompanionBuilder =
+    TargetsCompanion Function({
+      Value<int> id,
+      Value<int> trackableId,
+      Value<String> name,
+      Value<double> amount,
+      Value<String> time,
+    });
+
+final class $$TargetsTableReferences
+    extends BaseReferences<_$AppDatabase, $TargetsTable, Target> {
+  $$TargetsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $TrackablesTable _trackableIdTable(_$AppDatabase db) =>
+      db.trackables.createAlias(
+        $_aliasNameGenerator(db.targets.trackableId, db.trackables.id),
+      );
+
+  $$TrackablesTableProcessedTableManager get trackableId {
+    final $_column = $_itemColumn<int>('trackable_id')!;
+
+    final manager = $$TrackablesTableTableManager(
+      $_db,
+      $_db.trackables,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_trackableIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$TargetsTableFilterComposer
+    extends Composer<_$AppDatabase, $TargetsTable> {
+  $$TargetsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get time => $composableBuilder(
+    column: $table.time,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TrackablesTableFilterComposer get trackableId {
+    final $$TrackablesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableFilterComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TargetsTableOrderingComposer
+    extends Composer<_$AppDatabase, $TargetsTable> {
+  $$TargetsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get time => $composableBuilder(
+    column: $table.time,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TrackablesTableOrderingComposer get trackableId {
+    final $$TrackablesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableOrderingComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TargetsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TargetsTable> {
+  $$TargetsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get time =>
+      $composableBuilder(column: $table.time, builder: (column) => column);
+
+  $$TrackablesTableAnnotationComposer get trackableId {
+    final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$TargetsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TargetsTable,
+          Target,
+          $$TargetsTableFilterComposer,
+          $$TargetsTableOrderingComposer,
+          $$TargetsTableAnnotationComposer,
+          $$TargetsTableCreateCompanionBuilder,
+          $$TargetsTableUpdateCompanionBuilder,
+          (Target, $$TargetsTableReferences),
+          Target,
+          PrefetchHooks Function({bool trackableId})
+        > {
+  $$TargetsTableTableManager(_$AppDatabase db, $TargetsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TargetsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TargetsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TargetsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> trackableId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<String> time = const Value.absent(),
+              }) => TargetsCompanion(
+                id: id,
+                trackableId: trackableId,
+                name: name,
+                amount: amount,
+                time: time,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int trackableId,
+                required String name,
+                required double amount,
+                required String time,
+              }) => TargetsCompanion.insert(
+                id: id,
+                trackableId: trackableId,
+                name: name,
+                amount: amount,
+                time: time,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$TargetsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({trackableId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (trackableId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.trackableId,
+                                referencedTable: $$TargetsTableReferences
+                                    ._trackableIdTable(db),
+                                referencedColumn: $$TargetsTableReferences
+                                    ._trackableIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$TargetsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TargetsTable,
+      Target,
+      $$TargetsTableFilterComposer,
+      $$TargetsTableOrderingComposer,
+      $$TargetsTableAnnotationComposer,
+      $$TargetsTableCreateCompanionBuilder,
+      $$TargetsTableUpdateCompanionBuilder,
+      (Target, $$TargetsTableReferences),
+      Target,
+      PrefetchHooks Function({bool trackableId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6395,4 +7228,6 @@ class $AppDatabaseManager {
       $$DashboardWidgetsTableTableManager(_db, _db.dashboardWidgets);
   $$RemindersTableTableManager get reminders =>
       $$RemindersTableTableManager(_db, _db.reminders);
+  $$TargetsTableTableManager get targets =>
+      $$TargetsTableTableManager(_db, _db.targets);
 }

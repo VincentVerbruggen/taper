@@ -30,9 +30,7 @@ class RemindersScreen extends ConsumerWidget {
     final remindersAsync = ref.watch(remindersProvider(trackable.id));
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reminders'),
-      ),
+      appBar: AppBar(title: const Text('Reminders')),
       floatingActionButton: FloatingActionButton(
         heroTag: 'remindersFab',
         onPressed: () => _showAddReminderDialog(context, ref),
@@ -126,8 +124,9 @@ class RemindersScreen extends ConsumerWidget {
                         trackable,
                       );
                     } else {
-                      await ReminderScheduler.instance
-                          .cancelReminder(reminder.id);
+                      await ReminderScheduler.instance.cancelReminder(
+                        reminder.id,
+                      );
                     }
                   },
                 ),
@@ -138,8 +137,9 @@ class RemindersScreen extends ConsumerWidget {
                     color: Theme.of(context).colorScheme.error,
                   ),
                   onPressed: () async {
-                    await ReminderScheduler.instance
-                        .cancelReminder(reminder.id);
+                    await ReminderScheduler.instance.cancelReminder(
+                      reminder.id,
+                    );
                     ref.read(databaseProvider).deleteReminder(reminder.id);
                   },
                 ),
@@ -165,8 +165,18 @@ class RemindersScreen extends ConsumerWidget {
       } else if (reminder.oneTimeDate != null) {
         final d = reminder.oneTimeDate!;
         const months = [
-          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
         ];
         info = '${months[d.month - 1]} ${d.day} at $timeStr';
       } else {
@@ -219,11 +229,18 @@ class RemindersScreen extends ConsumerWidget {
             final labelError = submitted && labelController.text.trim().isEmpty
                 ? 'Required'
                 : null;
-            final nagError = selectedType == ReminderType.scheduled && nagEnabled
-                ? _intFieldError(nagIntervalController.text, submitted: submitted)
+            final nagError =
+                selectedType == ReminderType.scheduled && nagEnabled
+                ? _intFieldError(
+                    nagIntervalController.text,
+                    submitted: submitted,
+                  )
                 : null;
             final gapError = selectedType == ReminderType.loggingGap
-                ? _intFieldError(gapMinutesController.text, submitted: submitted)
+                ? _intFieldError(
+                    gapMinutesController.text,
+                    submitted: submitted,
+                  )
                 : null;
 
             return AlertDialog(
@@ -290,7 +307,8 @@ class RemindersScreen extends ConsumerWidget {
                         context: context,
                         label: 'Time',
                         time: scheduledTime,
-                        onChanged: (t) => setDialogState(() => scheduledTime = t),
+                        onChanged: (t) =>
+                            setDialogState(() => scheduledTime = t),
                       ),
                       const SizedBox(height: 8),
 
@@ -309,7 +327,8 @@ class RemindersScreen extends ConsumerWidget {
                           context: context,
                           label: 'Date',
                           date: oneTimeDate,
-                          onChanged: (d) => setDialogState(() => oneTimeDate = d),
+                          onChanged: (d) =>
+                              setDialogState(() => oneTimeDate = d),
                         ),
                       ],
 
@@ -390,13 +409,17 @@ class RemindersScreen extends ConsumerWidget {
                     // Validate based on type.
                     bool valid = label.isNotEmpty;
                     if (selectedType == ReminderType.scheduled && nagEnabled) {
-                      valid = valid &&
-                          int.tryParse(nagIntervalController.text.trim()) != null &&
+                      valid =
+                          valid &&
+                          int.tryParse(nagIntervalController.text.trim()) !=
+                              null &&
                           int.parse(nagIntervalController.text.trim()) > 0;
                     }
                     if (selectedType == ReminderType.loggingGap) {
-                      valid = valid &&
-                          int.tryParse(gapMinutesController.text.trim()) != null &&
+                      valid =
+                          valid &&
+                          int.tryParse(gapMinutesController.text.trim()) !=
+                              null &&
                           int.parse(gapMinutesController.text.trim()) > 0;
                     }
 
@@ -479,7 +502,8 @@ class RemindersScreen extends ConsumerWidget {
     }
 
     var isRecurring = reminder.isRecurring;
-    var oneTimeDate = reminder.oneTimeDate ?? DateTime.now().add(const Duration(days: 1));
+    var oneTimeDate =
+        reminder.oneTimeDate ?? DateTime.now().add(const Duration(days: 1));
     var nagEnabled = reminder.nagEnabled;
     final nagIntervalController = TextEditingController(
       text: reminder.nagIntervalMinutes?.toString() ?? '15',
@@ -521,11 +545,18 @@ class RemindersScreen extends ConsumerWidget {
             final labelError = submitted && labelController.text.trim().isEmpty
                 ? 'Required'
                 : null;
-            final nagError = selectedType == ReminderType.scheduled && nagEnabled
-                ? _intFieldError(nagIntervalController.text, submitted: submitted)
+            final nagError =
+                selectedType == ReminderType.scheduled && nagEnabled
+                ? _intFieldError(
+                    nagIntervalController.text,
+                    submitted: submitted,
+                  )
                 : null;
             final gapError = selectedType == ReminderType.loggingGap
-                ? _intFieldError(gapMinutesController.text, submitted: submitted)
+                ? _intFieldError(
+                    gapMinutesController.text,
+                    submitted: submitted,
+                  )
                 : null;
 
             return AlertDialog(
@@ -581,7 +612,8 @@ class RemindersScreen extends ConsumerWidget {
                         context: context,
                         label: 'Time',
                         time: scheduledTime,
-                        onChanged: (t) => setDialogState(() => scheduledTime = t),
+                        onChanged: (t) =>
+                            setDialogState(() => scheduledTime = t),
                       ),
                       const SizedBox(height: 8),
                       SwitchListTile(
@@ -596,7 +628,8 @@ class RemindersScreen extends ConsumerWidget {
                           context: context,
                           label: 'Date',
                           date: oneTimeDate,
-                          onChanged: (d) => setDialogState(() => oneTimeDate = d),
+                          onChanged: (d) =>
+                              setDialogState(() => oneTimeDate = d),
                         ),
                       ],
                       const SizedBox(height: 8),
@@ -668,13 +701,17 @@ class RemindersScreen extends ConsumerWidget {
                     final label = labelController.text.trim();
                     bool valid = label.isNotEmpty;
                     if (selectedType == ReminderType.scheduled && nagEnabled) {
-                      valid = valid &&
-                          int.tryParse(nagIntervalController.text.trim()) != null &&
+                      valid =
+                          valid &&
+                          int.tryParse(nagIntervalController.text.trim()) !=
+                              null &&
                           int.parse(nagIntervalController.text.trim()) > 0;
                     }
                     if (selectedType == ReminderType.loggingGap) {
-                      valid = valid &&
-                          int.tryParse(gapMinutesController.text.trim()) != null &&
+                      valid =
+                          valid &&
+                          int.tryParse(gapMinutesController.text.trim()) !=
+                              null &&
                           int.parse(gapMinutesController.text.trim()) > 0;
                     }
 
@@ -687,7 +724,9 @@ class RemindersScreen extends ConsumerWidget {
                     final db = ref.read(databaseProvider);
 
                     // Cancel old notifications before updating.
-                    await ReminderScheduler.instance.cancelReminder(reminder.id);
+                    await ReminderScheduler.instance.cancelReminder(
+                      reminder.id,
+                    );
 
                     // Update using raw SQL companion since we need to set
                     // many fields at once, including clearing irrelevant ones.
@@ -703,7 +742,9 @@ class RemindersScreen extends ConsumerWidget {
                           : const Value(null),
                       nagEnabled: Value(nagEnabled),
                       nagIntervalMinutes: nagEnabled
-                          ? Value(int.tryParse(nagIntervalController.text.trim()))
+                          ? Value(
+                              int.tryParse(nagIntervalController.text.trim()),
+                            )
                           : const Value(null),
                       windowStart: selectedType == ReminderType.loggingGap
                           ? Value(_timeOfDayToString(windowStartTime))
@@ -712,17 +753,21 @@ class RemindersScreen extends ConsumerWidget {
                           ? Value(_timeOfDayToString(windowEndTime))
                           : const Value(null),
                       gapMinutes: selectedType == ReminderType.loggingGap
-                          ? Value(int.tryParse(gapMinutesController.text.trim()))
+                          ? Value(
+                              int.tryParse(gapMinutesController.text.trim()),
+                            )
                           : const Value(null),
                     );
 
                     // We also need to update the type field directly since
                     // updateReminder() doesn't handle it. Use raw update.
-                    await (db.update(db.reminders)
-                          ..where((t) => t.id.equals(reminder.id)))
-                        .write(RemindersCompanion(
-                          type: Value(selectedType.toDbString()),
-                        ));
+                    await (db.update(
+                      db.reminders,
+                    )..where((t) => t.id.equals(reminder.id))).write(
+                      RemindersCompanion(
+                        type: Value(selectedType.toDbString()),
+                      ),
+                    );
 
                     // Reschedule with updated values.
                     final updated = await db.getReminders(trackable.id);
@@ -765,6 +810,16 @@ class RemindersScreen extends ConsumerWidget {
         final picked = await showTimePicker(
           context: context,
           initialTime: time,
+          // Force 24h input to keep reminder times consistent with stored
+          // "HH:mm" strings and avoid locale AM/PM mismatches.
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(alwaysUse24HourFormat: true),
+              child: child!,
+            );
+          },
         );
         if (picked != null) {
           onChanged(picked);
@@ -777,10 +832,7 @@ class RemindersScreen extends ConsumerWidget {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('$h:$m'),
-            const Icon(Icons.access_time, size: 20),
-          ],
+          children: [Text('$h:$m'), const Icon(Icons.access_time, size: 20)],
         ),
       ),
     );
@@ -794,8 +846,18 @@ class RemindersScreen extends ConsumerWidget {
     required ValueChanged<DateTime> onChanged,
   }) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return InkWell(
       onTap: () async {

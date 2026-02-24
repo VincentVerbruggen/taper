@@ -7,6 +7,7 @@ import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/dashboard_screen.dart';
+import 'package:taper/screens/dashboard/widgets/sleep_readiness_card.dart';
 import 'package:taper/screens/dashboard/widgets/trackable_card.dart';
 
 import 'helpers/test_database.dart';
@@ -75,13 +76,19 @@ void main() {
   });
 
   testWidgets('shows cards for seeded dashboard widgets', (tester) async {
-    // The onCreate seeder inserts 2 dashboard widgets (Caffeine + Water decay cards).
+    // The onCreate seeder inserts 3 dashboard widgets:
+    // 1) Caffeine decay card
+    // 2) Caffeine sleep readiness card
+    // 3) Water decay card
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
 
-    // Both TrackableCards should render from the dashboard widgets.
+    // Only decay widgets render as TrackableCard.
     expect(find.byType(TrackableCard), findsNWidgets(2));
-    expect(find.text('Caffeine'), findsOneWidget);
+    // Sleep readiness is a separate card widget.
+    expect(find.byType(SleepReadinessCard), findsOneWidget);
+    // "Caffeine" appears on both the decay card and sleep readiness card.
+    expect(find.text('Caffeine'), findsNWidgets(2));
     expect(find.text('Water'), findsOneWidget);
     // Alcohol is hidden and has no widget — shouldn't appear.
     expect(find.text('Alcohol'), findsNothing);
@@ -111,14 +118,17 @@ void main() {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
 
-    expect(find.text('Caffeine'), findsOneWidget);
+    // There are two Caffeine widgets by default (decay + sleep readiness).
+    expect(find.text('Caffeine'), findsNWidgets(2));
     // Compact format: "active / total unit" — should contain "/".
     expect(find.textContaining('/'), findsOneWidget);
 
     await cleanUp(tester);
   });
 
-  testWidgets('card shows just total for trackable without half-life', (tester) async {
+  testWidgets('card shows just total for trackable without half-life', (
+    tester,
+  ) async {
     await db.insertDoseLog(2, 500, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
@@ -151,7 +161,11 @@ void main() {
   });
 
   testWidgets('Repeat Last inserts dose and shows SnackBar', (tester) async {
-    await db.insertDoseLog(1, 95, DateTime.now().subtract(const Duration(hours: 1)));
+    await db.insertDoseLog(
+      1,
+      95,
+      DateTime.now().subtract(const Duration(hours: 1)),
+    );
 
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);
@@ -170,7 +184,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('Add Dose dialog shows preset chips when presets exist', (tester) async {
+  testWidgets('Add Dose dialog shows preset chips when presets exist', (
+    tester,
+  ) async {
     // Insert a preset for Caffeine (trackable ID = 1 from seeder).
     await db.insertPreset(1, 'Espresso', 90);
 
@@ -254,12 +270,12 @@ void main() {
     await tester.pump();
     await pumpAndWait(tester);
 
-    // Edit mode: drag handles should appear for each widget (Caffeine + Water).
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(2));
+    // Edit mode: drag handles should appear for each seeded widget.
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
     // The edit icon should now be a check icon (done editing).
     expect(find.byIcon(Icons.check), findsOneWidget);
     // Should have delete buttons (X icons) for each widget.
-    expect(find.byIcon(Icons.close), findsNWidgets(2));
+    expect(find.byIcon(Icons.close), findsNWidgets(3));
     // "Add Widget" button should be visible.
     expect(find.text('Add Widget'), findsOneWidget);
 
@@ -289,11 +305,12 @@ void main() {
     await tester.pump();
 
     // Dialog should show all widget type options.
-    // "Decay Card" also appears as subtitle labels in edit mode (2 widgets),
-    // so we check the dialog contains the option using findsWidgets.
-    expect(find.text('Decay Card'), findsWidgets); // 2 edit labels + 1 dialog option
+    // "Decay Card" appears in list subtitles for seeded decay widgets as well,
+    // so we assert presence instead of an exact count.
+    expect(find.text('Decay Card'), findsWidgets);
     expect(find.text('Taper Progress'), findsOneWidget); // only in dialog
     expect(find.text('Daily Totals'), findsOneWidget); // only in dialog
+    expect(find.text('Sleep Readiness'), findsWidgets);
 
     // Dismiss by tapping outside.
     await tester.tapAt(const Offset(10, 10));

@@ -5,6 +5,7 @@ import 'package:taper/data/dashboard_widget_type.dart';
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/dashboard/widgets/daily_totals_card.dart';
+import 'package:taper/screens/dashboard/widgets/sleep_readiness_card.dart';
 import 'package:taper/screens/dashboard/widgets/taper_progress_card.dart';
 import 'package:taper/screens/dashboard/widgets/trackable_card.dart';
 
@@ -167,6 +168,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       DashboardWidgetType.dailyTotals => DailyTotalsCard(
           trackableId: widget.trackableId!,
         ),
+      DashboardWidgetType.sleepReadiness => SleepReadinessCard(
+          trackableId: widget.trackableId!,
+        ),
     };
   }
 
@@ -308,9 +312,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return;
     }
 
-    // For taper_progress, filter to only trackables with active taper plans.
+    // For taper_progress and sleep_readiness, filter to only eligible trackables.
     // Query the DB directly (not the cached provider) so we always get fresh
-    // data — e.g., if the user just created a taper plan and came back.
+    // data.
     List<Trackable> eligibleTrackables;
     if (type == DashboardWidgetType.taperProgress) {
       final withPlans = <Trackable>[];
@@ -331,6 +335,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         return;
       }
       eligibleTrackables = withPlans;
+    } else if (type == DashboardWidgetType.sleepReadiness) {
+      final withThreshold = trackables.where((t) => t.sleepThreshold != null).toList();
+      if (withThreshold.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No trackables have a sleep threshold configured.'),
+            ),
+          );
+        }
+        return;
+      }
+      eligibleTrackables = withThreshold;
     } else {
       eligibleTrackables = trackables;
     }

@@ -26,30 +26,33 @@ void main() {
   });
 
   test('fresh DB seeds Caffeine and Water dashboard widgets', () async {
-    // The onCreate seeder inserts 2 dashboard widgets:
-    // one for Caffeine (sortOrder 1) and one for Water (sortOrder 2).
+    // The onCreate seeder inserts 3 dashboard widgets.
     final widgets = await db.select(db.dashboardWidgets).get();
 
-    expect(widgets.length, 2);
+    expect(widgets.length, 3);
     expect(widgets[0].type, 'decay_card');
     expect(widgets[0].trackableId, 1); // Caffeine
     expect(widgets[0].sortOrder, 1);
-    expect(widgets[1].type, 'decay_card');
-    expect(widgets[1].trackableId, 2); // Water
+    expect(widgets[1].type, 'sleep_readiness');
+    expect(widgets[1].trackableId, 1); // Caffeine
     expect(widgets[1].sortOrder, 2);
+    expect(widgets[2].type, 'decay_card');
+    expect(widgets[2].trackableId, 2); // Water
+    expect(widgets[2].sortOrder, 3);
   });
 
   test('watchDashboardWidgets returns widgets ordered by sortOrder', () async {
     // Listen to the first emission from the stream.
     final widgets = await db.watchDashboardWidgets().first;
 
-    expect(widgets.length, 2);
+    expect(widgets.length, 3);
     expect(widgets[0].sortOrder, lessThan(widgets[1].sortOrder));
+    expect(widgets[1].sortOrder, lessThan(widgets[2].sortOrder));
   });
 
   test('insertDashboardWidget auto-assigns sortOrder', () async {
-    // Current max sortOrder = 2 (Water widget).
-    // A new widget should get sortOrder = 3.
+    // Current max sortOrder = 3 (Water widget).
+    // A new widget should get sortOrder = 4.
     final id = await db.insertDashboardWidget(
       'taper_progress',
       trackableId: 1,
@@ -61,37 +64,40 @@ void main() {
 
     expect(widget.type, 'taper_progress');
     expect(widget.trackableId, 1);
-    expect(widget.sortOrder, 3); // max(2) + 1
+    expect(widget.sortOrder, 4); // max(3) + 1
     expect(widget.config, '{}'); // default config
   });
 
   test('deleteDashboardWidget removes the widget', () async {
     final widgetsBefore = await db.select(db.dashboardWidgets).get();
-    expect(widgetsBefore.length, 2);
+    expect(widgetsBefore.length, 3);
 
     await db.deleteDashboardWidget(widgetsBefore.first.id);
 
     final widgetsAfter = await db.select(db.dashboardWidgets).get();
-    expect(widgetsAfter.length, 1);
-    expect(widgetsAfter.first.id, widgetsBefore.last.id);
+    expect(widgetsAfter.length, 2);
+    expect(widgetsAfter.first.id, widgetsBefore[1].id);
   });
 
   test('reorderDashboardWidgets updates sortOrder for all IDs', () async {
     final widgets = await db.select(db.dashboardWidgets).get();
-    final caffeineId = widgets[0].id;
-    final waterId = widgets[1].id;
+    final caffeineDecayId = widgets[0].id;
+    final caffeineSleepId = widgets[1].id;
+    final waterDecayId = widgets[2].id;
 
-    // Reverse the order: Water first, Caffeine second.
-    await db.reorderDashboardWidgets([waterId, caffeineId]);
+    // Reverse the order.
+    await db.reorderDashboardWidgets([waterDecayId, caffeineSleepId, caffeineDecayId]);
 
     final reordered = await (db.select(db.dashboardWidgets)
           ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
         .get();
 
-    expect(reordered[0].id, waterId);
+    expect(reordered[0].id, waterDecayId);
     expect(reordered[0].sortOrder, 1);
-    expect(reordered[1].id, caffeineId);
+    expect(reordered[1].id, caffeineSleepId);
     expect(reordered[1].sortOrder, 2);
+    expect(reordered[2].id, caffeineDecayId);
+    expect(reordered[2].sortOrder, 3);
   });
 
   test('updateDashboardWidgetConfig sets config JSON', () async {
@@ -108,21 +114,21 @@ void main() {
   });
 
   test('insertTrackable auto-adds decay_card widget', () async {
-    // Before: 2 widgets (Caffeine + Water).
+    // Before: 3 widgets
     final widgetsBefore = await db.select(db.dashboardWidgets).get();
-    expect(widgetsBefore.length, 2);
+    expect(widgetsBefore.length, 3);
 
     // Insert a new trackable.
     final newId = await db.insertTrackable('Melatonin', unit: 'mg');
 
-    // After: 3 widgets — the new one should be a decay_card for the new trackable.
+    // After: 4 widgets — the new one should be a decay_card for the new trackable.
     final widgetsAfter = await db.select(db.dashboardWidgets).get();
-    expect(widgetsAfter.length, 3);
+    expect(widgetsAfter.length, 4);
 
     final newWidget = widgetsAfter.last;
     expect(newWidget.type, 'decay_card');
     expect(newWidget.trackableId, newId);
-    expect(newWidget.sortOrder, 3); // max(2) + 1
+    expect(newWidget.sortOrder, 4); // max(3) + 1
   });
 
   test('deleting widget by trackable ID removes all widgets for that trackable', () async {
@@ -130,7 +136,7 @@ void main() {
     await db.insertDashboardWidget('taper_progress', trackableId: 1);
 
     final widgetsBefore = await db.select(db.dashboardWidgets).get();
-    expect(widgetsBefore.length, 3); // 2 original + 1 new
+    expect(widgetsBefore.length, 4); // 3 original + 1 new
 
     // Manually delete all widgets for Caffeine (trackable ID 1).
     // Note: SQLite foreign key cascade isn't enabled in this app,

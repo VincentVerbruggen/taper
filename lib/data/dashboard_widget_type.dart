@@ -19,7 +19,11 @@ enum DashboardWidgetType {
 
   /// Line/area chart showing daily intake totals over the past 30 days.
   /// Good for spotting consumption trends. Uses sample12-style gradient fill.
-  dailyTotals;
+  dailyTotals,
+
+  /// Predictor widget showing when the active amount will drop below
+  /// the sleep threshold (e.g., "Ready for sleep in 3h 20m").
+  sleepReadiness;
 
   /// Parse a DB string value into the enum.
   /// Like PHP's BackedEnum::from($value) — throws if no match.
@@ -33,6 +37,7 @@ enum DashboardWidgetType {
       'enhanced_decay_card' => DashboardWidgetType.decayCard,
       'taper_progress' => DashboardWidgetType.taperProgress,
       'daily_totals' => DashboardWidgetType.dailyTotals,
+      'sleep_readiness' => DashboardWidgetType.sleepReadiness,
       _ => throw ArgumentError('Unknown dashboard widget type: $value'),
     };
   }
@@ -44,6 +49,7 @@ enum DashboardWidgetType {
       DashboardWidgetType.decayCard => 'decay_card',
       DashboardWidgetType.taperProgress => 'taper_progress',
       DashboardWidgetType.dailyTotals => 'daily_totals',
+      DashboardWidgetType.sleepReadiness => 'sleep_readiness',
     };
   }
 
@@ -54,6 +60,7 @@ enum DashboardWidgetType {
       DashboardWidgetType.decayCard => 'Decay Card',
       DashboardWidgetType.taperProgress => 'Taper Progress',
       DashboardWidgetType.dailyTotals => 'Daily Totals',
+      DashboardWidgetType.sleepReadiness => 'Sleep Readiness',
     };
   }
 }

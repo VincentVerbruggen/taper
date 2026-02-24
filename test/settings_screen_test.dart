@@ -39,9 +39,7 @@ void main() {
         databaseProvider.overrideWithValue(db),
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
-      child: const MaterialApp(
-        home: SettingsScreen(),
-      ),
+      child: const MaterialApp(home: SettingsScreen()),
     );
   }
 
@@ -68,7 +66,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('shows Trackables section with seeded trackables', (tester) async {
+  testWidgets('shows Trackables section with seeded trackables', (
+    tester,
+  ) async {
     final widget = await buildTestWidgetAsync();
     await tester.pumpWidget(widget);
     await pumpAndWait(tester);
@@ -177,17 +177,33 @@ void main() {
 
   // Helper: scroll the Data section into view.
   // The trackable list at the top now pushes data management items off-screen.
+  Finder settingsScrollable() {
+    // Settings has nested scrollables (an outer ListView and inner non-scrolling
+    // trackable ListView). We target the real scrollable one by filtering out
+    // NeverScrollable physics.
+    return find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable &&
+          widget.physics is! NeverScrollableScrollPhysics,
+    );
+  }
+
   Future<void> scrollToDataSection(WidgetTester tester) async {
-    // Use ensureVisible which works regardless of which Scrollable is first.
-    // The outer ListView and the ReorderableListView's internal Scrollable
-    // can cause find.byType(Scrollable).first to pick the wrong one.
-    await tester.ensureVisible(find.text('Data'));
-    await tester.pump();
+    // Use scrollUntilVisible so the target can be lazily built when off-screen.
+    // `SettingsScreen` uses a long outer ListView, so the "Data" header might
+    // not exist in the widget tree until we scroll down.
+    await tester.scrollUntilVisible(
+      find.text('Data'),
+      200,
+      scrollable: settingsScrollable(),
+    );
+    await tester.pumpAndSettle();
   }
 
   group('Data section', () {
-    testWidgets('shows Data header and all data management options',
-        (tester) async {
+    testWidgets('shows Data header and all data management options', (
+      tester,
+    ) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
       await pumpAndWait(tester);
@@ -199,7 +215,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Import database'),
         200,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: settingsScrollable(),
       );
       expect(find.text('Daily auto-backup'), findsOneWidget);
       expect(find.text('Export database'), findsOneWidget);
@@ -233,7 +249,7 @@ void main() {
       await tester.scrollUntilVisible(
         find.byType(SwitchListTile),
         200,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: settingsScrollable(),
       );
 
       await tester.tap(find.text('Daily auto-backup'));
@@ -248,8 +264,9 @@ void main() {
       await cleanUp(tester);
     });
 
-    testWidgets('shows "Never backed up" when no backup exists',
-        (tester) async {
+    testWidgets('shows "Never backed up" when no backup exists', (
+      tester,
+    ) async {
       final widget = await buildTestWidgetAsync();
       await tester.pumpWidget(widget);
       await pumpAndWait(tester);
@@ -261,13 +278,13 @@ void main() {
       await cleanUp(tester);
     });
 
-    testWidgets('shows last backup time when a backup was recorded',
-        (tester) async {
+    testWidgets('shows last backup time when a backup was recorded', (
+      tester,
+    ) async {
       final backupTime = DateTime(2026, 2, 20, 14, 30);
       final widget = await buildTestWidgetAsync(
         initialPrefs: {
-          BackupService.lastBackupTimeKey:
-              backupTime.millisecondsSinceEpoch,
+          BackupService.lastBackupTimeKey: backupTime.millisecondsSinceEpoch,
         },
       );
       await tester.pumpWidget(widget);
@@ -281,8 +298,9 @@ void main() {
       await cleanUp(tester);
     });
 
-    testWidgets('loads auto-backup as disabled from saved prefs',
-        (tester) async {
+    testWidgets('loads auto-backup as disabled from saved prefs', (
+      tester,
+    ) async {
       final widget = await buildTestWidgetAsync(
         initialPrefs: {BackupService.autoBackupEnabledKey: false},
       );
@@ -306,9 +324,14 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Import database'),
         200,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: settingsScrollable(),
       );
-      await tester.tap(find.text('Import database'));
+      // A small extra nudge keeps the tile fully inside the viewport; without
+      // this, it can land just below the bottom edge in CI-sized surfaces.
+      await tester.drag(settingsScrollable(), const Offset(0, -120));
+      await tester.pumpAndSettle();
+      final importFinder = find.text('Import database').first;
+      await tester.tap(importFinder);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -329,9 +352,12 @@ void main() {
       await tester.scrollUntilVisible(
         find.text('Import database'),
         200,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: settingsScrollable(),
       );
-      await tester.tap(find.text('Import database'));
+      await tester.drag(settingsScrollable(), const Offset(0, -120));
+      await tester.pumpAndSettle();
+      final importFinder = find.text('Import database').first;
+      await tester.tap(importFinder);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 

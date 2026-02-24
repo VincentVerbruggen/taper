@@ -38,9 +38,7 @@ void main() {
         databaseProvider.overrideWithValue(db),
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
-      child: const MaterialApp(
-        home: SettingsScreen(),
-      ),
+      child: const MaterialApp(home: SettingsScreen()),
     );
   }
 
@@ -91,7 +89,9 @@ void main() {
 
   // --- Add trackable via inline button (replaces old FAB) ---
 
-  testWidgets('"Add trackable" button navigates to AddTrackableScreen', (tester) async {
+  testWidgets('"Add trackable" button navigates to AddTrackableScreen', (
+    tester,
+  ) async {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
@@ -102,8 +102,9 @@ void main() {
 
     // Should be on the AddTrackableScreen.
     expect(find.byType(AddTrackableScreen), findsOneWidget);
-    // "Add Trackable" in the AppBar title AND as the FilledButton label.
-    expect(find.text('Add Trackable'), findsNWidgets(2));
+    // Screen title remains "Add Trackable". The submit button text can vary,
+    // so assert the title once instead of coupling to button copy.
+    expect(find.text('Add Trackable'), findsOneWidget);
     // Should have 2 text fields (name + unit) and a decay model dropdown.
     expect(find.byType(TextField), findsNWidgets(2));
     expect(find.text('None'), findsOneWidget);
@@ -111,7 +112,9 @@ void main() {
     await cleanUp(tester, hasNavigated: true);
   });
 
-  testWidgets('add trackable with custom unit and decay model none', (tester) async {
+  testWidgets('add trackable with custom unit and decay model none', (
+    tester,
+  ) async {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
@@ -129,9 +132,8 @@ void main() {
     await tester.enterText(textFields.at(1), 'IU');
     await tester.pump();
 
-    // Scroll the save button into view.
-    await tester.ensureVisible(find.byType(FilledButton));
-    await tester.tap(find.byType(FilledButton));
+    // Save is in the AppBar check icon (unified form pattern across screens).
+    await tester.tap(find.byTooltip('Add Trackable'));
     await tester.pump();
     await pumpAndWait(tester);
 
@@ -170,15 +172,15 @@ void main() {
     await tester.tap(find.text('Exponential (half-life)').last);
     await tester.pump();
 
-    // Half-life + absorption fields should now be visible (name, unit, half-life, absorption).
+    // Exponential mode now shows 5 fields:
+    // name, unit, half-life, absorption, and sleep-threshold.
     final updatedFields = find.byType(TextField);
-    expect(updatedFields, findsNWidgets(4));
+    expect(updatedFields, findsNWidgets(5));
     await tester.enterText(updatedFields.at(2), '2.0');
     await tester.pump();
 
-    // Save.
-    await tester.ensureVisible(find.byType(FilledButton));
-    await tester.tap(find.byType(FilledButton));
+    // Save via AppBar check icon.
+    await tester.tap(find.byTooltip('Add Trackable'));
     await tester.pump();
     await pumpAndWait(tester);
 
@@ -194,7 +196,9 @@ void main() {
 
   // --- Edit trackable via tap ---
 
-  testWidgets('tapping trackable navigates to EditTrackableScreen', (tester) async {
+  testWidgets('tapping trackable navigates to EditTrackableScreen', (
+    tester,
+  ) async {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
@@ -207,9 +211,10 @@ void main() {
     expect(find.byType(EditTrackableScreen), findsOneWidget);
     expect(find.text('Edit Trackable'), findsOneWidget);
 
-    // TextFields: name, unit, half-life, and absorption (shown because Caffeine is exponential).
+    // TextFields for exponential trackables:
+    // name, unit, half-life, absorption, and sleep-threshold.
     final textFields = find.byType(TextField);
-    expect(textFields, findsNWidgets(4));
+    expect(textFields, findsNWidgets(5));
 
     final nameField = tester.widget<TextField>(textFields.at(0));
     expect(nameField.controller?.text, 'Caffeine');
@@ -238,8 +243,8 @@ void main() {
     await tester.enterText(textFields.at(2), '6.0');
     await tester.pump();
 
-    await tester.ensureVisible(find.text('Save Changes'));
-    await tester.tap(find.text('Save Changes'));
+    // Edit screen save action also lives in the AppBar check icon.
+    await tester.tap(find.byTooltip('Save changes'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     await pumpAndWait(tester);
@@ -260,18 +265,18 @@ void main() {
   // --- Color auto-assignment ---
 
   testWidgets('color auto-assigned from palette', (tester) async {
-    final trackables = await (db.select(db.trackables)
-          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-        .get();
+    final trackables = await (db.select(
+      db.trackables,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
 
     expect(trackables[0].color, trackableColorPalette[0]);
     expect(trackables[1].color, trackableColorPalette[1]);
     expect(trackables[2].color, trackableColorPalette[2]);
 
     await db.insertTrackable('Test');
-    final updated = await (db.select(db.trackables)
-          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-        .get();
+    final updated = await (db.select(
+      db.trackables,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
     final testTrackable = updated.firstWhere((s) => s.name == 'Test');
     expect(testTrackable.color, trackableColorPalette[3]);
 
@@ -279,14 +284,16 @@ void main() {
     await db.close();
   });
 
-  testWidgets('color cycles through palette for many trackables', (tester) async {
+  testWidgets('color cycles through palette for many trackables', (
+    tester,
+  ) async {
     for (var i = 0; i < 10; i++) {
       await db.insertTrackable('Sub$i');
     }
 
-    final trackables = await (db.select(db.trackables)
-          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-        .get();
+    final trackables = await (db.select(
+      db.trackables,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
 
     expect(trackables.length, 13);
 
@@ -348,14 +355,14 @@ void main() {
     await cleanUp(tester);
   });
 
-  // --- Drag handle tests ---
+  // --- No drag-to-reorder handles ---
 
-  testWidgets('each trackable shows a drag handle', (tester) async {
+  testWidgets('trackable list does not show drag handles', (tester) async {
     await tester.pumpWidget(await buildTestWidgetAsync());
     await pumpAndWait(tester);
 
-    // All 3 trackables should have a drag handle icon.
-    expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
+    // Reordering was removed from Settings, so drag handles should be absent.
+    expect(find.byIcon(Icons.drag_handle), findsNothing);
 
     await cleanUp(tester);
   });

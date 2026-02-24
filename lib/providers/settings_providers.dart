@@ -19,6 +19,14 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   );
 });
 
+/// Time source provider used by UI code that needs "now".
+///
+/// Default behavior returns the real wall clock (`DateTime.now`).
+/// In tests we override this with a fixed value so labels like
+/// "Today"/"Yesterday" stay deterministic and don't start failing when
+/// the calendar date changes.
+final nowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// The SharedPreferences key for the day boundary hour setting.
 const _dayBoundaryHourKey = 'dayBoundaryHour';
 
@@ -32,8 +40,7 @@ const _dayBoundaryHourKey = 'dayBoundaryHour';
 ///
 /// Uses a Notifier so we can read synchronously (no FutureProvider) and
 /// provide a setHour() method that persists to SharedPreferences.
-final dayBoundaryHourProvider =
-    NotifierProvider<DayBoundaryHourNotifier, int>(
+final dayBoundaryHourProvider = NotifierProvider<DayBoundaryHourNotifier, int>(
   DayBoundaryHourNotifier.new,
 );
 
