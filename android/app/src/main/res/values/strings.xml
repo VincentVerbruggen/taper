@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Application name referenced by AndroidManifest.xml.
+         Keep this in main/ so all variants (debug/profile/release) can resolve it. -->
+    <string name="app_name">Taper</string>
+</resources>

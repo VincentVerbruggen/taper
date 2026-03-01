@@ -98,6 +98,113 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('chart disables grid and uses totals-style y-axis labels', (
+    tester,
+  ) async {
+    await db.insertDoseLog(1, 90, DateTime.now());
+
+    await tester.pumpWidget(buildTestWidget(trackableId: 1));
+    await pumpAndWaitLong(tester);
+
+    final chart = tester.widget<LineChart>(find.byType(LineChart));
+    expect(chart.data.gridData.show, isFalse);
+    expect(chart.data.borderData.show, isFalse);
+    expect(chart.data.titlesData.bottomTitles.sideTitles.showTitles, isTrue);
+    // Keep left Y labels visible so Decay matches Daily Totals axis style.
+    expect(chart.data.titlesData.leftTitles.sideTitles.showTitles, isTrue);
+    expect(chart.data.titlesData.topTitles.sideTitles.showTitles, isFalse);
+    expect(chart.data.titlesData.rightTitles.sideTitles.showTitles, isFalse);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('decay mode draws active_amount thresholds as horizontal lines', (
+    tester,
+  ) async {
+    await db.insertDoseLog(1, 90, DateTime.now());
+    await db.insertThreshold(
+      1,
+      'Active cap',
+      120,
+      comparisonType: 'active_amount',
+    );
+
+    await tester.pumpWidget(buildTestWidget(trackableId: 1));
+    await pumpAndWaitLong(tester);
+
+    final chart = tester.widget<LineChart>(find.byType(LineChart));
+    expect(
+      chart.data.extraLinesData.horizontalLines.any((line) => line.y == 120),
+      isTrue,
+    );
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('decay mode draws target markers on the chart', (tester) async {
+    await db.insertDoseLog(1, 90, DateTime.now());
+    await db.insertTarget(
+      trackableId: 1,
+      name: 'Bedtime',
+      amount: 80,
+      time: '22:00',
+    );
+
+    await tester.pumpWidget(buildTestWidget(trackableId: 1));
+    await pumpAndWaitLong(tester);
+
+    final chart = tester.widget<LineChart>(find.byType(LineChart));
+    final targetBars = chart.data.lineBarsData.where(
+      (bar) => bar.barWidth == 0 && bar.dotData.show,
+    );
+    expect(targetBars, isNotEmpty);
+    expect(targetBars.first.spots.any((spot) => spot.y == 80), isTrue);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('bottom hour labels are clock-aligned to 6-hour anchors', (
+    tester,
+  ) async {
+    // One dose is enough to render the chart and expose axis title callbacks.
+    await db.insertDoseLog(1, 90, DateTime.now());
+
+    await tester.pumpWidget(buildTestWidget(trackableId: 1));
+    await pumpAndWaitLong(tester);
+
+    final chart = tester.widget<LineChart>(find.byType(LineChart));
+    final sideTitles = chart.data.titlesData.bottomTitles.sideTitles;
+
+    // Interval is hourly, then labels are filtered to real clock anchors.
+    // This avoids shifted labels like 05/11/17 when day boundary is 05:00.
+    expect(sideTitles.interval, 1);
+
+    TitleMeta buildMeta(double value) {
+      return TitleMeta(
+        min: chart.data.minX!,
+        max: chart.data.maxX!,
+        parentAxisSize: 300,
+        axisPosition: value,
+        appliedInterval: sideTitles.interval ?? 1,
+        sideTitles: sideTitles,
+        formattedValue: value.toString(),
+        axisSide: AxisSide.bottom,
+      );
+    }
+
+    // With default 05:00 day boundary and extended start at -6h,
+    // x = -5h maps to 00:00 (should be shown), while x = 0h maps to 05:00
+    // (should be hidden because it's not a 6-hour clock anchor).
+    final midnightLabel = sideTitles.getTitlesWidget(-5, buildMeta(-5));
+    final fiveAmLabel = sideTitles.getTitlesWidget(0, buildMeta(0));
+
+    expect(midnightLabel, isA<Text>());
+    expect((midnightLabel as Text).data, '00:00');
+    expect(fiveAmLabel, isA<SizedBox>());
+
+    await cleanUp(tester);
+  });
+
   testWidgets('shows Repeat Last button when doses exist', (tester) async {
     await db.insertDoseLog(1, 90, DateTime.now());
 
@@ -140,7 +247,9 @@ void main() {
 
   // --- Dual-mode chart tests ---
 
-  testWidgets('shows mode toggle icon in decay mode by default', (tester) async {
+  testWidgets('shows mode toggle icon in decay mode by default', (
+    tester,
+  ) async {
     // Need a dose so the chart and toggle are rendered.
     await db.insertDoseLog(1, 90, DateTime.now());
 
@@ -156,10 +265,9 @@ void main() {
   testWidgets('shows bar_chart icon when config mode is total', (tester) async {
     await db.insertDoseLog(1, 90, DateTime.now());
 
-    await tester.pumpWidget(buildTestWidget(
-      trackableId: 1,
-      config: jsonEncode({'mode': 'total'}),
-    ));
+    await tester.pumpWidget(
+      buildTestWidget(trackableId: 1, config: jsonEncode({'mode': 'total'})),
+    );
     await pumpAndWaitLong(tester);
 
     // Total mode → bar_chart icon visible.
@@ -171,10 +279,9 @@ void main() {
   testWidgets('total mode shows "today" in stats text', (tester) async {
     await db.insertDoseLog(1, 90, DateTime.now());
 
-    await tester.pumpWidget(buildTestWidget(
-      trackableId: 1,
-      config: jsonEncode({'mode': 'total'}),
-    ));
+    await tester.pumpWidget(
+      buildTestWidget(trackableId: 1, config: jsonEncode({'mode': 'total'})),
+    );
     await pumpAndWaitLong(tester);
 
     // Total mode stats: "X mg today" format.
@@ -192,10 +299,9 @@ void main() {
     final widgets = await db.select(db.dashboardWidgets).get();
     final widgetId = widgets.first.id;
 
-    await tester.pumpWidget(buildTestWidget(
-      trackableId: 1,
-      widgetId: widgetId,
-    ));
+    await tester.pumpWidget(
+      buildTestWidget(trackableId: 1, widgetId: widgetId),
+    );
     await pumpAndWaitLong(tester);
 
     // Tap the mode toggle (show_chart icon → should switch to total).
@@ -204,9 +310,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     // Verify the config was persisted to the DB.
-    final updated = await (db.select(db.dashboardWidgets)
-          ..where((t) => t.id.equals(widgetId)))
-        .getSingle();
+    final updated = await (db.select(
+      db.dashboardWidgets,
+    )..where((t) => t.id.equals(widgetId))).getSingle();
     final configMap = jsonDecode(updated.config) as Map<String, dynamic>;
     expect(configMap['mode'], 'total');
 
