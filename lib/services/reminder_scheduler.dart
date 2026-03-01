@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
 
 import 'package:taper/data/database.dart';
 import 'package:taper/data/reminder_type.dart';
+import 'package:taper/services/device_timezone_service.dart';
 import 'package:taper/services/notification_service.dart';
 
 /// Singleton service that schedules/cancels reminder notifications.
@@ -45,8 +47,101 @@ class ReminderScheduler {
       // zonedSchedule() to convert local times to TZDateTime.
       // initializeTimeZones() loads all tz data (~1MB, runs once).
       tz_data.initializeTimeZones();
+      // timezone defaults tz.local to UTC unless we explicitly set it.
+      // Set an immediate device-offset fallback so scheduling is usable even
+      // before we fetch the exact IANA timezone ID from the platform.
+      _setFallbackLocalTimezone(DateTime.now());
       _tzInitialized = true;
     }
+  }
+
+  /// Configure the local timezone used by tz.TZDateTime (best effort).
+  ///
+  /// Why this exists:
+  /// - `timezone` starts with `tz.local = UTC` after initializeTimeZones().
+  /// - If we leave it as UTC, reminders fire at wrong local-clock times.
+  /// - On Android we can ask the platform for a real IANA zone
+  ///   (e.g. "Europe/Amsterdam"), then set tz.local to that value.
+  /// - If that lookup fails, we keep a fixed-offset fallback instead of UTC.
+  ///
+  /// This is async because platform channel reads are async.
+  Future<void> configureLocalTimezone({
+    Future<String?> Function()? timezoneNameLoader,
+    DateTime Function()? nowProvider,
+  }) async {
+    if (!_tzInitialized) return;
+    final currentNow = nowProvider ?? DateTime.now;
+
+    final loadTimezoneName =
+        timezoneNameLoader ?? DeviceTimezoneService.getLocalTimezone;
+
+    String? timezoneName;
+    try {
+      timezoneName = await loadTimezoneName();
+    } catch (_) {
+      // Keep fallback timezone — scheduling should still work.
+      _setFallbackLocalTimezone(currentNow());
+      return;
+    }
+
+    final trimmedTimezone = timezoneName?.trim();
+    if (trimmedTimezone == null || trimmedTimezone.isEmpty) {
+      _setFallbackLocalTimezone(currentNow());
+      return;
+    }
+
+    try {
+      tz.setLocalLocation(tz.getLocation(trimmedTimezone));
+    } catch (_) {
+      // Some OEM devices may report a non-IANA timezone ID.
+      // Keep fallback timezone rather than crashing scheduler startup.
+      _setFallbackLocalTimezone(currentNow());
+    }
+  }
+
+  /// Build a fixed-offset timezone location.
+  ///
+  /// Used as a fallback when we can't resolve a real IANA timezone name.
+  /// This still keeps reminders aligned to the device's current wall clock
+  /// and avoids the "everything is in UTC" bug.
+  @visibleForTesting
+  static tz.Location fixedOffsetLocation({
+    required Duration offset,
+    required String abbreviation,
+  }) {
+    final name = 'DeviceOffset/${_formatOffset(offset)}';
+    return tz.Location(name, [tz.minTime], [0], [
+      tz.TimeZone(
+        offset.inMilliseconds,
+        isDst: false,
+        abbreviation: abbreviation,
+      ),
+    ]);
+  }
+
+  /// Set tz.local to a fixed offset derived from DateTime.now().
+  ///
+  /// This is a fallback, not the preferred path:
+  /// - Preferred: set tz.local to a real IANA timezone via platform lookup.
+  /// - Fallback: fixed offset so reminders still fire at expected local times.
+  void _setFallbackLocalTimezone(DateTime now) {
+    final abbreviation = now.timeZoneName.isEmpty
+        ? _formatOffset(now.timeZoneOffset)
+        : now.timeZoneName;
+    tz.setLocalLocation(
+      fixedOffsetLocation(
+        offset: now.timeZoneOffset,
+        abbreviation: abbreviation,
+      ),
+    );
+  }
+
+  static String _formatOffset(Duration offset) {
+    final sign = offset.isNegative ? '-' : '+';
+    final totalMinutes = offset.inMinutes.abs();
+    final hours = (totalMinutes ~/ 60).toString().padLeft(2, '0');
+    final minutes = (totalMinutes % 60).toString().padLeft(2, '0');
+    return '$sign$hours:$minutes';
   }
 
   /// Calculate the notification ID for a reminder.
@@ -180,7 +275,9 @@ class ReminderScheduler {
     Reminder reminder,
     Trackable trackable,
   ) async {
-    if (reminder.scheduledTime == null || reminder.nagIntervalMinutes == null) return;
+    if (reminder.scheduledTime == null || reminder.nagIntervalMinutes == null) {
+      return;
+    }
 
     final parts = reminder.scheduledTime!.split(':');
     if (parts.length != 2) return;
@@ -253,8 +350,10 @@ class ReminderScheduler {
     final startMinute = int.tryParse(startParts[1]);
     final endHour = int.tryParse(endParts[0]);
     final endMinute = int.tryParse(endParts[1]);
-    if (startHour == null || startMinute == null ||
-        endHour == null || endMinute == null) {
+    if (startHour == null ||
+        startMinute == null ||
+        endHour == null ||
+        endMinute == null) {
       return;
     }
 
@@ -263,10 +362,20 @@ class ReminderScheduler {
 
     // Calculate today's window boundaries.
     final windowStartToday = tz.TZDateTime(
-      tz.local, now.year, now.month, now.day, startHour, startMinute,
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      startHour,
+      startMinute,
     );
     final windowEndToday = tz.TZDateTime(
-      tz.local, now.year, now.month, now.day, endHour, endMinute,
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      endHour,
+      endMinute,
     );
 
     tz.TZDateTime fireTime;
@@ -293,7 +402,9 @@ class ReminderScheduler {
         fireTime = now.add(const Duration(minutes: 1));
       } else {
         // Outside the window — schedule for tomorrow.
-        final windowStartTomorrow = windowStartToday.add(const Duration(days: 1));
+        final windowStartTomorrow = windowStartToday.add(
+          const Duration(days: 1),
+        );
         fireTime = windowStartTomorrow.add(gap);
       }
     }
@@ -344,7 +455,9 @@ class ReminderScheduler {
   ) async {
     final plugin = _plugin;
     if (plugin == null || !reminder.isEnabled) return;
-    if (ReminderType.fromString(reminder.type) != ReminderType.loggingGap) return;
+    if (ReminderType.fromString(reminder.type) != ReminderType.loggingGap) {
+      return;
+    }
 
     // Cancel existing gap notification before scheduling a new one.
     await plugin.cancel(_notificationId(reminder.id, offset: 50));

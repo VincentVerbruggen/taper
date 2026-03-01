@@ -2,6 +2,8 @@
     <!-- Required for showing notifications on Android 13+ (API 33).
          Like adding a permission in AndroidManifest for push notifications. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required so scheduled notifications can be restored after reboot/update. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Required for scheduling exact alarms (reminders) on Android 12+ (API 31).
          SCHEDULE_EXACT_ALARM requires user approval via system settings.
          USE_EXACT_ALARM is for apps where alarms are core functionality. -->
@@ -38,6 +40,27 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Required by flutter_local_notifications v16+ for scheduled reminders.
+             Without these receivers, zonedSchedule() alarms never get delivered. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Required for notification action callbacks (e.g., Repeat Last). -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

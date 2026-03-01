@@ -42,6 +42,10 @@ void main() async {
   // notifications. Also initializes timezone data (~1MB, runs once).
   // Like registering a dependent service that needs another service's handle.
   ReminderScheduler.instance.init(NotificationService.instance.plugin!);
+  // Resolve the real local timezone from the platform (IANA ID) so reminder
+  // schedules follow the device clock. If this fails, ReminderScheduler keeps
+  // its fixed-offset fallback configured during init().
+  await ReminderScheduler.instance.configureLocalTimezone();
 
   // Load SharedPreferences before runApp so it's available synchronously
   // in all providers. Like loading config before booting the app container.
