@@ -6,7 +6,15 @@ void main() {
   // Helper to create a DoseLog with just the fields we need for decay math.
   // The id and trackableId don't matter for pure math tests.
   DoseLog makeDose(double amount, DateTime loggedAt) {
-    return DoseLog(id: 1, trackableId: 1, amount: amount, loggedAt: loggedAt);
+    return DoseLog(
+      id: 1,
+      trackableId: 1,
+      amount: amount,
+      loggedAt: loggedAt,
+      // Unit tests here only exercise decay math for consumed doses.
+      // Marking planned=false keeps intent explicit after adding this DB field.
+      isPlanned: false,
+    );
   }
 
   group('activeDoseAt', () {

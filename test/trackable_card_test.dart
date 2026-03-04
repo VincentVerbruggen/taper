@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,12 +35,18 @@ void main() {
     int trackableId = 1,
     int? widgetId,
     String config = '{}',
+    DateTime? now,
   }) {
+    final overrides = [
+      databaseProvider.overrideWithValue(db),
+      sharedPreferencesProvider.overrideWithValue(prefs),
+    ];
+    if (now != null) {
+      overrides.add(nowProvider.overrideWithValue(() => now));
+    }
+
     return ProviderScope(
-      overrides: [
-        databaseProvider.overrideWithValue(db),
-        sharedPreferencesProvider.overrideWithValue(prefs),
-      ],
+      overrides: overrides,
       child: MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
@@ -181,8 +186,8 @@ void main() {
 
     TitleMeta buildMeta(double value) {
       return TitleMeta(
-        min: chart.data.minX!,
-        max: chart.data.maxX!,
+        min: chart.data.minX,
+        max: chart.data.maxX,
         parentAxisSize: 300,
         axisPosition: value,
         appliedInterval: sideTitles.interval ?? 1,
@@ -315,6 +320,36 @@ void main() {
     )..where((t) => t.id.equals(widgetId))).getSingle();
     final configMap = jsonDecode(updated.config) as Map<String, dynamic>;
     expect(configMap['mode'], 'total');
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('planned doses add projected dashed line and stats label', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 2, 23, 12);
+    await db.insertDoseLog(1, 90, now.subtract(const Duration(hours: 2)));
+    await db.insertDoseLog(
+      1,
+      60,
+      now.add(const Duration(hours: 1)),
+      isPlanned: true,
+    );
+
+    await tester.pumpWidget(buildTestWidget(trackableId: 1, now: now));
+    await pumpAndWaitLong(tester);
+
+    // Stats should communicate there is planned intake.
+    expect(find.textContaining('planned'), findsOneWidget);
+
+    final chart = tester.widget<LineChart>(find.byType(LineChart));
+    final hasProjectedDash = chart.data.lineBarsData.any(
+      (bar) =>
+          bar.dashArray != null &&
+          bar.dashArray!.length == 2 &&
+          bar.dashArray!.first == 8,
+    );
+    expect(hasProjectedDash, isTrue);
 
     await cleanUp(tester);
   });

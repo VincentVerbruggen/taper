@@ -8,15 +8,17 @@ import 'package:taper/screens/log/add_dose_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/utils/day_boundary.dart';
 
-/// LogDoseScreen = the "Log" tab showing recent doses grouped by day,
-/// with a FAB to add new ones and a calendar button to jump to a date.
+/// LogDoseScreen = the "Log" tab showing only the currently selected day.
 ///
-/// Doses are grouped by the configurable day boundary (default 5 AM).
-/// Each group has a small date header ("Today", "Yesterday", "Wed, Feb 19").
+/// The selected day is shared across log surfaces via selectedDateProvider:
+///   - null  => today (live)
+///   - date  => that historical day
 ///
-/// Like a Laravel index page with groupBy:
-///   DoseLog::with('trackable')->latest()->limit(50)->get()
-///       ->groupBy(fn($d) => dayBoundary($d->logged_at)->format('Y-m-d'))
+/// Like a Laravel index route with a global day filter:
+///   DoseLog::with('trackable')
+///       ->whereBetween('logged_at', [$startBoundary, $endBoundary))
+///       ->latest('logged_at')
+///       ->get();
 class LogDoseScreen extends ConsumerStatefulWidget {
   const LogDoseScreen({super.key});
 
@@ -27,13 +29,26 @@ class LogDoseScreen extends ConsumerStatefulWidget {
 class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
   @override
   Widget build(BuildContext context) {
-    final logsAsync = ref.watch(doseLogsProvider);
+    final logsAsync = ref.watch(selectedDayDoseLogsProvider);
     final boundaryHour = ref.watch(dayBoundaryHourProvider);
+    final selectedDate = ref.watch(selectedDateProvider);
+    // Provider-driven clock keeps date labels deterministic in widget tests.
+    final now = ref.watch(nowProvider)();
+    final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
+    final selectedBoundary = selectedDate != null
+        ? DateTime(
+            selectedDate.year,
+            selectedDate.month,
+            selectedDate.day,
+            boundaryHour,
+          )
+        : todayBoundary;
 
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         heroTag: 'logDoseFab',
-        onPressed: () => _addDose(),
+        // When viewing a past date, prefill the Add Dose form to that day.
+        onPressed: () => _addDose(selectedBoundary),
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
@@ -41,112 +56,173 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
         child: logsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => Center(child: Text('Error: $error')),
-          data: (logs) => _buildLogsList(logs, boundaryHour),
+          data: (logs) => _buildLogsList(
+            logs: logs,
+            selectedBoundary: selectedBoundary,
+            todayBoundary: todayBoundary,
+            boundaryHour: boundaryHour,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLogsList(List<DoseLogWithTrackable> logs, int boundaryHour) {
+  Widget _buildLogsList({
+    required List<DoseLogWithTrackable> logs,
+    required DateTime selectedBoundary,
+    required DateTime todayBoundary,
+    required int boundaryHour,
+  }) {
+    final items = <Widget>[
+      _buildHeader(
+        selectedBoundary: selectedBoundary,
+        todayBoundary: todayBoundary,
+        boundaryHour: boundaryHour,
+      ),
+      const SizedBox(height: 8),
+    ];
+
     if (logs.isEmpty) {
-      return ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Header row with title and calendar button.
-          _buildHeaderRow(),
-          const SizedBox(height: 48),
-          Text(
-            'No doses logged yet.\nTap + to log your first dose.',
+      items.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 48),
+          child: Text(
+            'No doses logged on this day.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             textAlign: TextAlign.center,
           ),
-        ],
-      );
-    }
-
-    // Group logs by day boundary.
-    // LinkedHashMap preserves insertion order → most recent day first.
-    final grouped = <DateTime, List<DoseLogWithTrackable>>{};
-    for (final entry in logs) {
-      final boundary = dayBoundary(entry.doseLog.loggedAt, boundaryHour: boundaryHour);
-      grouped.putIfAbsent(boundary, () => []).add(entry);
-    }
-
-    // Build a flat list of items: header row, then for each day group:
-    // day header + dose entries.
-    final items = <Widget>[];
-    items.add(_buildHeaderRow());
-
-    final now = DateTime.now();
-    final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
-
-    for (final entry in grouped.entries) {
-      final dayLabel = _formatDayLabel(entry.key, todayBoundary);
-      items.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 16, bottom: 4),
-          child: Text(
-            dayLabel,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
         ),
       );
-      for (final log in entry.value) {
-        items.add(_buildLogTile(log));
-      }
+      return ListView(padding: const EdgeInsets.all(16), children: items);
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: items,
-    );
+    for (final entry in logs) {
+      items.add(_buildLogTile(entry));
+    }
+
+    return ListView(padding: const EdgeInsets.all(16), children: items);
   }
 
-  /// Header row with "Log" title and calendar button.
-  /// Matches the pattern of Dashboard (title + action icon in a Row).
-  Widget _buildHeaderRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  /// Header with title + shared day navigation controls.
+  ///
+  /// This mirrors the dashboard navigation UX so both tabs feel like two views
+  /// over the same selected day.
+  Widget _buildHeader({
+    required DateTime selectedBoundary,
+    required DateTime todayBoundary,
+    required int boundaryHour,
+  }) {
+    final isToday = selectedBoundary == todayBoundary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Log',
-          style: Theme.of(context).textTheme.headlineMedium,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Log', style: Theme.of(context).textTheme.headlineMedium),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.calendar_today),
+                  tooltip: 'Select date',
+                  onPressed: () => _showDatePicker(boundaryHour),
+                ),
+                if (!isToday)
+                  IconButton(
+                    icon: const Icon(Icons.today),
+                    tooltip: 'Go to today',
+                    onPressed: () {
+                      ref.read(selectedDateProvider.notifier).goToToday();
+                    },
+                  ),
+              ],
+            ),
+          ],
         ),
-        IconButton(
-          icon: const Icon(Icons.calendar_today),
-          tooltip: 'Jump to date',
-          onPressed: _showDatePicker,
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              tooltip: 'Previous day',
+              onPressed: () {
+                ref.read(selectedDateProvider.notifier).previousDay();
+              },
+            ),
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _showDatePicker(boundaryHour),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  child: Text(
+                    _formatDayLabel(selectedBoundary, todayBoundary),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              tooltip: 'Next day',
+              // Can't move past today. selectedDateProvider uses null for that.
+              onPressed: isToday
+                  ? null
+                  : () => ref.read(selectedDateProvider.notifier).nextDay(),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  /// Opens a date picker and navigates to AddDoseScreen pre-set to that date.
-  /// Lets users log a dose for a specific past date without having to
-  /// manually adjust the time picker in the form.
-  void _showDatePicker() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: DateTime(2020),
-      lastDate: now,
-    );
+  /// Opens a calendar picker and immediately applies the tapped day.
+  ///
+  /// This keeps the day switch one-tap (no extra OK button), like the
+  /// trackable log calendar UX.
+  Future<void> _showDatePicker(int boundaryHour) async {
+    final now = ref.read(nowProvider)();
+    final selectedDate = ref.read(selectedDateProvider);
+    final initialDate = selectedDate != null
+        ? DateTime(selectedDate.year, selectedDate.month, selectedDate.day)
+        : DateTime(now.year, now.month, now.day);
 
-    if (picked != null && mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AddDoseScreen(
-            initialDate: picked,
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: CalendarDatePicker(
+              initialDate: initialDate,
+              firstDate: DateTime(2020),
+              lastDate: DateTime(now.year, now.month, now.day),
+              onDateChanged: (picked) {
+                Navigator.pop(dialogContext);
+                ref
+                    .read(selectedDateProvider.notifier)
+                    .selectDate(
+                      DateTime(
+                        picked.year,
+                        picked.month,
+                        picked.day,
+                        boundaryHour,
+                      ),
+                    );
+              },
+            ),
           ),
-        ),
-      );
-    }
+        );
+      },
+    );
   }
 
   /// Builds a single log entry card.
@@ -168,15 +244,18 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
             // Show "Skipped" for zero-dose logs (explicit skip),
             // preset name when available (e.g., "Caffeine — Espresso"),
             // or fall back to raw amount (e.g., "Caffeine — 63 mg").
-                          title: Text(
-                            entry.doseLog.amount == 0
-                                ? '${entry.trackable.name} — Skipped'
-                                : entry.doseLog.name != null
-                                    ? '${entry.trackable.name} — ${entry.doseLog.name!} (${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit})'
-                                    : '${entry.trackable.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
-                          ),            // Show just the time (HH:MM) since the day header already
-            // provides the date context.
-            subtitle: Text(_formatLogTime(entry.doseLog.loggedAt)),
+            title: Text(
+              entry.doseLog.amount == 0
+                  ? '${entry.trackable.name} — Skipped'
+                  : entry.doseLog.name != null
+                  ? '${entry.trackable.name} — ${entry.doseLog.name!} (${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit})'
+                  : '${entry.trackable.name} — ${entry.doseLog.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
+            ),
+            subtitle: Text(
+              entry.doseLog.isPlanned
+                  ? '${_formatLogTime(entry.doseLog.loggedAt)} • Planned'
+                  : _formatLogTime(entry.doseLog.loggedAt),
+            ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -203,9 +282,7 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
   void _editDoseLog(DoseLogWithTrackable entry) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => EditDoseScreen(entry: entry),
-      ),
+      MaterialPageRoute(builder: (_) => EditDoseScreen(entry: entry)),
     );
   }
 
@@ -221,20 +298,30 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         showCloseIcon: true,
+        // Flutter defaults action snackbars to persist=true.
+        // Set persist=false so Undo bars auto-dismiss after a short window.
+        persist: false,
+        duration: const Duration(seconds: 6),
         content: Text(
           'Deleted ${entry.trackable.name} — ${dose.amount.toStringAsFixed(0)} ${entry.trackable.unit}',
         ),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
-            db.insertDoseLog(dose.trackableId, dose.amount, dose.loggedAt, name: dose.name);
+            db.insertDoseLog(
+              dose.trackableId,
+              dose.amount,
+              dose.loggedAt,
+              name: dose.name,
+              isPlanned: dose.isPlanned,
+            );
           },
         ),
       ),
     );
   }
 
-  /// Copy a dose: opens AddDoseScreen pre-filled with this dose's trackable + amount.
+  /// Copy a dose: opens AddDoseScreen pre-filled with this dose's values.
   void _copyDose(DoseLogWithTrackable entry) {
     Navigator.push(
       context,
@@ -243,21 +330,33 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
           initialTrackableId: entry.doseLog.trackableId,
           initialAmount: entry.doseLog.amount,
           initialName: entry.doseLog.name,
+          initialIsPlanned: entry.doseLog.isPlanned,
         ),
       ),
     );
   }
 
-  /// Navigate to the add dose screen.
-  void _addDose() {
+  /// Navigate to AddDoseScreen, pre-filled to the selected day.
+  ///
+  /// We pass a calendar date (00:00) instead of the boundary time so the form
+  /// opens on the expected date without forcing a strange default hour.
+  void _addDose(DateTime selectedBoundary) {
+    final selectedCalendarDate = DateTime(
+      selectedBoundary.year,
+      selectedBoundary.month,
+      selectedBoundary.day,
+    );
+
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AddDoseScreen()),
+      MaterialPageRoute(
+        builder: (_) => AddDoseScreen(initialDate: selectedCalendarDate),
+      ),
     );
   }
 
   /// Formats a day boundary into a readable label.
-  /// "Today", "Yesterday", or "Wed, Feb 19".
+  /// "Today", "Yesterday", or "Wed, Feb 19, 2026".
   String _formatDayLabel(DateTime boundary, DateTime todayBoundary) {
     if (boundary == todayBoundary) return 'Today';
 
@@ -265,15 +364,24 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
     if (boundary == yesterdayBoundary) return 'Yesterday';
 
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return '${days[boundary.weekday - 1]}, ${months[boundary.month - 1]} ${boundary.day}';
+    return '${days[boundary.weekday - 1]}, ${months[boundary.month - 1]} ${boundary.day}, ${boundary.year}';
   }
 
-  /// Format a log's timestamp for display. Shows just time for today,
-  /// includes day info for older entries.
+  /// Format a log's timestamp for display as "HH:MM".
   String _formatLogTime(DateTime loggedAt) {
     final h = loggedAt.hour.toString().padLeft(2, '0');
     final m = loggedAt.minute.toString().padLeft(2, '0');

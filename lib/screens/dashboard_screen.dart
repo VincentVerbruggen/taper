@@ -15,8 +15,8 @@ import 'package:taper/screens/dashboard/widgets/trackable_card.dart';
 /// layout is controlled by the DashboardWidgets table, decoupled from
 /// trackable visibility (which now only controls the log form dropdown).
 ///
-/// Always shows "today" (live data). Historical date browsing lives in the
-/// per-trackable detail view (TrackableLogScreen) behind a calendar icon.
+/// Card data can still respect the globally selected day (from the Log tab),
+/// but date navigation itself lives in dose/log screens.
 ///
 /// Includes an edit mode for reordering/deleting/adding widgets.
 ///
@@ -83,10 +83,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            'Dashboard',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
+          Text('Dashboard', style: Theme.of(context).textTheme.headlineMedium),
           IconButton(
             icon: Icon(_isEditMode ? Icons.check : Icons.edit),
             tooltip: _isEditMode ? 'Done editing' : 'Edit dashboard',
@@ -98,10 +95,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   /// Normal mode: full-size widget cards with a small edit toggle at the top.
-  Widget _buildNormalMode(
-    BuildContext context,
-    List<DashboardWidget> widgets,
-  ) {
+  Widget _buildNormalMode(BuildContext context, List<DashboardWidget> widgets) {
     // Empty state: no dashboard widgets configured.
     if (widgets.isEmpty) {
       return Column(
@@ -133,23 +127,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       );
     }
 
-    return ListView.builder(
+    // Dashboard widget counts are small, so a simple scroll view + column keeps
+    // ordering/rendering deterministic while still allowing vertical scrolling.
+    return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 16),
-      // +1 for the edit toggle row at index 0.
-      itemCount: widgets.length + 1,
-      itemBuilder: (context, index) {
-        // First item = "Dashboard" heading with edit toggle on the right.
-        if (index == 0) {
-          return _buildTitleRow(context);
-        }
-
-        // Render the appropriate widget card based on type.
-        final widget = widgets[index - 1];
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: _buildWidgetCard(widget),
-        );
-      },
+      child: Column(
+        children: [
+          _buildTitleRow(context),
+          ...widgets.map(
+            (widget) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: _buildWidgetCard(widget),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -158,19 +150,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final type = DashboardWidgetType.fromString(widget.type);
     return switch (type) {
       DashboardWidgetType.decayCard => TrackableCard(
-          trackableId: widget.trackableId!,
-          widgetId: widget.id,
-          config: widget.config,
-        ),
+        trackableId: widget.trackableId!,
+        widgetId: widget.id,
+        config: widget.config,
+      ),
       DashboardWidgetType.taperProgress => TaperProgressCard(
-          trackableId: widget.trackableId!,
-        ),
+        trackableId: widget.trackableId!,
+      ),
       DashboardWidgetType.dailyTotals => DailyTotalsCard(
-          trackableId: widget.trackableId!,
-        ),
+        trackableId: widget.trackableId!,
+      ),
       DashboardWidgetType.sleepReadiness => SleepReadinessCard(
-          trackableId: widget.trackableId!,
-        ),
+        trackableId: widget.trackableId!,
+      ),
     };
   }
 
@@ -230,8 +222,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ? trackableMap[widget.trackableId]
                   : null;
               final widgetType = DashboardWidgetType.fromString(widget.type);
-              final color =
-                  trackable != null ? Color(trackable.color) : Colors.grey;
+              final color = trackable != null
+                  ? Color(trackable.color)
+                  : Colors.grey;
               final name = trackable?.name ?? 'Unknown';
 
               return Padding(
@@ -336,7 +329,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
       eligibleTrackables = withPlans;
     } else if (type == DashboardWidgetType.sleepReadiness) {
-      final withThreshold = trackables.where((t) => t.sleepThreshold != null).toList();
+      final withThreshold = trackables
+          .where((t) => t.sleepThreshold != null)
+          .toList();
       if (withThreshold.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -381,9 +376,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
     if (selected == null || !mounted) return;
 
-    await db.insertDashboardWidget(
-      type.toDbString(),
-      trackableId: selected.id,
-    );
+    await db.insertDashboardWidget(type.toDbString(), trackableId: selected.id);
   }
 }

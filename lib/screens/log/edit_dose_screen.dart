@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart' show Value;
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
@@ -36,6 +37,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
   // Date and time — pre-filled from the existing loggedAt timestamp.
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
+  bool _isPlanned = false;
 
   /// Tracks whether the user has attempted to save.
   bool _submitted = false;
@@ -52,6 +54,7 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
     final loggedAt = widget.entry.doseLog.loggedAt;
     _selectedDate = loggedAt;
     _selectedTime = TimeOfDay.fromDateTime(loggedAt);
+    _isPlanned = widget.entry.doseLog.isPlanned;
   }
 
   @override
@@ -96,16 +99,15 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
           // --- Trackable picker ---
           DropdownButtonFormField<Trackable>(
             // Pre-select the trackable that matches the existing entry's trackable ID.
-            initialValue: trackables.where((t) => t.id == _selectedTrackable?.id).firstOrNull,
+            initialValue: trackables
+                .where((t) => t.id == _selectedTrackable?.id)
+                .firstOrNull,
             decoration: const InputDecoration(
               labelText: 'Trackable',
               border: OutlineInputBorder(),
             ),
             items: trackables.map((t) {
-              return DropdownMenuItem<Trackable>(
-                value: t,
-                child: Text(t.name),
-              );
+              return DropdownMenuItem<Trackable>(value: t, child: Text(t.name));
             }).toList(),
             onChanged: (trackable) {
               setState(() => _selectedTrackable = trackable);
@@ -141,7 +143,19 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
             onDateChanged: (date) => setState(() => _selectedDate = date),
             onTimeChanged: (time) => setState(() => _selectedTime = time),
           ),
-          
+
+          const SizedBox(height: 8),
+
+          // Planned flag lets users move an entry between projected and actual.
+          // Like toggling a task between "draft" and "published" in CMS terms.
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Planned dose'),
+            subtitle: const Text('Use for future/intended intake projections'),
+            value: _isPlanned,
+            onChanged: (value) => setState(() => _isPlanned = value),
+          ),
+
           // Note: Save button moved to AppBar actions for UI consistency.
         ],
       ),
@@ -182,12 +196,15 @@ class _EditDoseScreenState extends ConsumerState<EditDoseScreen> {
       _selectedTime.minute,
     );
 
-    await ref.read(databaseProvider).updateDoseLog(
-      widget.entry.doseLog.id,
-      trackable.id,
-      amount,
-      loggedAt,
-    );
+    await ref
+        .read(databaseProvider)
+        .updateDoseLog(
+          widget.entry.doseLog.id,
+          trackable.id,
+          amount,
+          loggedAt,
+          isPlanned: Value(_isPlanned),
+        );
 
     _saving = false;
 

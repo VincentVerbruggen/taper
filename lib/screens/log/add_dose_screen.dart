@@ -17,6 +17,7 @@ class AddDoseScreen extends ConsumerStatefulWidget {
   final double? initialAmount;
   final String? initialName;
   final DateTime? initialDate;
+  final bool initialIsPlanned;
 
   const AddDoseScreen({
     super.key,
@@ -24,6 +25,7 @@ class AddDoseScreen extends ConsumerStatefulWidget {
     this.initialAmount,
     this.initialName,
     this.initialDate,
+    this.initialIsPlanned = false,
   });
 
   @override
@@ -36,6 +38,7 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
   late DateTime _selectedDate;
   late TimeOfDay _selectedTime;
   String? _selectedPresetName;
+  bool _isPlanned = false;
 
   /// Tracks whether the user has attempted to save.
   bool _submitted = false;
@@ -45,6 +48,7 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
     super.initState();
     _resetTime();
     _selectedPresetName = widget.initialName;
+    _isPlanned = widget.initialIsPlanned;
 
     if (widget.initialAmount != null) {
       final amount = widget.initialAmount!;
@@ -91,10 +95,7 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
       body: trackablesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, s) => Center(child: Text('Error: $e')),
-        data: (trackables) => _buildForm(
-          trackables,
-          lastLoggedIdAsync.value,
-        ),
+        data: (trackables) => _buildForm(trackables, lastLoggedIdAsync.value),
       ),
     );
   }
@@ -133,10 +134,7 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
               border: OutlineInputBorder(),
             ),
             items: trackables.map((t) {
-              return DropdownMenuItem<Trackable>(
-                value: t,
-                child: Text(t.name),
-              );
+              return DropdownMenuItem<Trackable>(value: t, child: Text(t.name));
             }).toList(),
             onChanged: (trackable) {
               setState(() => _selectedTrackable = trackable);
@@ -180,6 +178,18 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
             onTimeChanged: (time) => setState(() => _selectedTime = time),
           ),
 
+          const SizedBox(height: 8),
+
+          // Planned flag marks this as a projection rather than consumed dose.
+          // The dashboard graph can then render it as a projected dashed line.
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Planned dose'),
+            subtitle: const Text('Use for future/intended intake projections'),
+            value: _isPlanned,
+            onChanged: (value) => setState(() => _isPlanned = value),
+          ),
+
           // Note: Save button moved to AppBar actions for UI consistency.
         ],
       ),
@@ -203,7 +213,9 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
             runSpacing: 4,
             children: presetsList.map((preset) {
               return ActionChip(
-                label: Text('${preset.name} (${preset.amount.toStringAsFixed(0)})'),
+                label: Text(
+                  '${preset.name} (${preset.amount.toStringAsFixed(0)})',
+                ),
                 onPressed: () {
                   _amountController.text = preset.amount.toStringAsFixed(
                     preset.amount == preset.amount.roundToDouble() ? 0 : 1,
@@ -250,12 +262,15 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
       _selectedTime.minute,
     );
 
-    await ref.read(databaseProvider).insertDoseLog(
-      trackable.id,
-      amount,
-      loggedAt,
-      name: _selectedPresetName,
-    );
+    await ref
+        .read(databaseProvider)
+        .insertDoseLog(
+          trackable.id,
+          amount,
+          loggedAt,
+          name: _selectedPresetName,
+          isPlanned: _isPlanned,
+        );
 
     _saving = false;
     if (mounted) {

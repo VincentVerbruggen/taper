@@ -28,15 +28,19 @@ void main() {
     } catch (_) {}
   });
 
-  Widget buildTestWidget() {
+  Widget buildTestWidget({DateTime? now}) {
+    final overrides = [
+      databaseProvider.overrideWithValue(db),
+      sharedPreferencesProvider.overrideWithValue(prefs),
+    ];
+    if (now != null) {
+      // Freeze "now" so selected-day filtering is deterministic in tests.
+      overrides.add(nowProvider.overrideWithValue(() => now));
+    }
+
     return ProviderScope(
-      overrides: [
-        databaseProvider.overrideWithValue(db),
-        sharedPreferencesProvider.overrideWithValue(prefs),
-      ],
-      child: const MaterialApp(
-        home: LogDoseScreen(),
-      ),
+      overrides: overrides,
+      child: const MaterialApp(home: LogDoseScreen()),
     );
   }
 
@@ -75,7 +79,7 @@ void main() {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
 
-    expect(find.textContaining('No doses logged yet'), findsOneWidget);
+    expect(find.textContaining('No doses logged on this day'), findsOneWidget);
 
     await cleanUp(tester);
   });
@@ -104,6 +108,32 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('date navigation shows only the selected day doses', (
+    tester,
+  ) async {
+    final fixedNow = DateTime(2026, 2, 23, 12);
+    final todayDoseTime = DateTime(2026, 2, 23, 9);
+    final yesterdayDoseTime = DateTime(2026, 2, 22, 9);
+    await db.insertDoseLog(1, 100, todayDoseTime);
+    await db.insertDoseLog(1, 60, yesterdayDoseTime);
+
+    await tester.pumpWidget(buildTestWidget(now: fixedNow));
+    await pumpAndWait(tester);
+
+    // Live/today mode should show only the current day window.
+    expect(find.text('Caffeine — 100 mg'), findsOneWidget);
+    expect(find.text('Caffeine — 60 mg'), findsNothing);
+
+    await tester.tap(find.byTooltip('Previous day'));
+    await tester.pumpAndSettle();
+
+    // After moving to the previous day, the list should swap accordingly.
+    expect(find.text('Caffeine — 100 mg'), findsNothing);
+    expect(find.text('Caffeine — 60 mg'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
   testWidgets('log entries are wrapped in Card.outlined', (tester) async {
     await db.insertDoseLog(1, 150, DateTime.now());
 
@@ -121,7 +151,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('tapping a log entry navigates to EditDoseScreen', (tester) async {
+  testWidgets('tapping a log entry navigates to EditDoseScreen', (
+    tester,
+  ) async {
     await db.insertDoseLog(1, 120, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
@@ -137,7 +169,9 @@ void main() {
     await cleanUp(tester, hasNavigated: true);
   });
 
-  testWidgets('tap delete icon removes dose and shows undo SnackBar', (tester) async {
+  testWidgets('tap delete icon removes dose and shows undo SnackBar', (
+    tester,
+  ) async {
     await db.insertDoseLog(1, 200, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
@@ -161,6 +195,31 @@ void main() {
     // SnackBar should show with "Undo" action.
     expect(find.byType(SnackBar), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('undo SnackBar auto-dismisses after timeout', (tester) async {
+    // Fixed timestamp keeps test deterministic around day-boundary logic.
+    await db.insertDoseLog(1, 210, DateTime(2026, 2, 23, 12));
+
+    await tester.pumpWidget(buildTestWidget(now: DateTime(2026, 2, 23, 12)));
+    await pumpAndWait(tester);
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.byType(SnackBar), findsOneWidget);
+    final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+    // Action snackbars should still timeout in this app.
+    expect(snackBar.persist, isFalse);
+    expect(snackBar.duration, const Duration(seconds: 6));
+
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
 
     await cleanUp(tester);
   });
@@ -211,7 +270,9 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('copy dose opens AddDoseScreen with pre-filled amount', (tester) async {
+  testWidgets('copy dose opens AddDoseScreen with pre-filled amount', (
+    tester,
+  ) async {
     await db.insertDoseLog(1, 250, DateTime.now());
 
     await tester.pumpWidget(buildTestWidget());
@@ -253,7 +314,9 @@ void main() {
     await cleanUp(tester, hasNavigated: true);
   });
 
-  testWidgets('save works with auto-selected trackable (first visible)', (tester) async {
+  testWidgets('save works with auto-selected trackable (first visible)', (
+    tester,
+  ) async {
     // No doses logged yet, so it falls back to first visible trackable (Caffeine).
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWait(tester);
@@ -278,6 +341,53 @@ void main() {
     expect(logs.length, 1);
     expect(logs.first.trackableId, 1);
     expect(logs.first.amount, 100.0);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('save can mark a dose as planned', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWait(tester);
+
+    // Open AddDoseScreen.
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    // Fill amount and enable planned flag.
+    await tester.enterText(find.byType(TextField).first, '110');
+    await tester.pump();
+    await tester.tap(find.byType(Switch).first);
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Log Dose'));
+    await tester.pumpAndSettle();
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs.length, 1);
+    expect(logs.first.amount, 110);
+    expect(logs.first.isPlanned, isTrue);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('edit screen can toggle planned status', (tester) async {
+    await db.insertDoseLog(1, 95, DateTime(2026, 2, 23, 12), isPlanned: false);
+
+    await tester.pumpWidget(buildTestWidget(now: DateTime(2026, 2, 23, 12)));
+    await pumpAndWait(tester);
+
+    await tester.tap(find.text('Caffeine — 95 mg'));
+    await tester.pumpAndSettle();
+
+    // Toggle planned on and save.
+    await tester.tap(find.byType(Switch).first);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Save changes'));
+    await tester.pumpAndSettle();
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs.length, 1);
+    expect(logs.first.isPlanned, isTrue);
 
     await cleanUp(tester);
   });

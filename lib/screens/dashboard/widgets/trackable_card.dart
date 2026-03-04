@@ -10,7 +10,6 @@ import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/dashboard/taper_progress_screen.dart';
 import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
-import 'package:taper/utils/decay_calculator.dart';
 
 /// Chart viewing mode for the trackable card.
 enum ChartMode {
@@ -204,6 +203,10 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
       final hoursFromStart = p.time.difference(chartStartTime).inMinutes / 60.0;
       return FlSpot(hoursFromStart, p.amount);
     }).toList();
+    final projectedSpots = data.projectedCurvePoints.map((p) {
+      final hoursFromStart = p.time.difference(chartStartTime).inMinutes / 60.0;
+      return FlSpot(hoursFromStart, p.amount);
+    }).toList();
 
     final cumulativeSpots = data.cumulativePoints.map((p) {
       final hoursFromStart = p.time.difference(chartStartTime).inMinutes / 60.0;
@@ -216,9 +219,15 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
       for (final s in decaySpots) {
         if (s.y > maxY) maxY = s.y;
       }
+      for (final s in projectedSpots) {
+        if (s.y > maxY) maxY = s.y;
+      }
     } else {
       maxY = decaySpots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
       for (final s in cumulativeSpots) {
+        if (s.y > maxY) maxY = s.y;
+      }
+      for (final s in projectedSpots) {
         if (s.y > maxY) maxY = s.y;
       }
     }
@@ -259,10 +268,17 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
     final adjustedVisibleMaxY = maxY > 0 ? maxY * 1.1 : 1.0;
 
     final lineBars = <LineChartBarData>[];
+    int? projectedBarIndex;
     if (mode == ChartMode.decay) {
       lineBars.add(
         _buildPrimaryLine(decaySpots, trackableColor, isCurved: true),
       );
+      if (data.hasPlannedDoses && projectedSpots.isNotEmpty) {
+        lineBars.add(
+          _buildProjectedLine(projectedSpots, trackableColor, isCurved: true),
+        );
+        projectedBarIndex = lineBars.length - 1;
+      }
       if (cumulativeSpots.isNotEmpty) {
         lineBars.add(
           _buildSecondaryLine(cumulativeSpots, trackableColor, isCurved: false),
@@ -277,6 +293,12 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
       lineBars.add(
         _buildSecondaryLine(decaySpots, trackableColor, isCurved: true),
       );
+      if (data.hasPlannedDoses && projectedSpots.isNotEmpty) {
+        lineBars.add(
+          _buildProjectedLine(projectedSpots, trackableColor, isCurved: true),
+        );
+        projectedBarIndex = lineBars.length - 1;
+      }
     }
 
     // Draw targets as dots (no connecting line). This keeps the chart readable
@@ -386,12 +408,21 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
                 final amount = spot.y.toStringAsFixed(0);
                 final isTargetSpot =
                     targetBarIndex != null && spot.barIndex == targetBarIndex;
-                final label = isTargetSpot ? 'Target' : 'Amount';
+                final isProjectedSpot =
+                    projectedBarIndex != null &&
+                    spot.barIndex == projectedBarIndex;
+                final label = isTargetSpot
+                    ? 'Target'
+                    : isProjectedSpot
+                    ? 'Projected'
+                    : 'Amount';
                 return LineTooltipItem(
                   '$timeStr\n$label: $amount ${data.trackable.unit}',
                   TextStyle(
                     color: isTargetSpot
                         ? axisColor.withAlpha(220)
+                        : isProjectedSpot
+                        ? trackableColor.withAlpha(170)
                         : trackableColor,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
@@ -529,6 +560,27 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
     );
   }
 
+  /// Dashed projected line (actual + planned doses).
+  ///
+  /// We keep this visually distinct from the actual curve so users can compare
+  /// real intake against "if I follow plan" projection at a glance.
+  LineChartBarData _buildProjectedLine(
+    List<FlSpot> spots,
+    Color color, {
+    required bool isCurved,
+  }) {
+    return LineChartBarData(
+      spots: spots,
+      isCurved: isCurved,
+      curveSmoothness: isCurved ? 0.35 : 0,
+      color: color.withAlpha(180),
+      barWidth: 2,
+      dotData: const FlDotData(show: false),
+      dashArray: [8, 5],
+      belowBarData: BarAreaData(show: false),
+    );
+  }
+
   Widget _buildOverflowMenu(BuildContext context, TrackableCardData data) {
     return PopupMenuButton<String>(
       icon: Icon(
@@ -613,6 +665,10 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
       base += ' (target: ${data.taperTarget!.toStringAsFixed(0)})';
     }
 
+    if (data.plannedToday > 0) {
+      base += ' (+${data.plannedToday.toStringAsFixed(0)} planned)';
+    }
+
     return base;
   }
 
@@ -631,6 +687,10 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           showCloseIcon: true,
+          // Repeat Last snackbar includes an action, so we must override
+          // persist=true default to make it auto-dismiss on a timer.
+          persist: false,
+          duration: const Duration(seconds: 6),
           content: Text(
             'Logged ${lastDose.amount.toStringAsFixed(0)} ${data.trackable.unit} ${data.trackable.name}',
           ),

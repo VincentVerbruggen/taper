@@ -783,6 +783,21 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isPlannedMeta = const VerificationMeta(
+    'isPlanned',
+  );
+  @override
+  late final GeneratedColumn<bool> isPlanned = GeneratedColumn<bool>(
+    'is_planned',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_planned" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -790,6 +805,7 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
     amount,
     loggedAt,
     name,
+    isPlanned,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -839,6 +855,12 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
         name.isAcceptableOrUnknown(data['name']!, _nameMeta),
       );
     }
+    if (data.containsKey('is_planned')) {
+      context.handle(
+        _isPlannedMeta,
+        isPlanned.isAcceptableOrUnknown(data['is_planned']!, _isPlannedMeta),
+      );
+    }
     return context;
   }
 
@@ -868,6 +890,10 @@ class $DoseLogsTable extends DoseLogs with TableInfo<$DoseLogsTable, DoseLog> {
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       ),
+      isPlanned: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_planned'],
+      )!,
     );
   }
 
@@ -883,12 +909,14 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
   final double amount;
   final DateTime loggedAt;
   final String? name;
+  final bool isPlanned;
   const DoseLog({
     required this.id,
     required this.trackableId,
     required this.amount,
     required this.loggedAt,
     this.name,
+    required this.isPlanned,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -900,6 +928,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     if (!nullToAbsent || name != null) {
       map['name'] = Variable<String>(name);
     }
+    map['is_planned'] = Variable<bool>(isPlanned);
     return map;
   }
 
@@ -910,6 +939,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       amount: Value(amount),
       loggedAt: Value(loggedAt),
       name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      isPlanned: Value(isPlanned),
     );
   }
 
@@ -924,6 +954,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       amount: serializer.fromJson<double>(json['amount']),
       loggedAt: serializer.fromJson<DateTime>(json['loggedAt']),
       name: serializer.fromJson<String?>(json['name']),
+      isPlanned: serializer.fromJson<bool>(json['isPlanned']),
     );
   }
   @override
@@ -935,6 +966,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       'amount': serializer.toJson<double>(amount),
       'loggedAt': serializer.toJson<DateTime>(loggedAt),
       'name': serializer.toJson<String?>(name),
+      'isPlanned': serializer.toJson<bool>(isPlanned),
     };
   }
 
@@ -944,12 +976,14 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
     double? amount,
     DateTime? loggedAt,
     Value<String?> name = const Value.absent(),
+    bool? isPlanned,
   }) => DoseLog(
     id: id ?? this.id,
     trackableId: trackableId ?? this.trackableId,
     amount: amount ?? this.amount,
     loggedAt: loggedAt ?? this.loggedAt,
     name: name.present ? name.value : this.name,
+    isPlanned: isPlanned ?? this.isPlanned,
   );
   DoseLog copyWithCompanion(DoseLogsCompanion data) {
     return DoseLog(
@@ -960,6 +994,7 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
       amount: data.amount.present ? data.amount.value : this.amount,
       loggedAt: data.loggedAt.present ? data.loggedAt.value : this.loggedAt,
       name: data.name.present ? data.name.value : this.name,
+      isPlanned: data.isPlanned.present ? data.isPlanned.value : this.isPlanned,
     );
   }
 
@@ -970,13 +1005,15 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
           ..write('trackableId: $trackableId, ')
           ..write('amount: $amount, ')
           ..write('loggedAt: $loggedAt, ')
-          ..write('name: $name')
+          ..write('name: $name, ')
+          ..write('isPlanned: $isPlanned')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, trackableId, amount, loggedAt, name);
+  int get hashCode =>
+      Object.hash(id, trackableId, amount, loggedAt, name, isPlanned);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -985,7 +1022,8 @@ class DoseLog extends DataClass implements Insertable<DoseLog> {
           other.trackableId == this.trackableId &&
           other.amount == this.amount &&
           other.loggedAt == this.loggedAt &&
-          other.name == this.name);
+          other.name == this.name &&
+          other.isPlanned == this.isPlanned);
 }
 
 class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
@@ -994,12 +1032,14 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
   final Value<double> amount;
   final Value<DateTime> loggedAt;
   final Value<String?> name;
+  final Value<bool> isPlanned;
   const DoseLogsCompanion({
     this.id = const Value.absent(),
     this.trackableId = const Value.absent(),
     this.amount = const Value.absent(),
     this.loggedAt = const Value.absent(),
     this.name = const Value.absent(),
+    this.isPlanned = const Value.absent(),
   });
   DoseLogsCompanion.insert({
     this.id = const Value.absent(),
@@ -1007,6 +1047,7 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     required double amount,
     required DateTime loggedAt,
     this.name = const Value.absent(),
+    this.isPlanned = const Value.absent(),
   }) : trackableId = Value(trackableId),
        amount = Value(amount),
        loggedAt = Value(loggedAt);
@@ -1016,6 +1057,7 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     Expression<double>? amount,
     Expression<DateTime>? loggedAt,
     Expression<String>? name,
+    Expression<bool>? isPlanned,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1023,6 +1065,7 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
       if (amount != null) 'amount': amount,
       if (loggedAt != null) 'logged_at': loggedAt,
       if (name != null) 'name': name,
+      if (isPlanned != null) 'is_planned': isPlanned,
     });
   }
 
@@ -1032,6 +1075,7 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     Value<double>? amount,
     Value<DateTime>? loggedAt,
     Value<String?>? name,
+    Value<bool>? isPlanned,
   }) {
     return DoseLogsCompanion(
       id: id ?? this.id,
@@ -1039,6 +1083,7 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
       amount: amount ?? this.amount,
       loggedAt: loggedAt ?? this.loggedAt,
       name: name ?? this.name,
+      isPlanned: isPlanned ?? this.isPlanned,
     );
   }
 
@@ -1060,6 +1105,9 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
+    if (isPlanned.present) {
+      map['is_planned'] = Variable<bool>(isPlanned.value);
+    }
     return map;
   }
 
@@ -1070,7 +1118,8 @@ class DoseLogsCompanion extends UpdateCompanion<DoseLog> {
           ..write('trackableId: $trackableId, ')
           ..write('amount: $amount, ')
           ..write('loggedAt: $loggedAt, ')
-          ..write('name: $name')
+          ..write('name: $name, ')
+          ..write('isPlanned: $isPlanned')
           ..write(')'))
         .toString();
   }
@@ -4807,6 +4856,7 @@ typedef $$DoseLogsTableCreateCompanionBuilder =
       required double amount,
       required DateTime loggedAt,
       Value<String?> name,
+      Value<bool> isPlanned,
     });
 typedef $$DoseLogsTableUpdateCompanionBuilder =
     DoseLogsCompanion Function({
@@ -4815,6 +4865,7 @@ typedef $$DoseLogsTableUpdateCompanionBuilder =
       Value<double> amount,
       Value<DateTime> loggedAt,
       Value<String?> name,
+      Value<bool> isPlanned,
     });
 
 final class $$DoseLogsTableReferences
@@ -4867,6 +4918,11 @@ class $$DoseLogsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isPlanned => $composableBuilder(
+    column: $table.isPlanned,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4923,6 +4979,11 @@ class $$DoseLogsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isPlanned => $composableBuilder(
+    column: $table.isPlanned,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$TrackablesTableOrderingComposer get trackableId {
     final $$TrackablesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4967,6 +5028,9 @@ class $$DoseLogsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isPlanned =>
+      $composableBuilder(column: $table.isPlanned, builder: (column) => column);
 
   $$TrackablesTableAnnotationComposer get trackableId {
     final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
@@ -5025,12 +5089,14 @@ class $$DoseLogsTableTableManager
                 Value<double> amount = const Value.absent(),
                 Value<DateTime> loggedAt = const Value.absent(),
                 Value<String?> name = const Value.absent(),
+                Value<bool> isPlanned = const Value.absent(),
               }) => DoseLogsCompanion(
                 id: id,
                 trackableId: trackableId,
                 amount: amount,
                 loggedAt: loggedAt,
                 name: name,
+                isPlanned: isPlanned,
               ),
           createCompanionCallback:
               ({
@@ -5039,12 +5105,14 @@ class $$DoseLogsTableTableManager
                 required double amount,
                 required DateTime loggedAt,
                 Value<String?> name = const Value.absent(),
+                Value<bool> isPlanned = const Value.absent(),
               }) => DoseLogsCompanion.insert(
                 id: id,
                 trackableId: trackableId,
                 amount: amount,
                 loggedAt: loggedAt,
                 name: name,
+                isPlanned: isPlanned,
               ),
           withReferenceMapper: (p0) => p0
               .map(

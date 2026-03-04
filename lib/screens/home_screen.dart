@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/providers/backup_providers.dart';
+import 'package:taper/screens/analysis/analysis_screen.dart';
 import 'package:taper/screens/dashboard_screen.dart';
 import 'package:taper/screens/log/log_dose_screen.dart';
 import 'package:taper/screens/settings/settings_screen.dart';
@@ -37,18 +38,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       //
       // Without IndexedStack, switching tabs would destroy and rebuild the
       // screen each time — losing any open forms or scroll positions.
-      // 3 tabs: Dashboard, Log, Settings (Trackables merged into Settings).
+      // 4 tabs: Dashboard, Analysis, Log, Settings.
       body: IndexedStack(
         index: _selectedIndex,
         children: const [
           DashboardScreen(),
+          AnalysisScreen(),
           LogDoseScreen(),
           SettingsScreen(),
         ],
       ),
 
       // NavigationBar = Material 3 bottom navigation.
-      // Reduced from 4 to 3 tabs — Trackables moved into Settings.
+      // Analysis is a dedicated reporting tab with date-range aggregates.
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -59,6 +61,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard),
             label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.analytics_outlined),
+            selectedIcon: Icon(Icons.analytics),
+            label: 'Analysis',
           ),
           NavigationDestination(
             icon: Icon(Icons.add_circle_outline),

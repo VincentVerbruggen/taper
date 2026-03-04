@@ -24,8 +24,8 @@ import 'package:taper/utils/taper_calculator.dart';
 /// Writes: ref.read(pinnedTrackableIdProvider.notifier).state = 42
 final pinnedTrackableIdProvider =
     NotifierProvider<PinnedTrackableIdNotifier, int?>(
-  PinnedTrackableIdNotifier.new,
-);
+      PinnedTrackableIdNotifier.new,
+    );
 
 /// Simple notifier that holds a nullable int (the pinned trackable's ID).
 /// build() returns the initial state (null = nothing pinned).
@@ -58,8 +58,8 @@ class PinnedTrackableIdNotifier extends Notifier<int?> {
 /// ref.watch(databaseProvider), so they automatically cascade-refresh.
 final databaseGenerationProvider =
     NotifierProvider<DatabaseGenerationNotifier, int>(
-  DatabaseGenerationNotifier.new,
-);
+      DatabaseGenerationNotifier.new,
+    );
 
 class DatabaseGenerationNotifier extends Notifier<int> {
   @override
@@ -163,8 +163,10 @@ final doseLogsProvider = StreamProvider<List<DoseLogWithTrackable>>((ref) {
 /// Used by:
 ///   - Edit trackable screen (manage presets list)
 ///   - Add dose screen (show preset chips)
-final presetsProvider =
-    StreamProvider.family<List<Preset>, int>((ref, trackableId) {
+final presetsProvider = StreamProvider.family<List<Preset>, int>((
+  ref,
+  trackableId,
+) {
   final db = ref.watch(databaseProvider);
   return db.watchPresets(trackableId);
 });
@@ -175,15 +177,19 @@ final presetsProvider =
 /// Used by the edit trackable screen to manage thresholds.
 ///
 /// Like: Threshold::where('trackable_id', $id)->get()
-final thresholdsProvider =
-    StreamProvider.family<List<Threshold>, int>((ref, trackableId) {
+final thresholdsProvider = StreamProvider.family<List<Threshold>, int>((
+  ref,
+  trackableId,
+) {
   final db = ref.watch(databaseProvider);
   return db.watchThresholds(trackableId);
 });
 
 /// Reactive stream of time-based targets for a specific trackable.
-final targetsProvider =
-    StreamProvider.family<List<Target>, int>((ref, trackableId) {
+final targetsProvider = StreamProvider.family<List<Target>, int>((
+  ref,
+  trackableId,
+) {
   final db = ref.watch(databaseProvider);
   return db.watchTargets(trackableId);
 });
@@ -194,8 +200,10 @@ final targetsProvider =
 /// Used by the edit trackable screen to list all plans (active + inactive).
 ///
 /// Like: TaperPlan::where('trackable_id', $id)->orderByDesc('start_date')->get()
-final taperPlansProvider =
-    StreamProvider.family<List<TaperPlan>, int>((ref, trackableId) {
+final taperPlansProvider = StreamProvider.family<List<TaperPlan>, int>((
+  ref,
+  trackableId,
+) {
   final db = ref.watch(databaseProvider);
   return db.watchTaperPlans(trackableId);
 });
@@ -206,8 +214,10 @@ final taperPlansProvider =
 /// Used by the reminders screen and the edit trackable navigation tile count.
 ///
 /// Like: Reminder::where('trackable_id', $id)->orderBy('label')->get()
-final remindersProvider =
-    StreamProvider.family<List<Reminder>, int>((ref, trackableId) {
+final remindersProvider = StreamProvider.family<List<Reminder>, int>((
+  ref,
+  trackableId,
+) {
   final db = ref.watch(databaseProvider);
   return db.watchReminders(trackableId);
 });
@@ -218,8 +228,10 @@ final remindersProvider =
 /// to show today's target and the "Progress" button.
 ///
 /// Like: TaperPlan::where('trackable_id', $id)->where('is_active', true)->first()
-final activeTaperPlanProvider =
-    StreamProvider.family<TaperPlan?, int>((ref, trackableId) {
+final activeTaperPlanProvider = StreamProvider.family<TaperPlan?, int>((
+  ref,
+  trackableId,
+) {
   final db = ref.watch(databaseProvider);
   return db.watchActiveTaperPlan(trackableId);
 });
@@ -244,8 +256,7 @@ final lastLoggedTrackableIdProvider = FutureProvider<int?>((ref) async {
 ///
 /// Like a URL parameter in a web dashboard: /dashboard?date=2026-02-19.
 /// When null, the dashboard shows live data; when set, it shows historical data.
-final selectedDateProvider =
-    NotifierProvider<SelectedDateNotifier, DateTime?>(
+final selectedDateProvider = NotifierProvider<SelectedDateNotifier, DateTime?>(
   SelectedDateNotifier.new,
 );
 
@@ -254,7 +265,23 @@ class SelectedDateNotifier extends Notifier<DateTime?> {
   DateTime? build() => null;
 
   /// Set to a specific date to view that day's data.
-  void selectDate(DateTime date) => state = date;
+  void selectDate(DateTime date) {
+    // Normalize to this app's day-boundary timestamp (e.g., 05:00).
+    // Date pickers return midnight, but card/log queries are boundary-based.
+    final boundaryHour = ref.read(dayBoundaryHourProvider);
+    final selectedBoundary = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      boundaryHour,
+    );
+    final now = ref.read(nowProvider)();
+    final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
+
+    // Treat selecting "today" as live mode so the dashboard keeps updating
+    // in real time instead of freezing at end-of-day.
+    state = selectedBoundary.isBefore(todayBoundary) ? selectedBoundary : null;
+  }
 
   /// Reset to live/today view.
   void goToToday() => state = null;
@@ -262,8 +289,8 @@ class SelectedDateNotifier extends Notifier<DateTime?> {
   /// Go to the previous day.
   void previousDay() {
     final boundaryHour = ref.read(dayBoundaryHourProvider);
-    final current =
-        state ?? dayBoundary(DateTime.now(), boundaryHour: boundaryHour);
+    final now = ref.read(nowProvider)();
+    final current = state ?? dayBoundary(now, boundaryHour: boundaryHour);
     state = current.subtract(const Duration(days: 1));
   }
 
@@ -272,8 +299,8 @@ class SelectedDateNotifier extends Notifier<DateTime?> {
     if (state == null) return; // Already on today.
     final boundaryHour = ref.read(dayBoundaryHourProvider);
     final next = state!.add(const Duration(days: 1));
-    final todayBoundary =
-        dayBoundary(DateTime.now(), boundaryHour: boundaryHour);
+    final now = ref.read(nowProvider)();
+    final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
     // If the next day would be today or later, go to live mode.
     if (!next.isBefore(todayBoundary)) {
       state = null;
@@ -302,9 +329,21 @@ class TrackableCardData {
   /// No decay applied — just total consumed.
   final double totalToday;
 
+  /// Raw sum of planned doses in the selected day window.
+  /// Kept separate from consumed totals for "actual vs projected" UI.
+  final double plannedToday;
+
   /// Chart data: sampled every 5 minutes from day boundary to next boundary.
   /// Empty for trackables without a half-life.
   final List<({DateTime time, double amount})> curvePoints;
+
+  /// Projected chart data (actual + planned doses) for the same window.
+  /// Drawn as an overlay to preview where levels could go if plans are followed.
+  final List<({DateTime time, double amount})> projectedCurvePoints;
+
+  /// Whether planned doses exist in the loaded query window.
+  /// Used to avoid drawing a duplicate projected line when there are none.
+  final bool hasPlannedDoses;
 
   /// The day boundary (5 AM today) used to generate the curve.
   /// Passed to the chart so X-axis labels can show clock times.
@@ -344,7 +383,10 @@ class TrackableCardData {
     required this.trackable,
     required this.activeAmount,
     required this.totalToday,
+    required this.plannedToday,
     required this.curvePoints,
+    required this.projectedCurvePoints,
+    required this.hasPlannedDoses,
     required this.dayBoundaryTime,
     required this.nextDayBoundaryTime,
     required this.lastDose,
@@ -356,29 +398,33 @@ class TrackableCardData {
   });
 }
 
-/// Per-trackable card data provider, keyed by trackable ID.
+/// Shared implementation for building trackable card data streams.
 ///
-/// StreamProvider.family creates a separate provider instance for each trackable,
-/// so cards load independently (staggered). Each watches its own dose stream.
-///
-/// Like a Livewire component with a mount($trackableId) parameter — each card
-/// is its own reactive unit with its own DB query.
-///
-/// The provider combines two streams (doses + lastDose) using Rx.combineLatest
-/// pattern via StreamZip, then runs the decay calculator on each emission.
-final trackableCardDataProvider =
-    StreamProvider.family<TrackableCardData, int>((ref, trackableId) {
+/// [selectedDate] controls whether calculations are anchored to:
+///   - null: current live day (dashboard behavior)
+///   - non-null: historical selected day (trackable log behavior)
+Stream<TrackableCardData> _trackableCardDataStream(
+  Ref ref,
+  int trackableId, {
+  required DateTime? selectedDate,
+}) {
   final db = ref.watch(databaseProvider);
   // Watch the day boundary hour setting so cards recalculate when it changes.
   final boundaryHour = ref.watch(dayBoundaryHourProvider);
-  // Watch the selected date for historical views.
-  // null = today/live; non-null = viewing a past day.
-  final selectedDate = ref.watch(selectedDateProvider);
 
-  final now = DateTime.now();
+  // Use a provider-driven clock so widget tests can freeze "now" and assert
+  // deterministic day labels/queries.
+  final now = ref.watch(nowProvider)();
 
   // When viewing a past date, use that date's boundary; otherwise use today.
-  final boundary = selectedDate ?? dayBoundary(now, boundaryHour: boundaryHour);
+  final boundary = selectedDate != null
+      ? DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          boundaryHour,
+        )
+      : dayBoundary(now, boundaryHour: boundaryHour);
   final nextBoundary = selectedDate != null
       ? DateTime(boundary.year, boundary.month, boundary.day + 1, boundaryHour)
       : nextDayBoundary(now, boundaryHour: boundaryHour);
@@ -394,8 +440,9 @@ final trackableCardDataProvider =
     loading: () => const Stream.empty(),
     error: (e, s) => Stream.error(e, s),
     data: (trackables) {
-      final trackable =
-          trackables.where((t) => t.id == trackableId).firstOrNull;
+      final trackable = trackables
+          .where((t) => t.id == trackableId)
+          .firstOrNull;
       if (trackable == null) return Stream.error('Trackable not found');
 
       // Determine the decay model for this trackable.
@@ -407,8 +454,8 @@ final trackableCardDataProvider =
       //   - none: just the day boundary (no decay, only count today's totals)
       final dosesSince = switch (model) {
         DecayModel.exponential => boundary.subtract(
-            Duration(hours: (trackable.halfLifeHours! * 10).ceil()),
-          ),
+          Duration(hours: (trackable.halfLifeHours! * 10).ceil()),
+        ),
         DecayModel.linear => boundary.subtract(const Duration(hours: 24)),
         DecayModel.none => boundary,
       };
@@ -423,17 +470,32 @@ final trackableCardDataProvider =
       // Combine all five streams. When any emits, recalculate the card data.
       // Like Livewire's computed properties that depend on multiple queries —
       // when any source changes, the whole card re-renders.
-      return _combineStreams(dosesStream, lastDoseStream, thresholdsStream,
-          taperPlanStream, targetsStream).map((combined) {
+      return _combineStreams(
+        dosesStream,
+        lastDoseStream,
+        thresholdsStream,
+        taperPlanStream,
+        targetsStream,
+      ).map((combined) {
         final allDoses = combined.$1;
         final lastDose = combined.$2;
         final thresholdsList = combined.$3;
         final activePlan = combined.$4;
         final targetsList = combined.$5;
 
-        // Filter doses to just "today" (since day boundary) for the raw total.
-        final todayDoses =
-            allDoses.where((d) => !d.loggedAt.isBefore(boundary)).toList();
+        // Planned doses are projections, so we keep them separate from actual
+        // consumed doses for stats and "Repeat Last" semantics.
+        final actualDoses = allDoses.where((d) => !d.isPlanned).toList();
+        final plannedDoses = allDoses.where((d) => d.isPlanned).toList();
+        final projectedDoses = [...actualDoses, ...plannedDoses];
+
+        // Filter to the selected day for raw totals.
+        final todayActualDoses = actualDoses
+            .where((d) => !d.loggedAt.isBefore(boundary))
+            .toList();
+        final todayPlannedDoses = plannedDoses
+            .where((d) => !d.loggedAt.isBefore(boundary))
+            .toList();
 
         // Extended time window: 6h before day boundary and 6h after next boundary.
         // This lets the chart show yesterday's decay trailing in from the left
@@ -447,47 +509,66 @@ final trackableCardDataProvider =
         // Curves use the extended window for multi-day visibility.
         final (
           double activeAmount,
-          List<({DateTime time, double amount})> curvePoints
+          List<({DateTime time, double amount})> curvePoints,
+          List<({DateTime time, double amount})> projectedCurvePoints,
         ) = switch (model) {
           DecayModel.exponential => (
-              DecayCalculator.totalActiveAt(
-                doses: allDoses,
-                halfLifeHours: trackable.halfLifeHours!,
-                queryTime: queryTime,
-                absorptionMinutes: trackable.absorptionMinutes,
-              ),
-              DecayCalculator.generateCurve(
-                doses: allDoses,
-                halfLifeHours: trackable.halfLifeHours!,
-                startTime: extendedStart,
-                endTime: extendedEnd,
-                absorptionMinutes: trackable.absorptionMinutes,
-              ),
+            DecayCalculator.totalActiveAt(
+              doses: actualDoses,
+              halfLifeHours: trackable.halfLifeHours!,
+              queryTime: queryTime,
+              absorptionMinutes: trackable.absorptionMinutes,
             ),
+            DecayCalculator.generateCurve(
+              doses: actualDoses,
+              halfLifeHours: trackable.halfLifeHours!,
+              startTime: extendedStart,
+              endTime: extendedEnd,
+              absorptionMinutes: trackable.absorptionMinutes,
+            ),
+            DecayCalculator.generateCurve(
+              doses: projectedDoses,
+              halfLifeHours: trackable.halfLifeHours!,
+              startTime: extendedStart,
+              endTime: extendedEnd,
+              absorptionMinutes: trackable.absorptionMinutes,
+            ),
+          ),
           DecayModel.linear => (
-              DecayCalculator.totalActiveLinearAt(
-                doses: allDoses,
-                eliminationRate: trackable.eliminationRate!,
-                queryTime: queryTime,
-                absorptionMinutes: trackable.absorptionMinutes,
-              ),
-              DecayCalculator.generateLinearCurve(
-                doses: allDoses,
-                eliminationRate: trackable.eliminationRate!,
-                startTime: extendedStart,
-                endTime: extendedEnd,
-                absorptionMinutes: trackable.absorptionMinutes,
-              ),
+            DecayCalculator.totalActiveLinearAt(
+              doses: actualDoses,
+              eliminationRate: trackable.eliminationRate!,
+              queryTime: queryTime,
+              absorptionMinutes: trackable.absorptionMinutes,
             ),
-          DecayModel.none => (0.0, <({DateTime time, double amount})>[]),
+            DecayCalculator.generateLinearCurve(
+              doses: actualDoses,
+              eliminationRate: trackable.eliminationRate!,
+              startTime: extendedStart,
+              endTime: extendedEnd,
+              absorptionMinutes: trackable.absorptionMinutes,
+            ),
+            DecayCalculator.generateLinearCurve(
+              doses: projectedDoses,
+              eliminationRate: trackable.eliminationRate!,
+              startTime: extendedStart,
+              endTime: extendedEnd,
+              absorptionMinutes: trackable.absorptionMinutes,
+            ),
+          ),
+          DecayModel.none => (
+            0.0,
+            <({DateTime time, double amount})>[],
+            <({DateTime time, double amount})>[],
+          ),
         };
 
         // Generate cumulative intake staircase for the extended window.
-        // Uses todayDoses only — yesterday's leftover caffeine shows on the
+        // Uses actual doses only — yesterday's leftover caffeine shows on the
         // decay curve but doesn't count as today's intake.
         final cumulativePoints = (model != DecayModel.none)
             ? DecayCalculator.generateCumulativeCurve(
-                doses: todayDoses,
+                doses: todayActualDoses,
                 startTime: extendedStart,
                 endTime: extendedEnd,
               )
@@ -512,8 +593,11 @@ final trackableCardDataProvider =
         return TrackableCardData(
           trackable: trackable,
           activeAmount: activeAmount,
-          totalToday: DecayCalculator.totalRawAmount(todayDoses),
+          totalToday: DecayCalculator.totalRawAmount(todayActualDoses),
+          plannedToday: DecayCalculator.totalRawAmount(todayPlannedDoses),
           curvePoints: curvePoints,
+          projectedCurvePoints: projectedCurvePoints,
+          hasPlannedDoses: plannedDoses.isNotEmpty,
           dayBoundaryTime: boundary,
           nextDayBoundaryTime: nextBoundary,
           lastDose: lastDose,
@@ -526,6 +610,61 @@ final trackableCardDataProvider =
       });
     },
   );
+}
+
+/// Per-trackable card data provider for Dashboard cards.
+///
+/// Important: Dashboard must always reflect "today/live" data regardless of
+/// date selection in log-related screens.
+final trackableCardDataProvider = StreamProvider.family<TrackableCardData, int>(
+  (ref, trackableId) {
+    return _trackableCardDataStream(ref, trackableId, selectedDate: null);
+  },
+);
+
+/// Per-trackable card data provider that follows selectedDateProvider.
+///
+/// Used by day-specific log surfaces (for example TrackableLogScreen graph)
+/// where users intentionally browse historical days.
+final trackableCardDataForSelectedDateProvider =
+    StreamProvider.family<TrackableCardData, int>((ref, trackableId) {
+      final selectedDate = ref.watch(selectedDateProvider);
+      return _trackableCardDataStream(
+        ref,
+        trackableId,
+        selectedDate: selectedDate,
+      );
+    });
+
+/// Reactive stream of dose logs for the currently selected log day.
+///
+/// This powers the Log tab's "single-day" view:
+///   - selectedDateProvider == null  -> today (live day boundary window)
+///   - selectedDateProvider != null  -> that specific past day window
+final selectedDayDoseLogsProvider = StreamProvider<List<DoseLogWithTrackable>>((
+  ref,
+) {
+  final db = ref.watch(databaseProvider);
+  final boundaryHour = ref.watch(dayBoundaryHourProvider);
+  final selectedDate = ref.watch(selectedDateProvider);
+  final now = ref.watch(nowProvider)();
+
+  final startBoundary = selectedDate != null
+      ? DateTime(
+          selectedDate.year,
+          selectedDate.month,
+          selectedDate.day,
+          boundaryHour,
+        )
+      : dayBoundary(now, boundaryHour: boundaryHour);
+  final endBoundary = DateTime(
+    startBoundary.year,
+    startBoundary.month,
+    startBoundary.day + 1,
+    boundaryHour,
+  );
+
+  return db.watchDoseLogsBetweenWithTrackable(startBoundary, endBoundary);
 });
 
 /// Combines five streams into a single stream of 5-tuples.
@@ -534,7 +673,7 @@ final trackableCardDataProvider =
 /// Like JavaScript's combineLatest from RxJS — waits for all five to emit at
 /// least once, then re-emits whenever any changes.
 Stream<(List<DoseLog>, DoseLog?, List<Threshold>, TaperPlan?, List<Target>)>
-    _combineStreams(
+_combineStreams(
   Stream<List<DoseLog>> dosesStream,
   Stream<DoseLog?> lastDoseStream,
   Stream<List<Threshold>> thresholdsStream,
@@ -542,8 +681,10 @@ Stream<(List<DoseLog>, DoseLog?, List<Threshold>, TaperPlan?, List<Target>)>
   Stream<List<Target>> targetsStream,
 ) {
   // Use a StreamController to manually merge the streams.
-  late StreamController<(List<DoseLog>, DoseLog?, List<Threshold>, TaperPlan?, List<Target>)>
-      controller;
+  late StreamController<
+    (List<DoseLog>, DoseLog?, List<Threshold>, TaperPlan?, List<Target>)
+  >
+  controller;
   List<DoseLog>? latestDoses;
   DoseLog? latestLastDose;
   bool lastDoseReceived = false;
@@ -574,55 +715,42 @@ Stream<(List<DoseLog>, DoseLog?, List<Threshold>, TaperPlan?, List<Target>)>
     }
   }
 
-  controller = StreamController<
-      (List<DoseLog>, DoseLog?, List<Threshold>, TaperPlan?, List<Target>)>(
-    onListen: () {
-      dosesSub = dosesStream.listen(
-        (doses) {
-          latestDoses = doses;
-          tryEmit();
+  controller =
+      StreamController<
+        (List<DoseLog>, DoseLog?, List<Threshold>, TaperPlan?, List<Target>)
+      >(
+        onListen: () {
+          dosesSub = dosesStream.listen((doses) {
+            latestDoses = doses;
+            tryEmit();
+          }, onError: controller.addError);
+          lastDoseSub = lastDoseStream.listen((dose) {
+            latestLastDose = dose;
+            lastDoseReceived = true;
+            tryEmit();
+          }, onError: controller.addError);
+          thresholdsSub = thresholdsStream.listen((thresholds) {
+            latestThresholds = thresholds;
+            tryEmit();
+          }, onError: controller.addError);
+          taperPlanSub = taperPlanStream.listen((plan) {
+            latestTaperPlan = plan;
+            taperPlanReceived = true;
+            tryEmit();
+          }, onError: controller.addError);
+          targetsSub = targetsStream.listen((targets) {
+            latestTargets = targets;
+            tryEmit();
+          }, onError: controller.addError);
         },
-        onError: controller.addError,
-      );
-      lastDoseSub = lastDoseStream.listen(
-        (dose) {
-          latestLastDose = dose;
-          lastDoseReceived = true;
-          tryEmit();
+        onCancel: () {
+          dosesSub?.cancel();
+          lastDoseSub?.cancel();
+          thresholdsSub?.cancel();
+          taperPlanSub?.cancel();
+          targetsSub?.cancel();
         },
-        onError: controller.addError,
       );
-      thresholdsSub = thresholdsStream.listen(
-        (thresholds) {
-          latestThresholds = thresholds;
-          tryEmit();
-        },
-        onError: controller.addError,
-      );
-      taperPlanSub = taperPlanStream.listen(
-        (plan) {
-          latestTaperPlan = plan;
-          taperPlanReceived = true;
-          tryEmit();
-        },
-        onError: controller.addError,
-      );
-      targetsSub = targetsStream.listen(
-        (targets) {
-          latestTargets = targets;
-          tryEmit();
-        },
-        onError: controller.addError,
-      );
-    },
-    onCancel: () {
-      dosesSub?.cancel();
-      lastDoseSub?.cancel();
-      thresholdsSub?.cancel();
-      taperPlanSub?.cancel();
-      targetsSub?.cancel();
-    },
-  );
 
   return controller.stream;
 }

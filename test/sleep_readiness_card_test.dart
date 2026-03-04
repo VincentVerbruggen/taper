@@ -1,5 +1,3 @@
-import 'package:clock/clock.dart';
-import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,7 +41,10 @@ void main() {
       trackable: trackable,
       activeAmount: activeAmount,
       totalToday: 0,
+      plannedToday: 0,
       curvePoints: [],
+      projectedCurvePoints: [],
+      hasPlannedDoses: false,
       dayBoundaryTime: DateTime.now(),
       nextDayBoundaryTime: DateTime.now(),
       lastDose: null,
@@ -55,19 +56,21 @@ void main() {
 
   Widget buildTestWidget(int trackableId) {
     return MaterialApp(
-      home: Scaffold(
-        body: SleepReadinessCard(trackableId: trackableId),
-      ),
+      home: Scaffold(body: SleepReadinessCard(trackableId: trackableId)),
     );
   }
 
-  testWidgets('renders nothing if no sleep threshold configured', (tester) async {
+  testWidgets('renders nothing if no sleep threshold configured', (
+    tester,
+  ) async {
     final trackable = createTrackable(sleepThreshold: null);
     final cardData = createCardData(trackable: trackable);
 
     final container = ProviderContainer(
       overrides: [
-        trackableCardDataProvider(1).overrideWith((ref) => Stream.value(cardData)),
+        trackableCardDataProvider(
+          1,
+        ).overrideWith((ref) => Stream.value(cardData)),
       ],
     );
     addTearDown(container.dispose);
@@ -84,15 +87,14 @@ void main() {
   });
 
   testWidgets('renders nothing if decay model is none', (tester) async {
-    final trackable = createTrackable(
-      sleepThreshold: 50.0,
-      decayModel: 'none',
-    );
+    final trackable = createTrackable(sleepThreshold: 50.0, decayModel: 'none');
     final cardData = createCardData(trackable: trackable);
 
     final container = ProviderContainer(
       overrides: [
-        trackableCardDataProvider(1).overrideWith((ref) => Stream.value(cardData)),
+        trackableCardDataProvider(
+          1,
+        ).overrideWith((ref) => Stream.value(cardData)),
       ],
     );
     addTearDown(container.dispose);
@@ -114,7 +116,9 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
-        trackableCardDataProvider(1).overrideWith((ref) => Stream.value(cardData)),
+        trackableCardDataProvider(
+          1,
+        ).overrideWith((ref) => Stream.value(cardData)),
       ],
     );
     addTearDown(container.dispose);
@@ -142,7 +146,9 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
-        trackableCardDataProvider(1).overrideWith((ref) => Stream.value(cardData)),
+        trackableCardDataProvider(
+          1,
+        ).overrideWith((ref) => Stream.value(cardData)),
       ],
     );
     addTearDown(container.dispose);
@@ -173,7 +179,9 @@ void main() {
 
     final container = ProviderContainer(
       overrides: [
-        trackableCardDataProvider(3).overrideWith((ref) => Stream.value(cardData)),
+        trackableCardDataProvider(
+          3,
+        ).overrideWith((ref) => Stream.value(cardData)),
       ],
     );
     addTearDown(container.dispose);
