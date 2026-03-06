@@ -134,6 +134,37 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('can navigate to future day and save a planned dose there', (
+    tester,
+  ) async {
+    final fixedNow = DateTime(2026, 2, 23, 12);
+    await tester.pumpWidget(buildTestWidget(now: fixedNow));
+    await pumpAndWait(tester);
+
+    // Move from today (live/null) to tomorrow.
+    await tester.tap(find.byTooltip('Next day'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '77');
+    await tester.pump();
+    await tester.tap(find.byType(Switch).first);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Log Dose'));
+    await tester.pumpAndSettle();
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs.length, 1);
+    expect(logs.first.isPlanned, isTrue);
+    expect(logs.first.loggedAt.year, 2026);
+    expect(logs.first.loggedAt.month, 2);
+    expect(logs.first.loggedAt.day, 24);
+
+    await cleanUp(tester);
+  });
+
   testWidgets('log entries are wrapped in Card.outlined', (tester) async {
     await db.insertDoseLog(1, 150, DateTime.now());
 
@@ -289,6 +320,49 @@ void main() {
     expect(find.text('250'), findsOneWidget);
 
     await cleanUp(tester, hasNavigated: true);
+  });
+
+  testWidgets('copy dose keeps original date but uses current time', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 2, 24, 12, 34);
+    final originalLoggedAt = DateTime(2026, 2, 23, 7, 45);
+    await db.insertDoseLog(
+      1,
+      175,
+      originalLoggedAt,
+      name: 'Morning',
+      isPlanned: true,
+    );
+
+    await tester.pumpWidget(buildTestWidget(now: now));
+    await pumpAndWait(tester);
+
+    // Move to the day that contains the original entry.
+    await tester.tap(find.byTooltip('Previous day'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.copy));
+    await tester.pumpAndSettle();
+
+    // Save immediately. Copy should keep the original date, while using the
+    // current clock time from nowProvider for the new entry.
+    await tester.tap(find.byTooltip('Log Dose'));
+    await tester.pumpAndSettle();
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs, hasLength(2));
+    logs.sort((a, b) => a.id.compareTo(b.id));
+
+    final original = logs.first;
+    final copied = logs.last;
+    expect(copied.trackableId, original.trackableId);
+    expect(copied.amount, original.amount);
+    expect(copied.name, original.name);
+    expect(copied.isPlanned, original.isPlanned);
+    expect(copied.loggedAt, DateTime(2026, 2, 23, 12, 34));
+
+    await cleanUp(tester);
   });
 
   // --- Add dose screen tests ---

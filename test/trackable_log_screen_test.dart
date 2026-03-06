@@ -8,6 +8,7 @@ import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/dashboard/trackable_log_screen.dart';
+import 'package:taper/screens/log/add_dose_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 
 import 'helpers/test_database.dart';
@@ -125,6 +126,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Planned'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('copy dose keeps original date but uses current time', (
+    tester,
+  ) async {
+    final originalLoggedAt = DateTime(2026, 2, 22, 9, 15);
+    await db.insertDoseLog(
+      caffeine.id,
+      65,
+      originalLoggedAt,
+      name: 'Afternoon',
+      isPlanned: true,
+    );
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Previous day'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.copy));
+    await tester.pumpAndSettle();
+    expect(find.byType(AddDoseScreen), findsOneWidget);
+
+    // Save directly to verify the pre-filled date/time behavior.
+    await tester.tap(find.byTooltip('Log Dose'));
+    await tester.pumpAndSettle();
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs, hasLength(2));
+    logs.sort((a, b) => a.id.compareTo(b.id));
+
+    final original = logs.first;
+    final copied = logs.last;
+    expect(copied.trackableId, original.trackableId);
+    expect(copied.amount, original.amount);
+    expect(copied.name, original.name);
+    expect(copied.isPlanned, original.isPlanned);
+    expect(copied.loggedAt, DateTime(2026, 2, 22, 12, 0));
 
     await cleanUp(tester);
   });

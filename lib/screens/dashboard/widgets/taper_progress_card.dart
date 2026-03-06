@@ -7,6 +7,7 @@ import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/dashboard/taper_progress_screen.dart';
 import 'package:taper/utils/day_boundary.dart';
+import 'package:taper/utils/significant_digits_formatter.dart';
 import 'package:taper/utils/taper_calculator.dart';
 
 /// Inline dashboard card showing taper plan progress for a trackable.
@@ -42,8 +43,9 @@ class TaperProgressCard extends ConsumerWidget {
         ),
       ),
       data: (trackables) {
-        final trackable =
-            trackables.where((t) => t.id == trackableId).firstOrNull;
+        final trackable = trackables
+            .where((t) => t.id == trackableId)
+            .firstOrNull;
         if (trackable == null) {
           return const SizedBox.shrink();
         }
@@ -142,9 +144,9 @@ class TaperProgressCard extends ConsumerWidget {
             children: [
               Text(
                 '${trackable.name} — Taper Progress',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               Text(
@@ -198,9 +200,7 @@ class TaperProgressCard extends ConsumerWidget {
       child: Container(
         // Left border accent in the trackable's color — matching TrackableCard style.
         decoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(color: trackableColor, width: 4),
-          ),
+          border: Border(left: BorderSide(color: trackableColor, width: 4)),
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -215,8 +215,7 @@ class TaperProgressCard extends ConsumerWidget {
                   Flexible(
                     child: Text(
                       '${trackable.name} — Taper',
-                      style:
-                          Theme.of(context).textTheme.titleMedium?.copyWith(
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -251,28 +250,28 @@ class TaperProgressCard extends ConsumerWidget {
               // that should go to the GestureDetector wrapping the whole card.
               IgnorePointer(
                 child: SizedBox(
-                height: 200,
-                child: StreamBuilder<List<DoseLog>>(
-                  stream: db.watchDosesBetween(
-                    trackable.id,
-                    chartStart,
-                    chartEnd,
+                  height: 200,
+                  child: StreamBuilder<List<DoseLog>>(
+                    stream: db.watchDosesBetween(
+                      trackable.id,
+                      chartStart,
+                      chartEnd,
+                    ),
+                    builder: (context, snapshot) {
+                      final doses = snapshot.data ?? [];
+                      return _buildChart(
+                        context,
+                        doses: doses,
+                        plan: plan,
+                        chartStart: chartStart,
+                        chartEnd: chartEnd,
+                        todayBoundary: todayBoundary,
+                        trackableColor: trackableColor,
+                        boundaryHour: boundaryHour,
+                      );
+                    },
                   ),
-                  builder: (context, snapshot) {
-                    final doses = snapshot.data ?? [];
-                    return _buildChart(
-                      context,
-                      doses: doses,
-                      plan: plan,
-                      chartStart: chartStart,
-                      chartEnd: chartEnd,
-                      todayBoundary: todayBoundary,
-                      trackableColor: trackableColor,
-                      boundaryHour: boundaryHour,
-                    );
-                  },
                 ),
-              ),
               ),
             ],
           ),
@@ -442,7 +441,9 @@ class TaperProgressCard extends ConsumerWidget {
                   return const SizedBox.shrink();
                 }
                 return Text(
-                  value.toStringAsFixed(0),
+                  // Match chart axis behavior with 3 significant digits so
+                  // low values still read correctly in compact card view.
+                  formatWithSignificantDigits(value),
                   style: TextStyle(
                     color: axisColor.withAlpha(150),
                     fontSize: 10,
@@ -451,10 +452,12 @@ class TaperProgressCard extends ConsumerWidget {
               },
             ),
           ),
-          topTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles:
-              const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
         borderData: FlBorderData(show: false),
         gridData: const FlGridData(show: false),

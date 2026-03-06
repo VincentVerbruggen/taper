@@ -173,10 +173,9 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
             IconButton(
               icon: const Icon(Icons.chevron_right),
               tooltip: 'Next day',
-              // Can't move past today. selectedDateProvider uses null for that.
-              onPressed: isToday
-                  ? null
-                  : () => ref.read(selectedDateProvider.notifier).nextDay(),
+              // Future browsing is allowed for planned doses.
+              onPressed: () =>
+                  ref.read(selectedDateProvider.notifier).nextDay(),
             ),
           ],
         ),
@@ -204,7 +203,8 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
             child: CalendarDatePicker(
               initialDate: initialDate,
               firstDate: DateTime(2020),
-              lastDate: DateTime(now.year, now.month, now.day),
+              // Allow picking future days for planning flows.
+              lastDate: DateTime(2100),
               onDateChanged: (picked) {
                 Navigator.pop(dialogContext);
                 ref
@@ -327,9 +327,14 @@ class _LogDoseScreenState extends ConsumerState<LogDoseScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => AddDoseScreen(
+          // Copy should behave like "duplicate row": same trackable/amount/name
+          // plus the original date. Time intentionally uses "now" so the new
+          // entry reflects when the copy action was made.
           initialTrackableId: entry.doseLog.trackableId,
           initialAmount: entry.doseLog.amount,
           initialName: entry.doseLog.name,
+          initialDate: entry.doseLog.loggedAt,
+          useCurrentTimeForInitialDate: true,
           initialIsPlanned: entry.doseLog.isPlanned,
         ),
       ),

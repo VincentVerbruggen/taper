@@ -266,6 +266,36 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('quick-add dialog can save a planned dose', (tester) async {
+    await tester.pumpWidget(buildTestWidget());
+    await pumpAndWaitLong(tester);
+
+    await tester.tap(find.text('Add Dose').first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      '88',
+    );
+    await tester.pump();
+
+    await tester.tap(find.byType(Switch).first);
+    await tester.pump();
+
+    await tester.tap(find.text('Log'));
+    await tester.pumpAndSettle();
+
+    final logs = await db.select(db.doseLogs).get();
+    expect(logs, isNotEmpty);
+    expect(logs.last.amount, 88);
+    expect(logs.last.isPlanned, isTrue);
+
+    await cleanUp(tester);
+  });
+
   testWidgets('View Log navigates to TrackableLogScreen', (tester) async {
     await tester.pumpWidget(buildTestWidget());
     await pumpAndWaitLong(tester);

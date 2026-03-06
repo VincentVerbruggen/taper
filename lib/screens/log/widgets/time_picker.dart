@@ -58,7 +58,9 @@ class TimePicker extends StatelessWidget {
       // Allow logging as far back as needed (no artificial 7-day limit).
       // Users may need to backfill old data or correct entries from weeks ago.
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      // Allow future planning as well (planned doses on upcoming dates).
+      // Using a high fixed ceiling keeps UX simple and avoids "why is tomorrow disabled?"
+      lastDate: DateTime(2100),
     );
     if (picked != null) onDateChanged(picked);
   }

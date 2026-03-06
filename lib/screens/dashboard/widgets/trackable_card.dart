@@ -10,6 +10,7 @@ import 'package:taper/providers/database_providers.dart';
 import 'package:taper/screens/dashboard/taper_progress_screen.dart';
 import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
+import 'package:taper/utils/significant_digits_formatter.dart';
 
 /// Chart viewing mode for the trackable card.
 enum ChartMode {
@@ -378,7 +379,9 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
                   return const SizedBox.shrink();
                 }
                 return Text(
-                  value.toStringAsFixed(0),
+                  // Keep Y labels readable across wide ranges (100 -> 0.01)
+                  // without flattening small values to "0".
+                  formatWithSignificantDigits(value),
                   style: TextStyle(
                     color: axisColor.withAlpha(150),
                     fontSize: 10,
@@ -405,7 +408,9 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
                 final spotTime = _timeFromChartX(chartStartTime, spot.x);
                 final timeStr =
                     '${spotTime.hour.toString().padLeft(2, '0')}:${spotTime.minute.toString().padLeft(2, '0')}';
-                final amount = spot.y.toStringAsFixed(0);
+                // Tooltip amount uses the same significant-digit style as
+                // axis labels so touched values match what users see on chart.
+                final amount = formatWithSignificantDigits(spot.y);
                 final isTargetSpot =
                     targetBarIndex != null && spot.barIndex == targetBarIndex;
                 final isProjectedSpot =
@@ -663,10 +668,6 @@ class _TrackableCardState extends ConsumerState<TrackableCard> {
 
     if (data.taperTarget != null) {
       base += ' (target: ${data.taperTarget!.toStringAsFixed(0)})';
-    }
-
-    if (data.plannedToday > 0) {
-      base += ' (+${data.plannedToday.toStringAsFixed(0)} planned)';
     }
 
     return base;

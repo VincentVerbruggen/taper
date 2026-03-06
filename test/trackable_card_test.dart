@@ -324,9 +324,7 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('planned doses add projected dashed line and stats label', (
-    tester,
-  ) async {
+  testWidgets('planned doses add projected dashed line', (tester) async {
     final now = DateTime(2026, 2, 23, 12);
     await db.insertDoseLog(1, 90, now.subtract(const Duration(hours: 2)));
     await db.insertDoseLog(
@@ -339,8 +337,8 @@ void main() {
     await tester.pumpWidget(buildTestWidget(trackableId: 1, now: now));
     await pumpAndWaitLong(tester);
 
-    // Stats should communicate there is planned intake.
-    expect(find.textContaining('planned'), findsOneWidget);
+    // Planned info should not be shown in the stats text above the graph.
+    expect(find.textContaining('planned'), findsNothing);
 
     final chart = tester.widget<LineChart>(find.byType(LineChart));
     final hasProjectedDash = chart.data.lineBarsData.any(

@@ -11,6 +11,7 @@ import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
 import 'package:taper/utils/day_boundary.dart';
 import 'package:taper/utils/decay_calculator.dart';
+import 'package:taper/utils/significant_digits_formatter.dart';
 import 'package:taper/utils/taper_calculator.dart';
 
 /// Per-trackable daily log view.
@@ -158,8 +159,6 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     required DateTime todayBoundary,
     required int boundaryHour,
   }) {
-    final isToday = selectedBoundary == todayBoundary;
-
     return Row(
       children: [
         IconButton(
@@ -186,9 +185,8 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
         IconButton(
           icon: const Icon(Icons.chevron_right),
           tooltip: 'Next day',
-          onPressed: isToday
-              ? null
-              : () => ref.read(selectedDateProvider.notifier).nextDay(),
+          // Future browsing is allowed for planned doses.
+          onPressed: () => ref.read(selectedDateProvider.notifier).nextDay(),
         ),
       ],
     );
@@ -356,7 +354,9 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
                             return const SizedBox.shrink();
                           }
                           return Text(
-                            value.toStringAsFixed(0),
+                            // Show up to 3 significant digits so tiny values
+                            // are still visible while keeping labels compact.
+                            formatWithSignificantDigits(value),
                             style: TextStyle(
                               color: axisColor.withAlpha(160),
                               fontSize: 10,
@@ -531,9 +531,13 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => AddDoseScreen(
+          // Keep the original date, but use current time for the new log so
+          // copy works as a planning shortcut instead of a full timestamp clone.
           initialTrackableId: dose.trackableId,
           initialAmount: dose.amount,
           initialName: dose.name,
+          initialDate: dose.loggedAt,
+          useCurrentTimeForInitialDate: true,
           initialIsPlanned: dose.isPlanned,
         ),
       ),
@@ -570,7 +574,8 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
             child: CalendarDatePicker(
               initialDate: initialDate,
               firstDate: DateTime(2020),
-              lastDate: DateTime(now.year, now.month, now.day),
+              // Allow selecting future dates so users can inspect planned days.
+              lastDate: DateTime(2100),
               onDateChanged: (picked) {
                 Navigator.pop(dialogContext);
                 ref

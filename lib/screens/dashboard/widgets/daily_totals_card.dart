@@ -7,6 +7,7 @@ import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/utils/day_boundary.dart';
+import 'package:taper/utils/significant_digits_formatter.dart';
 import 'package:taper/utils/taper_calculator.dart';
 
 class DailyTotalsCard extends ConsumerStatefulWidget {
@@ -351,7 +352,9 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                   return const SizedBox.shrink();
                 }
                 return Text(
-                  value.toStringAsFixed(0),
+                  // Use significant digits so low totals remain visible
+                  // instead of being rounded down to 0 on chart labels.
+                  formatWithSignificantDigits(value),
                   style: TextStyle(
                     color: axisColor.withAlpha(150),
                     fontSize: 10,
@@ -392,7 +395,9 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                 final isTargetSpot =
                     taperTargetSpots.isNotEmpty && spot.barIndex == 0;
                 final label = isTargetSpot ? 'Target' : 'Actual';
-                final amountStr = '${spot.y.toStringAsFixed(0)} $trackableUnit';
+                // Keep tooltip precision aligned with Y-axis label formatting.
+                final amountStr =
+                    '${formatWithSignificantDigits(spot.y)} $trackableUnit';
                 return LineTooltipItem(
                   '$dateStr\n$label: $amountStr',
                   TextStyle(

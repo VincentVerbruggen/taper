@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/log/widgets/time_picker.dart';
 import 'package:taper/utils/validation.dart';
 
@@ -17,6 +18,12 @@ class AddDoseScreen extends ConsumerStatefulWidget {
   final double? initialAmount;
   final String? initialName;
   final DateTime? initialDate;
+
+  /// When true and [initialDate] is set, keep that date but use "now" time.
+  ///
+  /// This is used by copy flows so users can quickly reuse a historical day
+  /// while logging at the current clock time.
+  final bool useCurrentTimeForInitialDate;
   final bool initialIsPlanned;
 
   const AddDoseScreen({
@@ -25,6 +32,7 @@ class AddDoseScreen extends ConsumerStatefulWidget {
     this.initialAmount,
     this.initialName,
     this.initialDate,
+    this.useCurrentTimeForInitialDate = false,
     this.initialIsPlanned = false,
   });
 
@@ -59,11 +67,19 @@ class _AddDoseScreenState extends ConsumerState<AddDoseScreen> {
   }
 
   void _resetTime() {
+    final now = ref.read(nowProvider)();
     if (widget.initialDate != null) {
-      _selectedDate = widget.initialDate!;
-      _selectedTime = const TimeOfDay(hour: 12, minute: 0);
+      // Always normalize to calendar date only, so callers can pass any
+      // DateTime (including one with non-midnight time) without side effects.
+      _selectedDate = DateTime(
+        widget.initialDate!.year,
+        widget.initialDate!.month,
+        widget.initialDate!.day,
+      );
+      _selectedTime = widget.useCurrentTimeForInitialDate
+          ? TimeOfDay.fromDateTime(now)
+          : const TimeOfDay(hour: 12, minute: 0);
     } else {
-      final now = DateTime.now();
       _selectedDate = now;
       _selectedTime = TimeOfDay.fromDateTime(now);
     }

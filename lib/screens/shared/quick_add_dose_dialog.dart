@@ -39,6 +39,9 @@ Future<double?> showQuickAddDoseDialog({
   // Initialize time to now — the user can change it via the picker.
   var selectedDate = DateTime.now();
   var selectedTime = TimeOfDay.fromDateTime(selectedDate);
+  // Planned flag keeps quick-add consistent with full add/edit flows.
+  // true = planned/projection, false = consumed/logged now.
+  var isPlanned = false;
 
   // Tracks whether the user has attempted to log.
   var submitted = false;
@@ -67,16 +70,21 @@ Future<double?> showQuickAddDoseDialog({
                     runSpacing: 4,
                     children: presets.map((preset) {
                       return ActionChip(
-                        label: Text('${preset.name} (${preset.amount.toStringAsFixed(0)})'),
+                        label: Text(
+                          '${preset.name} (${preset.amount.toStringAsFixed(0)})',
+                        ),
                         onPressed: () {
                           // Fill the amount field with the preset value.
                           amountController.text = preset.amount.toStringAsFixed(
                             // Use integer format if the amount is a whole number,
                             // otherwise show one decimal place.
-                            preset.amount == preset.amount.roundToDouble() ? 0 : 1,
+                            preset.amount == preset.amount.roundToDouble()
+                                ? 0
+                                : 1,
                           );
                           // Move cursor to end so user can edit if needed.
-                          amountController.selection = TextSelection.fromPosition(
+                          amountController
+                              .selection = TextSelection.fromPosition(
                             TextPosition(offset: amountController.text.length),
                           );
                           // Remember which preset was tapped so the dose log
@@ -91,8 +99,9 @@ Future<double?> showQuickAddDoseDialog({
                 TextField(
                   controller: amountController,
                   autofocus: true,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   // Only allow digits and decimal point.
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
@@ -114,8 +123,9 @@ Future<double?> showQuickAddDoseDialog({
                   },
                   // Submit on keyboard "done" — same as tapping Log.
                   onSubmitted: (_) {
-                    final amount =
-                        double.tryParse(amountController.text.trim());
+                    final amount = double.tryParse(
+                      amountController.text.trim(),
+                    );
                     if (amount != null && amount >= 0) {
                       result = amount;
                       Navigator.pop(dialogContext);
@@ -141,6 +151,20 @@ Future<double?> showQuickAddDoseDialog({
                     setDialogState(() => selectedTime = time);
                   },
                 ),
+
+                const SizedBox(height: 8),
+
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Planned dose'),
+                  subtitle: const Text(
+                    'Use for future/intended intake projections',
+                  ),
+                  value: isPlanned,
+                  onChanged: (value) {
+                    setDialogState(() => isPlanned = value);
+                  },
+                ),
               ],
             ),
             actions: [
@@ -151,8 +175,7 @@ Future<double?> showQuickAddDoseDialog({
               // Always enabled — shows errors on press instead of disabling.
               TextButton(
                 onPressed: () {
-                  final amount =
-                      double.tryParse(amountController.text.trim());
+                  final amount = double.tryParse(amountController.text.trim());
                   if (amount != null && amount > 0) {
                     result = amount;
                     Navigator.pop(dialogContext);
@@ -182,7 +205,13 @@ Future<double?> showQuickAddDoseDialog({
       selectedTime.hour,
       selectedTime.minute,
     );
-    await db.insertDoseLog(trackable.id, amount, loggedAt, name: selectedPresetName);
+    await db.insertDoseLog(
+      trackable.id,
+      amount,
+      loggedAt,
+      name: selectedPresetName,
+      isPlanned: isPlanned,
+    );
 
     // Show SnackBar using the scaffold context (falls back to the provided context).
     final snackContext = scaffoldContext ?? context;
@@ -191,7 +220,7 @@ Future<double?> showQuickAddDoseDialog({
         SnackBar(
           showCloseIcon: true, // Let users dismiss the snackbar manually
           content: Text(
-            'Logged ${amount.toStringAsFixed(0)} ${trackable.unit} ${trackable.name}',
+            '${isPlanned ? 'Planned' : 'Logged'} ${amount.toStringAsFixed(0)} ${trackable.unit} ${trackable.name}',
           ),
         ),
       );

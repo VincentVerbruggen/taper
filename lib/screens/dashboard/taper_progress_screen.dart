@@ -6,6 +6,7 @@ import 'package:taper/data/database.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/utils/day_boundary.dart';
+import 'package:taper/utils/significant_digits_formatter.dart';
 import 'package:taper/utils/taper_calculator.dart';
 
 /// The headline taper feature: a progress chart showing actual daily consumption
@@ -60,12 +61,16 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
     // and where you are on it (via the "today" vertical line).
     // Actual consumption dots only go up to today — future days aren't plotted.
     final chartStart = DateTime(
-      plan.startDate.year, plan.startDate.month, plan.startDate.day - 3,
+      plan.startDate.year,
+      plan.startDate.month,
+      plan.startDate.day - 3,
       plan.startDate.hour,
     );
     // Show the full plan + 3 days padding after end for maintenance context.
     final chartEnd = DateTime(
-      plan.endDate.year, plan.endDate.month, plan.endDate.day + 3,
+      plan.endDate.year,
+      plan.endDate.month,
+      plan.endDate.day + 3,
       plan.endDate.hour,
     );
 
@@ -135,8 +140,8 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
               height: 300,
               child: InteractiveViewer(
                 transformationController: _transformController,
-                minScale: 1.0,   // Can't zoom out past the default view.
-                maxScale: 5.0,   // Up to 5x zoom for inspecting individual days.
+                minScale: 1.0, // Can't zoom out past the default view.
+                maxScale: 5.0, // Up to 5x zoom for inspecting individual days.
                 constrained: true, // Stays within bounds at default zoom.
                 // Smooth deceleration when the user releases a pan gesture —
                 // lower = less friction = smoother coast to a stop.
@@ -144,7 +149,9 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
                 child: StreamBuilder<List<DoseLog>>(
                   // Query all doses within the chart range for the "actual" line.
                   stream: db.watchDosesBetween(
-                    trackable.id, chartStart, chartEnd,
+                    trackable.id,
+                    chartStart,
+                    chartEnd,
                   ),
                   builder: (context, snapshot) {
                     final doses = snapshot.data ?? [];
@@ -226,7 +233,9 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
     required AppDatabase db,
   }) {
     final nextBoundary = DateTime(
-      todayBoundary.year, todayBoundary.month, todayBoundary.day + 1,
+      todayBoundary.year,
+      todayBoundary.month,
+      todayBoundary.day + 1,
       todayBoundary.hour,
     );
 
@@ -275,7 +284,9 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
     final targetSpots = <FlSpot>[];
     for (var i = 0; i <= totalChartDays; i++) {
       final date = DateTime(
-        chartStart.year, chartStart.month, chartStart.day + i,
+        chartStart.year,
+        chartStart.month,
+        chartStart.day + i,
         chartStart.hour,
       );
       final target = TaperCalculator.dailyTarget(
@@ -301,7 +312,9 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
     final actualSpots = <FlSpot>[];
     for (var i = 0; i <= totalChartDays; i++) {
       final date = DateTime(
-        chartStart.year, chartStart.month, chartStart.day + i,
+        chartStart.year,
+        chartStart.month,
+        chartStart.day + i,
         chartStart.hour,
       );
       // Don't plot days in the future.
@@ -410,7 +423,9 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
                   return const SizedBox.shrink();
                 }
                 final date = DateTime(
-                  chartStart.year, chartStart.month, chartStart.day + dayIndex,
+                  chartStart.year,
+                  chartStart.month,
+                  chartStart.day + dayIndex,
                   chartStart.hour,
                 );
                 return Text(
@@ -433,7 +448,9 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
                   return const SizedBox.shrink();
                 }
                 return Text(
-                  value.toStringAsFixed(0),
+                  // Significant digits avoid "0" labels when users zoom/pan
+                  // into lower-value periods of the taper curve.
+                  formatWithSignificantDigits(value),
                   style: TextStyle(
                     color: axisColor.withAlpha(150),
                     fontSize: 10,
@@ -442,8 +459,12 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
               },
             ),
           ),
-          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
         ),
 
         borderData: FlBorderData(show: false),
@@ -461,8 +482,18 @@ class _TaperProgressScreenState extends ConsumerState<TaperProgressScreen> {
   /// Format a date as "Feb 1" for compact chart labels.
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}';
   }

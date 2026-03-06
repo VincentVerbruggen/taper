@@ -249,13 +249,13 @@ final lastLoggedTrackableIdProvider = FutureProvider<int?>((ref) async {
   return lastDose?.trackableId;
 });
 
-/// Selected date for the dashboard view.
+/// Selected date for log-oriented day browsing (Log tab + trackable log).
 ///
-/// null = today (live, real-time updates).
-/// Non-null = viewing a specific past date (static snapshot at end of that day).
+/// null = today (live/current day window)
+/// Non-null = an explicit day boundary (past or future)
 ///
-/// Like a URL parameter in a web dashboard: /dashboard?date=2026-02-19.
-/// When null, the dashboard shows live data; when set, it shows historical data.
+/// This provider no longer drives dashboard cards; dashboard is always live.
+/// Think of this like a "day filter" query param for log pages only.
 final selectedDateProvider = NotifierProvider<SelectedDateNotifier, DateTime?>(
   SelectedDateNotifier.new,
 );
@@ -278,9 +278,8 @@ class SelectedDateNotifier extends Notifier<DateTime?> {
     final now = ref.read(nowProvider)();
     final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
 
-    // Treat selecting "today" as live mode so the dashboard keeps updating
-    // in real time instead of freezing at end-of-day.
-    state = selectedBoundary.isBefore(todayBoundary) ? selectedBoundary : null;
+    // Keep today as null/live mode, but allow both past and future explicit days.
+    state = selectedBoundary == todayBoundary ? null : selectedBoundary;
   }
 
   /// Reset to live/today view.
@@ -294,19 +293,16 @@ class SelectedDateNotifier extends Notifier<DateTime?> {
     state = current.subtract(const Duration(days: 1));
   }
 
-  /// Go to the next day. Snaps back to null (live) if reaching today.
+  /// Go to the next day.
+  ///
+  /// From null/live (today), this moves to tomorrow as an explicit date.
+  /// From any explicit date, it advances by one day (including future days).
   void nextDay() {
-    if (state == null) return; // Already on today.
     final boundaryHour = ref.read(dayBoundaryHourProvider);
-    final next = state!.add(const Duration(days: 1));
     final now = ref.read(nowProvider)();
     final todayBoundary = dayBoundary(now, boundaryHour: boundaryHour);
-    // If the next day would be today or later, go to live mode.
-    if (!next.isBefore(todayBoundary)) {
-      state = null;
-    } else {
-      state = next;
-    }
+    final current = state ?? todayBoundary;
+    state = current.add(const Duration(days: 1));
   }
 }
 
