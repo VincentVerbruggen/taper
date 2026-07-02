@@ -23,7 +23,14 @@ enum DashboardWidgetType {
 
   /// Predictor widget showing when the active amount will drop below
   /// the sleep threshold (e.g., "Ready for sleep in 3h 20m").
-  sleepReadiness;
+  sleepReadiness,
+
+  /// Line/area chart showing the peak ACTIVE concentration per day over the
+  /// past 30 days. Unlike dailyTotals (which sums raw intake), this runs the
+  /// decay curve for each day and plots its highest point — useful for seeing
+  /// whether your peak load is trending down even if total intake is steady.
+  /// Only meaningful for trackables with a decay model (not "none").
+  dailyMaxConcentration;
 
   /// Parse a DB string value into the enum.
   /// Like PHP's BackedEnum::from($value) — throws if no match.
@@ -38,6 +45,7 @@ enum DashboardWidgetType {
       'taper_progress' => DashboardWidgetType.taperProgress,
       'daily_totals' => DashboardWidgetType.dailyTotals,
       'sleep_readiness' => DashboardWidgetType.sleepReadiness,
+      'daily_max_concentration' => DashboardWidgetType.dailyMaxConcentration,
       _ => throw ArgumentError('Unknown dashboard widget type: $value'),
     };
   }
@@ -50,6 +58,7 @@ enum DashboardWidgetType {
       DashboardWidgetType.taperProgress => 'taper_progress',
       DashboardWidgetType.dailyTotals => 'daily_totals',
       DashboardWidgetType.sleepReadiness => 'sleep_readiness',
+      DashboardWidgetType.dailyMaxConcentration => 'daily_max_concentration',
     };
   }
 
@@ -61,6 +70,7 @@ enum DashboardWidgetType {
       DashboardWidgetType.taperProgress => 'Taper Progress',
       DashboardWidgetType.dailyTotals => 'Daily Totals',
       DashboardWidgetType.sleepReadiness => 'Sleep Readiness',
+      DashboardWidgetType.dailyMaxConcentration => 'Daily Max Concentration',
     };
   }
 }

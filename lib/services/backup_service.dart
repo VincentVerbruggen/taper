@@ -22,6 +22,11 @@ class BackupService {
   /// SharedPreferences key for the last backup timestamp (epoch millis).
   static const lastBackupTimeKey = 'lastBackupTime';
 
+  /// SharedPreferences key for an optional external folder path.
+  /// When set, each auto-backup is also mirrored to this folder.
+  /// Null/empty = mirror disabled (internal backup only).
+  static const externalBackupFolderKey = 'externalBackupFolder';
+
   /// Maximum number of auto-backup files to keep.
   /// Oldest beyond this limit are deleted automatically.
   static const maxBackups = 7;
@@ -239,6 +244,22 @@ class BackupService {
     for (final file in toDelete) {
       await file.delete();
     }
+  }
+
+  /// Mirror an existing backup file into a user-chosen external folder.
+  ///
+  /// Best-effort: if the folder doesn't exist or isn't writable (e.g., the
+  /// user revoked permission, or it's a SAF content:// URI we can't write
+  /// to via dart:io), this throws and the caller swallows it.
+  ///
+  /// Like `cp backups/foo.sqlite /external/folder/foo.sqlite`.
+  Future<File> mirrorBackupToExternal(File backupFile, String folderPath) async {
+    final dir = Directory(folderPath);
+    if (!await dir.exists()) {
+      throw FileSystemException('External backup folder not found', folderPath);
+    }
+    final destPath = p.join(folderPath, p.basename(backupFile.path));
+    return backupFile.copy(destPath);
   }
 
   /// Zero-pad a number to 2 digits (e.g., 5 → "05").

@@ -1049,6 +1049,29 @@ class AppDatabase extends _$AppDatabase {
         .getSingleOrNull();
   }
 
+  /// Get the most recent non-planned dose for a trackable since [since].
+  ///
+  /// Used by reminder scheduling to anchor "logging gap" notifications to the
+  /// last real consumed dose inside today's reminder window.
+  /// Like:
+  ///   DoseLog::where('trackable_id', $id)
+  ///       ->where('is_planned', false)
+  ///       ->where('logged_at', '>=', $since)
+  ///       ->latest('logged_at')
+  ///       ->first()
+  Future<DoseLog?> getLastDoseSince(int trackableId, DateTime since) {
+    return (select(doseLogs)
+          ..where(
+            (t) =>
+                t.trackableId.equals(trackableId) &
+                t.isPlanned.equals(false) &
+                t.loggedAt.isBiggerOrEqualValue(since),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.loggedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   /// Watch doses for a single trackable from [since] onward.
   ///
   /// Used by the dashboard card provider — loads doses within the decay window
@@ -1197,8 +1220,17 @@ class AppDatabase extends _$AppDatabase {
     DateTime loggedAt, {
     Value<String?> name = const Value.absent(),
     Value<bool> isPlanned = const Value.absent(),
-  }) {
-    return (update(doseLogs)..where((t) => t.id.equals(id))).write(
+  }) async {
+    // Check if this dose is transitioning from planned → actual.
+    // We need the old value BEFORE the update to detect the transition.
+    final wasPlanned = isPlanned.present && !isPlanned.value
+        ? (await (select(doseLogs)..where((t) => t.id.equals(id)))
+                .getSingleOrNull())
+            ?.isPlanned
+        : false;
+
+    final result =
+        await (update(doseLogs)..where((t) => t.id.equals(id))).write(
       DoseLogsCompanion(
         trackableId: Value(trackableId),
         amount: Value(amount),
@@ -1207,6 +1239,14 @@ class AppDatabase extends _$AppDatabase {
         isPlanned: isPlanned,
       ),
     );
+
+    // When a planned dose becomes actual, treat it like a new dose was logged
+    // so gap reminders get reset and nag notifications get cancelled.
+    if (wasPlanned == true) {
+      ReminderScheduler.instance.onDoseLogged(this, trackableId, loggedAt);
+    }
+
+    return result;
   }
 
   // --- Preset queries ---

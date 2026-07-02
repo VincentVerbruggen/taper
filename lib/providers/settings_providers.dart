@@ -71,6 +71,50 @@ class DayBoundaryHourNotifier extends Notifier<int> {
 // THEME MODE
 // =============================================================================
 
+// =============================================================================
+// PERFORMANCE OVERLAY
+// =============================================================================
+
+/// SharedPreferences key for the performance overlay toggle.
+const _perfOverlayKey = 'showPerformanceOverlay';
+
+/// Provider for Flutter's built-in performance overlay.
+///
+/// Shows two graphs rendered on top of the app:
+///   - Top graph = UI thread (building widgets, running Dart code)
+///   - Bottom graph = raster thread (painting pixels to the GPU)
+/// A green horizontal line marks the 16ms budget (60fps target).
+///
+/// Only meaningful in profile builds (`flutter run --profile`).
+/// In debug mode the overlay shows but the numbers are unreliable
+/// because debug mode disables most optimizations.
+///
+/// Like Chrome DevTools' FPS meter — a quick visual check for jank
+/// without needing to open a separate tool.
+final perfOverlayProvider = NotifierProvider<PerfOverlayNotifier, bool>(
+  PerfOverlayNotifier.new,
+);
+
+/// Notifier for the performance overlay toggle.
+class PerfOverlayNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    return prefs.getBool(_perfOverlayKey) ?? false;
+  }
+
+  void toggle() {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final newValue = !state;
+    prefs.setBool(_perfOverlayKey, newValue);
+    state = newValue;
+  }
+}
+
+// =============================================================================
+// THEME MODE
+// =============================================================================
+
 /// SharedPreferences key for theme mode ('light', 'dark', or 'system').
 const _themeModeKey = 'themeMode';
 

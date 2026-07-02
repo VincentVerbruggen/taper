@@ -217,4 +217,40 @@ void main() {
       expect(totals[DateTime(2026, 2, 22, 3)], 100.0);
     });
   });
+
+  group('dailyPeaks', () {
+    test('keeps the highest sample per day boundary', () {
+      // Two samples on Feb 22, three on Feb 23. The peak is the max of each day.
+      final curve = <({DateTime time, double amount})>[
+        (time: DateTime(2026, 2, 22, 8), amount: 30),
+        (time: DateTime(2026, 2, 22, 9), amount: 90), // Feb 22 peak
+        (time: DateTime(2026, 2, 23, 8), amount: 120), // Feb 23 peak
+        (time: DateTime(2026, 2, 23, 9), amount: 60),
+        (time: DateTime(2026, 2, 23, 10), amount: 45),
+      ];
+
+      final peaks = TaperCalculator.dailyPeaks(curve: curve, boundaryHour: 5);
+
+      expect(peaks[DateTime(2026, 2, 22, 5)], 90.0);
+      expect(peaks[DateTime(2026, 2, 23, 5)], 120.0);
+    });
+
+    test('returns empty map for empty curve', () {
+      final peaks = TaperCalculator.dailyPeaks(curve: [], boundaryHour: 5);
+      expect(peaks, isEmpty);
+    });
+
+    test('a pre-boundary sample counts toward the previous day', () {
+      // 3 AM is before the 5 AM boundary, so it belongs to the previous day.
+      final curve = <({DateTime time, double amount})>[
+        (time: DateTime(2026, 2, 23, 3), amount: 75),
+      ];
+
+      final peaks = TaperCalculator.dailyPeaks(curve: curve, boundaryHour: 5);
+
+      // Belongs to Feb 22's boundary, not Feb 23's.
+      expect(peaks[DateTime(2026, 2, 22, 5)], 75.0);
+      expect(peaks[DateTime(2026, 2, 23, 5)], isNull);
+    });
+  });
 }

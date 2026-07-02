@@ -110,6 +110,37 @@ class TaperCalculator {
 
     return totals;
   }
+
+  /// Bucket a pre-computed decay curve into per-day peaks.
+  ///
+  /// Where [dailyTotals] sums raw intake, this takes the ACTIVE-amount curve
+  /// (already sampled by DecayCalculator.generateCurve / generateLinearCurve)
+  /// and, for each day boundary, keeps the single highest sample. That highest
+  /// sample is the peak concentration your body reached that day.
+  ///
+  /// Returns a map of { dayBoundary → peakAmount }. Days with no samples simply
+  /// won't appear (the caller fills gaps with 0, same as dailyTotals).
+  ///
+  /// Pure aggregation — model-agnostic — so the caller decides whether the
+  /// curve was generated with exponential or linear math.
+  ///
+  /// Like: $curve->groupBy(fn($p) => dayBoundary($p->time))->map->max('amount')
+  static Map<DateTime, double> dailyPeaks({
+    required List<({DateTime time, double amount})> curve,
+    required int boundaryHour,
+  }) {
+    final peaks = <DateTime, double>{};
+
+    for (final point in curve) {
+      // Same 5 AM day-boundary logic as the rest of the app: a sample at 3 AM
+      // counts toward the previous day.
+      final boundary = dayBoundary(point.time, boundaryHour: boundaryHour);
+      final existing = peaks[boundary] ?? 0.0;
+      if (point.amount > existing) peaks[boundary] = point.amount;
+    }
+
+    return peaks;
+  }
 }
 
 /// Minimal interface for dose-like objects, so TaperCalculator doesn't depend

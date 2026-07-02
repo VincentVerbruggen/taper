@@ -122,6 +122,7 @@ class RemindersScreen extends ConsumerWidget {
                           gapMinutes: reminder.gapMinutes,
                         ),
                         trackable,
+                        db: db,
                       );
                     } else {
                       await ReminderScheduler.instance.cancelReminder(
@@ -463,6 +464,7 @@ class RemindersScreen extends ConsumerWidget {
                       await ReminderScheduler.instance.scheduleReminder(
                         newReminder,
                         trackable,
+                        db: db,
                       );
                     }
 
@@ -778,6 +780,7 @@ class RemindersScreen extends ConsumerWidget {
                       await ReminderScheduler.instance.scheduleReminder(
                         updatedReminder,
                         trackable,
+                        db: db,
                       );
                     }
 

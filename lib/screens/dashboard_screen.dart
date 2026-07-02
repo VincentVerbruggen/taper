@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/dashboard_widget_type.dart';
 import 'package:taper/data/database.dart';
+import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/database_providers.dart';
+import 'package:taper/screens/dashboard/widgets/daily_max_concentration_card.dart';
 import 'package:taper/screens/dashboard/widgets/daily_totals_card.dart';
 import 'package:taper/screens/dashboard/widgets/sleep_readiness_card.dart';
 import 'package:taper/screens/dashboard/widgets/taper_progress_card.dart';
@@ -161,6 +163,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         trackableId: widget.trackableId!,
       ),
       DashboardWidgetType.sleepReadiness => SleepReadinessCard(
+        trackableId: widget.trackableId!,
+      ),
+      DashboardWidgetType.dailyMaxConcentration => DailyMaxConcentrationCard(
         trackableId: widget.trackableId!,
       ),
     };
@@ -343,6 +348,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         return;
       }
       eligibleTrackables = withThreshold;
+    } else if (type == DashboardWidgetType.dailyMaxConcentration) {
+      // Peak concentration only makes sense when the trackable decays.
+      final withDecay = trackables
+          .where((t) => DecayModel.fromString(t.decayModel) != DecayModel.none)
+          .toList();
+      if (withDecay.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No trackables have a decay model configured.'),
+            ),
+          );
+        }
+        return;
+      }
+      eligibleTrackables = withDecay;
     } else {
       eligibleTrackables = trackables;
     }

@@ -28,6 +28,36 @@ class AutoBackupEnabledNotifier extends Notifier<bool> {
   }
 }
 
+/// Optional external folder where each auto-backup is mirrored.
+///
+/// Null = no external mirroring (internal backups only).
+/// Persisted in SharedPreferences as a plain path string.
+final externalBackupFolderProvider =
+    NotifierProvider<ExternalBackupFolderNotifier, String?>(
+  ExternalBackupFolderNotifier.new,
+);
+
+class ExternalBackupFolderNotifier extends Notifier<String?> {
+  @override
+  String? build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final value = prefs.getString(BackupService.externalBackupFolderKey);
+    // Treat empty string as null — defensive against stale prefs.
+    return (value == null || value.isEmpty) ? null : value;
+  }
+
+  Future<void> setFolder(String? path) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    if (path == null || path.isEmpty) {
+      await prefs.remove(BackupService.externalBackupFolderKey);
+      state = null;
+    } else {
+      await prefs.setString(BackupService.externalBackupFolderKey, path);
+      state = path;
+    }
+  }
+}
+
 /// The last auto-backup time, or null if never backed up.
 ///
 /// Read-only provider — the BackupService writes this via SharedPreferences,
@@ -59,8 +89,21 @@ final autoBackupStartupProvider = FutureProvider<void>((ref) async {
     await db.checkpointWal();
 
     // Copy DB to backups/ with today's date, trim old backups.
-    await backup.performAutoBackup();
+    final backupFile = await backup.performAutoBackup();
     backup.recordBackupTime(prefs);
+
+    // Mirror to the user's external folder if configured. Best-effort —
+    // a permission error or missing folder shouldn't undo the internal
+    // backup we just took. Like a Laravel job that logs and moves on.
+    final externalFolder =
+        prefs.getString(BackupService.externalBackupFolderKey);
+    if (externalFolder != null && externalFolder.isNotEmpty) {
+      try {
+        await backup.mirrorBackupToExternal(backupFile, externalFolder);
+      } catch (_) {
+        // Swallow — internal backup already succeeded.
+      }
+    }
   } catch (_) {
     // Non-fatal — auto-backup is best-effort.
     // Like a Laravel job that catches exceptions and moves on.

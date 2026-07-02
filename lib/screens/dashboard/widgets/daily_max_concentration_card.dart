@@ -3,23 +3,40 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/data/database.dart';
+import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
 import 'package:taper/screens/dashboard/trackable_log_screen.dart';
 import 'package:taper/utils/day_boundary.dart';
+import 'package:taper/utils/decay_calculator.dart';
 import 'package:taper/utils/significant_digits_formatter.dart';
 import 'package:taper/utils/taper_calculator.dart';
 
-class DailyTotalsCard extends ConsumerStatefulWidget {
+/// Dashboard card: peak ACTIVE concentration per day over the past 30 days.
+///
+/// This is the decay-aware sibling of [DailyTotalsCard]. Daily totals sums the
+/// raw amount you put in each day; this card instead runs the pharmacokinetic
+/// decay curve and plots the single highest point your body reached that day.
+///
+/// Why that's different/useful: if you spread the same total dose across the day
+/// your raw total is unchanged, but your peak concentration drops. This card
+/// surfaces that — a good signal when the goal is "feel less spiked", not just
+/// "consume less".
+///
+/// Only meaningful for trackables that actually decay (exponential/linear). For
+/// a "none" model we show a hint instead of a flat/meaningless chart.
+class DailyMaxConcentrationCard extends ConsumerStatefulWidget {
   final int trackableId;
 
-  const DailyTotalsCard({super.key, required this.trackableId});
+  const DailyMaxConcentrationCard({super.key, required this.trackableId});
 
   @override
-  ConsumerState<DailyTotalsCard> createState() => _DailyTotalsCardState();
+  ConsumerState<DailyMaxConcentrationCard> createState() =>
+      _DailyMaxConcentrationCardState();
 }
 
-class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
+class _DailyMaxConcentrationCardState
+    extends ConsumerState<DailyMaxConcentrationCard> {
   static const _totalDays = 30;
 
   @override
@@ -42,13 +59,9 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
             .firstOrNull;
         if (trackable == null) return const SizedBox.shrink();
 
-        // Watch the active taper plan so the chart can overlay a target line.
-        // `.value` is null both while loading and when no plan exists, which is
-        // fine here because the chart should simply omit the overlay in both cases.
-        final activePlan = ref
-            .watch(activeTaperPlanProvider(trackable.id))
-            .value;
         final trackableColor = Color(trackable.color);
+        final model = DecayModel.fromString(trackable.decayModel);
+
         // Use the shared "now" provider so tests can freeze time and keep
         // chart date windows deterministic across calendar days.
         final now = ref.watch(nowProvider)();
@@ -88,7 +101,7 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                       children: [
                         Flexible(
                           child: Text(
-                            '${trackable.name} — Daily Totals',
+                            '${trackable.name} — Daily Max',
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.bold),
                             overflow: TextOverflow.ellipsis,
@@ -109,91 +122,130 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
 
                     const SizedBox(height: 4),
 
-                    StreamBuilder<List<DoseLog>>(
-                      stream: db.watchDosesBetween(
-                        trackable.id,
-                        startBoundary,
-                        endBoundary,
-                      ),
-                      builder: (context, snapshot) {
-                        final doses = snapshot.data ?? [];
-
-                        if (doses.isEmpty) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 24),
-                            child: Text(
-                              'No doses in the last 30 days.',
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          );
-                        }
-
-                        final adapters = doses
-                            .map((d) => _DoseLogAdapter(d))
-                            .toList();
-
-                        final dailyTotals = TaperCalculator.dailyTotals(
-                          doses: adapters,
-                          boundaryHour: boundaryHour,
-                        );
-
-                        final spots = <FlSpot>[];
-                        var totalSum = 0.0;
-                        for (var i = 0; i < _totalDays; i++) {
-                          final date = DateTime(
-                            startBoundary.year,
-                            startBoundary.month,
-                            startBoundary.day + i,
-                            startBoundary.hour,
-                          );
-                          final amount = dailyTotals[date] ?? 0.0;
-                          spots.add(FlSpot(i.toDouble(), amount));
-                          totalSum += amount;
-                        }
-
-                        final daysWithData = dailyTotals.values
-                            .where((v) => v > 0)
-                            .length;
-                        final avg = totalSum / _totalDays;
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'avg: ${avg.toStringAsFixed(0)} ${trackable.unit}/day'
-                              '${daysWithData < _totalDays ? ' ($daysWithData days with doses)' : ''}',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            SizedBox(
-                              height: 200,
-                              child: _buildChart(
-                                context,
-                                spots: spots,
-                                activePlan: activePlan,
-                                trackableColor: trackableColor,
-                                trackableUnit: trackable.unit,
-                                startBoundary: startBoundary,
-                                todayBoundary: todayBoundary,
-                                average: avg,
+                    // A "none" trackable never decays, so a peak-concentration
+                    // curve would just mirror raw intake — point the user at the
+                    // Daily Totals card instead.
+                    if (model == DecayModel.none)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          'No decay model — peak concentration only applies to '
+                          'trackables that decay. Use the Daily Totals card '
+                          'instead.',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                        ),
+                      )
+                    else
+                      StreamBuilder<List<DoseLog>>(
+                        // Look back beyond the 30-day window so doses logged just
+                        // before the window's first day still contribute their
+                        // decaying tail to that day's peak. The lookback mirrors
+                        // the decay-card provider's window logic.
+                        stream: db.watchDosesBetween(
+                          trackable.id,
+                          startBoundary.subtract(
+                            _decayLookback(trackable, model),
+                          ),
+                          endBoundary,
+                        ),
+                        builder: (context, snapshot) {
+                          final doses = (snapshot.data ?? [])
+                              // Peaks should reflect what was actually consumed,
+                              // not projected/planned future doses.
+                              .where((d) => !d.isPlanned)
+                              .toList();
+
+                          if (doses.isEmpty) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 24),
+                              child: Text(
+                                'No doses in the last 30 days.',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            );
+                          }
+
+                          // Sample the active-amount curve across the whole
+                          // window using the trackable's own decay math, then
+                          // bucket each day to its single highest sample.
+                          final curve = _generateCurve(
+                            doses: doses,
+                            trackable: trackable,
+                            model: model,
+                            startTime: startBoundary,
+                            endTime: endBoundary,
+                          );
+                          final dailyPeaks = TaperCalculator.dailyPeaks(
+                            curve: curve,
+                            boundaryHour: boundaryHour,
+                          );
+
+                          final spots = <FlSpot>[];
+                          var peakSum = 0.0;
+                          var overallPeak = 0.0;
+                          for (var i = 0; i < _totalDays; i++) {
+                            final date = DateTime(
+                              startBoundary.year,
+                              startBoundary.month,
+                              startBoundary.day + i,
+                              startBoundary.hour,
+                            );
+                            final amount = dailyPeaks[date] ?? 0.0;
+                            spots.add(FlSpot(i.toDouble(), amount));
+                            peakSum += amount;
+                            if (amount > overallPeak) overallPeak = amount;
+                          }
+
+                          final daysWithData = dailyPeaks.values
+                              .where((v) => v > 0)
+                              .length;
+                          final avgPeak = peakSum / _totalDays;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'avg peak: ${formatWithSignificantDigits(avgPeak)} '
+                                '${trackable.unit} · '
+                                'highest: ${formatWithSignificantDigits(overallPeak)} '
+                                '${trackable.unit}'
+                                '${daysWithData < _totalDays ? ' ($daysWithData days with doses)' : ''}',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              SizedBox(
+                                height: 200,
+                                child: _buildChart(
+                                  context,
+                                  spots: spots,
+                                  trackableColor: trackableColor,
+                                  trackableUnit: trackable.unit,
+                                  startBoundary: startBoundary,
+                                  todayBoundary: todayBoundary,
+                                  average: avgPeak,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -204,10 +256,52 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
     );
   }
 
+  /// How far before the window to fetch doses so their decaying tail still
+  /// counts toward early days' peaks. Mirrors the decay-card provider:
+  ///   - exponential: 10 × half-life (< 0.1% remains beyond that)
+  ///   - linear: 24h (conservative; small doses deplete quickly)
+  Duration _decayLookback(Trackable trackable, DecayModel model) {
+    return switch (model) {
+      DecayModel.exponential => Duration(
+        hours: (trackable.halfLifeHours! * 10).ceil(),
+      ),
+      DecayModel.linear => const Duration(hours: 24),
+      // Unreachable: the "none" branch is handled before this is called.
+      DecayModel.none => Duration.zero,
+    };
+  }
+
+  /// Generate the active-amount curve using the trackable's decay model.
+  /// Same calls the dashboard decay card uses, just over a 30-day window.
+  List<({DateTime time, double amount})> _generateCurve({
+    required List<DoseLog> doses,
+    required Trackable trackable,
+    required DecayModel model,
+    required DateTime startTime,
+    required DateTime endTime,
+  }) {
+    return switch (model) {
+      DecayModel.exponential => DecayCalculator.generateCurve(
+        doses: doses,
+        halfLifeHours: trackable.halfLifeHours!,
+        startTime: startTime,
+        endTime: endTime,
+        absorptionMinutes: trackable.absorptionMinutes,
+      ),
+      DecayModel.linear => DecayCalculator.generateLinearCurve(
+        doses: doses,
+        eliminationRate: trackable.eliminationRate!,
+        startTime: startTime,
+        endTime: endTime,
+        absorptionMinutes: trackable.absorptionMinutes,
+      ),
+      DecayModel.none => const [],
+    };
+  }
+
   Widget _buildChart(
     BuildContext context, {
     required List<FlSpot> spots,
-    required TaperPlan? activePlan,
     required Color trackableColor,
     required String trackableUnit,
     required DateTime startBoundary,
@@ -216,38 +310,7 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
   }) {
     final axisColor = Theme.of(context).colorScheme.onSurfaceVariant;
 
-    // Build one target point per day for the same X-axis as the totals series.
-    // This mirrors the taper-progress chart logic, so "actual vs target" means
-    // the same thing across both widgets.
-    final taperTargetSpots = <FlSpot>[];
-    if (activePlan != null) {
-      for (var i = 0; i < _totalDays; i++) {
-        final date = DateTime(
-          startBoundary.year,
-          startBoundary.month,
-          startBoundary.day + i,
-          startBoundary.hour,
-        );
-        final target = TaperCalculator.dailyTarget(
-          startAmount: activePlan.startAmount,
-          targetAmount: activePlan.targetAmount,
-          startDate: activePlan.startDate,
-          endDate: activePlan.endDate,
-          queryDate: date,
-        );
-        taperTargetSpots.add(FlSpot(i.toDouble(), target));
-      }
-    }
-
-    var maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
-    // Include taper targets in Y scaling so the dashed line never gets clipped.
-    if (taperTargetSpots.isNotEmpty) {
-      final taperMax = taperTargetSpots.fold<double>(
-        0,
-        (max, s) => s.y > max ? s.y : max,
-      );
-      if (taperMax > maxY) maxY = taperMax;
-    }
+    final maxY = spots.fold<double>(0, (max, s) => s.y > max ? s.y : max);
     final adjustedMaxY = maxY > 0 ? maxY * 1.1 : 1.0;
 
     final todayX = todayBoundary
@@ -265,18 +328,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
         maxY: adjustedMaxY,
 
         lineBarsData: [
-          // Dashed target line for the active taper plan.
-          // This is intentionally muted so the solid totals series remains primary.
-          if (taperTargetSpots.isNotEmpty)
-            LineChartBarData(
-              spots: taperTargetSpots,
-              isCurved: false,
-              color: axisColor.withAlpha(140),
-              barWidth: 2,
-              dashArray: [6, 4],
-              dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: false),
-            ),
           LineChartBarData(
             spots: spots,
             isCurved: true,
@@ -317,8 +368,7 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
               dashArray: [4, 4],
             ),
           ],
-          // Dotted horizontal line at the average of the days in view. Gives a
-          // quick "am I above or below my typical day?" baseline.
+          // Dotted horizontal line at the average peak across the days in view.
           horizontalLines: average > 0
               ? [
                   HorizontalLine(
@@ -376,7 +426,7 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                   return const SizedBox.shrink();
                 }
                 return Text(
-                  // Use significant digits so low totals remain visible
+                  // Use significant digits so low peaks remain visible
                   // instead of being rounded down to 0 on chart labels.
                   formatWithSignificantDigits(value),
                   style: TextStyle(
@@ -414,20 +464,12 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                   startBoundary.day + dayIndex,
                 );
                 final dateStr = '${date.month}/${date.day}';
-                // Target line is inserted before totals line, so barIndex 0 means
-                // "target" whenever taperTargetSpots is present.
-                final isTargetSpot =
-                    taperTargetSpots.isNotEmpty && spot.barIndex == 0;
-                final label = isTargetSpot ? 'Target' : 'Actual';
-                // Keep tooltip precision aligned with Y-axis label formatting.
                 final amountStr =
                     '${formatWithSignificantDigits(spot.y)} $trackableUnit';
                 return LineTooltipItem(
-                  '$dateStr\n$label: $amountStr',
+                  '$dateStr\nPeak: $amountStr',
                   TextStyle(
-                    color: isTargetSpot
-                        ? axisColor.withAlpha(220)
-                        : trackableColor,
+                    color: trackableColor,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -448,8 +490,6 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
                   getDotPainter: (spot, percent, bar, idx) {
                     return FlDotCirclePainter(
                       radius: 6,
-                      // Use each series' own color so touching the dashed target
-                      // line doesn't highlight with the totals color.
                       color: bar.color ?? trackableColor,
                       strokeWidth: 2,
                       strokeColor: Colors.white,
@@ -493,15 +533,4 @@ class _DailyTotalsCardState extends ConsumerState<DailyTotalsCard> {
       ),
     );
   }
-}
-
-class _DoseLogAdapter implements DoseLogLike {
-  final DoseLog _doseLog;
-  _DoseLogAdapter(this._doseLog);
-
-  @override
-  double get amount => _doseLog.amount;
-
-  @override
-  DateTime get loggedAt => _doseLog.loggedAt;
 }

@@ -96,10 +96,14 @@ class TaperApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Watch the theme mode setting — rebuilds MaterialApp when changed.
     final themeMode = ref.watch(themeModeProvider);
+    // Watch the perf overlay toggle — shows Flutter's FPS graphs on screen.
+    // Only useful in profile builds (`flutter run --profile`).
+    final showPerfOverlay = ref.watch(perfOverlayProvider);
 
     return MaterialApp(
       title: 'Taper',
       debugShowCheckedModeBanner: false,
+      showPerformanceOverlay: showPerfOverlay,
 
       // navigatorKey connects MaterialApp's navigator to the notification service,
       // so notification actions can push routes/dialogs onto the navigation stack.

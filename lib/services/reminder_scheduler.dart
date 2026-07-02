@@ -161,7 +161,11 @@ class ReminderScheduler {
   /// notifications for this reminder first to avoid duplicates.
   ///
   /// [trackable] is needed for the notification title (shows trackable name).
-  Future<void> scheduleReminder(Reminder reminder, Trackable trackable) async {
+  Future<void> scheduleReminder(
+    Reminder reminder,
+    Trackable trackable, {
+    AppDatabase? db,
+  }) async {
     final plugin = _plugin;
     if (plugin == null || !reminder.isEnabled) return;
 
@@ -176,9 +180,72 @@ class ReminderScheduler {
         await _scheduleScheduledReminder(plugin, reminder, trackable);
       case ReminderType.loggingGap:
         // Gap reminders are rescheduled dynamically when doses are logged.
-        // On app start, we schedule the initial gap notification based on
-        // the window start + gap duration.
-        await _scheduleGapReminder(plugin, reminder, trackable, null);
+        // On scheduling (startup or when enabling/editing), we anchor to the
+        // latest real dose inside today's window when possible. If there isn't
+        // one yet, _scheduleGapReminder falls back to windowStart + gap.
+        final lastDoseTime = await getLastDoseInCurrentGapWindow(
+          reminder: reminder,
+          trackableId: trackable.id,
+          db: db,
+        );
+        await _scheduleGapReminder(plugin, reminder, trackable, lastDoseTime);
+    }
+  }
+
+  /// Find the latest non-planned dose inside today's gap window.
+  ///
+  /// Why this exists:
+  /// - Without this lookup, startup/enable scheduling uses windowStart + gap
+  ///   even if the user already logged a dose after window start.
+  /// - That can fire early (example: window 07:00, gap 120, last dose 07:30
+  ///   would incorrectly schedule at 09:00 instead of 09:30).
+  ///
+  /// Returns null when:
+  /// - the reminder is not logging_gap
+  /// - windowStart is missing/invalid
+  /// - no dose exists since today's window start
+  @visibleForTesting
+  Future<DateTime?> getLastDoseInCurrentGapWindow({
+    required Reminder reminder,
+    required int trackableId,
+    AppDatabase? db,
+    DateTime Function()? nowProvider,
+  }) async {
+    if (ReminderType.fromString(reminder.type) != ReminderType.loggingGap) {
+      return null;
+    }
+    if (reminder.windowStart == null) return null;
+
+    final parts = reminder.windowStart!.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+
+    final database = db ?? AppDatabase();
+    final shouldCloseDb = db == null;
+
+    try {
+      final now = tz.TZDateTime.from((nowProvider ?? DateTime.now)(), tz.local);
+      final windowStartToday = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        hour,
+        minute,
+      );
+      final lastDose = await database.getLastDoseSince(
+        trackableId,
+        windowStartToday,
+      );
+      return lastDose?.loggedAt;
+    } finally {
+      // When no DB is injected (e.g. direct scheduler calls), we create a
+      // temporary connection for this lookup and must close it afterwards.
+      if (shouldCloseDb) {
+        await database.close();
+      }
     }
   }
 
@@ -446,22 +513,45 @@ class ReminderScheduler {
     }
   }
 
-  /// Reschedule a gap reminder based on a new last dose time.
-  /// Called when a dose is logged — pushes the gap notification forward.
+  /// Reschedule a gap reminder after a dose is logged.
+  ///
+  /// Looks up the actual latest dose in the current gap window rather than
+  /// blindly using the just-logged dose's loggedAt. This matters when the user
+  /// backdates a dose — e.g. logging a 7:00 AM dose at 10:30 AM should not
+  /// reset the gap timer to 7:00 AM if a 10:00 AM dose already exists.
+  /// Without this lookup, backdated doses would cause the gap timer to fire
+  /// almost immediately (1 min catch-up) at unexpected times.
   Future<void> rescheduleGapReminder(
     Reminder reminder,
     Trackable trackable,
-    DateTime lastDoseTime,
-  ) async {
+    DateTime lastDoseTime, {
+    AppDatabase? db,
+  }) async {
     final plugin = _plugin;
     if (plugin == null || !reminder.isEnabled) return;
     if (ReminderType.fromString(reminder.type) != ReminderType.loggingGap) {
       return;
     }
 
+    // Look up the actual latest dose in today's gap window.
+    // The just-logged dose might be backdated, so we can't trust lastDoseTime
+    // to be the most recent — another dose may have a later loggedAt.
+    final latestDoseTime = await getLastDoseInCurrentGapWindow(
+      reminder: reminder,
+      trackableId: trackable.id,
+      db: db,
+    );
+
     // Cancel existing gap notification before scheduling a new one.
     await plugin.cancel(_notificationId(reminder.id, offset: 50));
-    await _scheduleGapReminder(plugin, reminder, trackable, lastDoseTime);
+    await _scheduleGapReminder(
+      plugin,
+      reminder,
+      trackable,
+      // Use whichever is actually later: the DB lookup result or the
+      // just-logged dose (in case it hasn't been committed yet).
+      latestDoseTime ?? lastDoseTime,
+    );
   }
 
   /// Schedule all enabled reminders. Called on app start.
@@ -474,7 +564,7 @@ class ReminderScheduler {
     for (final reminder in enabledReminders) {
       final trackable = await db.getTrackable(reminder.trackableId);
       if (trackable != null) {
-        await scheduleReminder(reminder, trackable);
+        await scheduleReminder(reminder, trackable, db: db);
       }
     }
   }
@@ -508,7 +598,8 @@ class ReminderScheduler {
 
       if (type == ReminderType.loggingGap) {
         // Reschedule gap reminder — push the gap timer forward from this dose.
-        await rescheduleGapReminder(reminder, trackable, loggedAt);
+        // Pass db so the lookup can find the actual latest dose in the window.
+        await rescheduleGapReminder(reminder, trackable, loggedAt, db: db);
       }
     }
   }

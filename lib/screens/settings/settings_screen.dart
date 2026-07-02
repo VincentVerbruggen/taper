@@ -37,6 +37,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final themeMode = ref.watch(themeModeProvider);
     final autoBackupEnabled = ref.watch(autoBackupEnabledProvider);
     final lastBackupTime = ref.watch(lastBackupTimeProvider);
+    final externalBackupFolder = ref.watch(externalBackupFolderProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -144,6 +145,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
 
+            // --- Performance overlay toggle ---
+            // Shows Flutter's built-in FPS graphs (UI thread + raster thread).
+            // Only meaningful in profile builds — like Chrome DevTools FPS meter.
+            SwitchListTile(
+              title: const Text('Performance overlay'),
+              subtitle: const Text(
+                'Show FPS graphs (use with flutter run --profile)',
+              ),
+              value: ref.watch(perfOverlayProvider),
+              onChanged: (_) {
+                ref.read(perfOverlayProvider.notifier).toggle();
+              },
+            ),
+
             const Divider(height: 32),
 
             // =================================================================
@@ -167,6 +182,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onChanged: (value) {
                 ref.read(autoBackupEnabledProvider.notifier).setEnabled(value);
               },
+            ),
+
+            // --- External backup folder picker ---
+            // Optional mirror destination for each auto-backup. If unset,
+            // backups stay in the app's internal docs dir only. If set,
+            // we copy each daily backup to this folder too (best-effort).
+            //
+            // Disabled when auto-backup itself is off — like a sub-setting
+            // that only makes sense when the parent toggle is on.
+            ListTile(
+              leading: const Icon(Icons.folder_outlined),
+              title: const Text('External backup folder'),
+              subtitle: Text(
+                externalBackupFolder ??
+                    'Not set — backups are stored in app storage only',
+              ),
+              enabled: autoBackupEnabled,
+              trailing: externalBackupFolder != null
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      tooltip: 'Clear external folder',
+                      onPressed: () => ref
+                          .read(externalBackupFolderProvider.notifier)
+                          .setFolder(null),
+                    )
+                  : null,
+              onTap: autoBackupEnabled ? _pickExternalBackupFolder : null,
             ),
 
             // --- Export button ---
@@ -276,6 +318,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // ===========================================================================
   // DATA MANAGEMENT ACTIONS
   // ===========================================================================
+
+  /// Open the system folder picker and save the chosen path as the
+  /// external backup mirror destination. A null result = user cancelled.
+  ///
+  /// Note: on Android the picker uses Storage Access Framework. Whether the
+  /// returned path is writable via dart:io depends on the OS version and
+  /// folder choice — we save what we get and surface failures only at
+  /// backup time (best-effort, like a Laravel filesystem disk).
+  Future<void> _pickExternalBackupFolder() async {
+    final picked = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose external backup folder',
+    );
+    if (picked == null) return; // User cancelled.
+
+    await ref.read(externalBackupFolderProvider.notifier).setFolder(picked);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          showCloseIcon: true,
+          content: Text('External backup folder set: $picked'),
+        ),
+      );
+    }
+  }
 
   /// Export the database via the native share sheet.
   Future<void> _handleExport(BuildContext context, WidgetRef ref) async {
