@@ -80,6 +80,30 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
               onPressed: () =>
                   ref.read(selectedDateProvider.notifier).goToToday(),
             ),
+          // Overflow menu keeps the app bar from getting crowded — bulk/day
+          // level actions live here, per-dose actions stay on the rows.
+          PopupMenuButton<String>(
+            tooltip: 'More actions',
+            onSelected: (value) {
+              if (value == 'copyFromDay') {
+                _copyFromAnotherDay(
+                  boundaryHour: boundaryHour,
+                  selectedBoundary: selectedBoundary,
+                  todayBoundary: todayBoundary,
+                );
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'copyFromDay',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.copy_all),
+                  title: Text('Copy from another day…'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       // Keep quick-add dialog for speed. Users can still adjust the timestamp
@@ -612,35 +636,205 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
         ? DateTime(selectedDate.year, selectedDate.month, selectedDate.day)
         : DateTime(now.year, now.month, now.day);
 
-    await showDialog<void>(
+    final picked = await _pickDay(initialDate: initialDate);
+    if (picked == null || !mounted) return;
+
+    ref
+        .read(selectedDateProvider.notifier)
+        .selectDate(
+          DateTime(picked.year, picked.month, picked.day, boundaryHour),
+        );
+  }
+
+  /// Shared calendar dialog. Returns the picked date, or null if dismissed.
+  ///
+  /// Think of it like a blade partial: one calendar markup reused by both the
+  /// "jump to date" action and the "copy from day" action, each doing something
+  /// different with the returned value.
+  Future<DateTime?> _pickDay({
+    required DateTime initialDate,
+    String? title,
+  }) async {
+    return showDialog<DateTime>(
       context: context,
       builder: (dialogContext) {
         return Dialog(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: CalendarDatePicker(
-              initialDate: initialDate,
-              firstDate: DateTime(2020),
-              // Allow selecting future dates so users can inspect planned days.
-              lastDate: DateTime(2100),
-              onDateChanged: (picked) {
-                Navigator.pop(dialogContext);
-                ref
-                    .read(selectedDateProvider.notifier)
-                    .selectDate(
-                      DateTime(
-                        picked.year,
-                        picked.month,
-                        picked.day,
-                        boundaryHour,
-                      ),
-                    );
-              },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (title != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      title,
+                      style: Theme.of(dialogContext).textTheme.titleMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // CalendarDatePicker lays out with an Expanded internally, so
+                // it needs a bounded height. Inside a plain Dialog it inherits
+                // one; inside this Column (mainAxisSize.min) it would not, so
+                // we give it an explicit box.
+                SizedBox(
+                  height: 340,
+                  child: CalendarDatePicker(
+                    initialDate: initialDate,
+                    firstDate: DateTime(2020),
+                    // Allow future dates so users can inspect/plan ahead.
+                    lastDate: DateTime(2100),
+                    onDateChanged: (picked) =>
+                        Navigator.pop(dialogContext, picked),
+                  ),
+                ),
+              ],
             ),
           ),
         );
       },
     );
+  }
+
+  /// Copies every entry from a picked source day into the day being viewed.
+  ///
+  /// Time-of-day is preserved: a 08:30 dose on the source day becomes an 08:30
+  /// dose on the target day. Entries that fall after midnight but before the
+  /// day boundary (e.g. a 02:00 dose belonging to the previous "day") keep that
+  /// relationship because we shift by whole calendar days, not by a Duration.
+  Future<void> _copyFromAnotherDay({
+    required int boundaryHour,
+    required DateTime selectedBoundary,
+    required DateTime todayBoundary,
+  }) async {
+    final db = ref.read(databaseProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Default the picker to the day before the one being viewed — repeating
+    // yesterday into today is by far the most common case.
+    final defaultSource = DateTime(
+      selectedBoundary.year,
+      selectedBoundary.month,
+      selectedBoundary.day - 1,
+    );
+
+    final picked = await _pickDay(
+      initialDate: defaultSource,
+      title: 'Copy entries from…',
+    );
+    if (picked == null || !mounted) return;
+
+    final sourceBoundary = DateTime(
+      picked.year,
+      picked.month,
+      picked.day,
+      boundaryHour,
+    );
+
+    // Copying a day onto itself would silently double it — almost certainly a
+    // mis-tap, so we stop instead of destroying the day's data.
+    if (sourceBoundary == selectedBoundary) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("That's the day you're already viewing."),
+        ),
+      );
+      return;
+    }
+
+    final sourceEnd = DateTime(
+      sourceBoundary.year,
+      sourceBoundary.month,
+      sourceBoundary.day + 1,
+      boundaryHour,
+    );
+
+    // One-shot read (not a stream): we're about to write into the same table
+    // and don't want the query re-firing underneath us mid-copy.
+    final sourceDoses = await db.getDosesBetween(
+      widget.trackable.id,
+      sourceBoundary,
+      sourceEnd,
+    );
+    if (!mounted) return;
+
+    final sourceLabel = _formatDayLabel(sourceBoundary, todayBoundary);
+
+    if (sourceDoses.isEmpty) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('No entries on $sourceLabel to copy.')),
+      );
+      return;
+    }
+
+    // Whole-day shift computed in UTC so a DST change in between can't turn a
+    // 24h difference into 23h and round the day count down.
+    final dayShift = _calendarDaysBetween(sourceBoundary, selectedBoundary);
+    // Anything landing on a future day is an intention, not something consumed,
+    // so it becomes a planned dose. Today/past keeps whatever the source was.
+    final targetIsFuture = selectedBoundary.isAfter(todayBoundary);
+
+    final insertedIds = <int>[];
+    for (final dose in sourceDoses) {
+      final src = dose.loggedAt;
+      // DateTime() normalises day overflow (Feb 28 + 2 → Mar 2) and DST, so we
+      // rebuild the timestamp instead of adding a Duration.
+      final newLoggedAt = DateTime(
+        src.year,
+        src.month,
+        src.day + dayShift,
+        src.hour,
+        src.minute,
+        src.second,
+      );
+
+      insertedIds.add(
+        await db.insertDoseLog(
+          dose.trackableId,
+          dose.amount,
+          newLoggedAt,
+          name: dose.name,
+          isPlanned: targetIsFuture ? true : dose.isPlanned,
+        ),
+      );
+    }
+
+    if (!mounted) return;
+
+    final count = insertedIds.length;
+    messenger.showSnackBar(
+      SnackBar(
+        showCloseIcon: true,
+        persist: false,
+        duration: const Duration(seconds: 6),
+        content: Text(
+          'Copied $count ${count == 1 ? 'entry' : 'entries'} from $sourceLabel'
+          '${targetIsFuture ? ' as planned' : ''}',
+        ),
+        action: SnackBarAction(
+          label: 'Undo',
+          // Undo only removes the rows we just created, so pre-existing
+          // entries on this day are never touched.
+          onPressed: () {
+            for (final id in insertedIds) {
+              db.deleteDoseLog(id);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Whole calendar days between two local dates, ignoring time-of-day.
+  ///
+  /// Uses UTC copies of the date parts so DST transitions (a 23h or 25h local
+  /// "day") can't skew the count.
+  int _calendarDaysBetween(DateTime from, DateTime to) {
+    final a = DateTime.utc(from.year, from.month, from.day);
+    final b = DateTime.utc(to.year, to.month, to.day);
+    return b.difference(a).inDays;
   }
 
   /// Formats a day boundary into a readable label.

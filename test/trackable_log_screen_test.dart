@@ -190,6 +190,186 @@ void main() {
     await cleanUp(tester);
   });
 
+  /// Opens the app bar overflow menu and picks "Copy from another day…",
+  /// then taps [dayOfMonth] in the calendar dialog that follows.
+  Future<void> copyFromDay(WidgetTester tester, String dayOfMonth) async {
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Copy from another day…'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(dayOfMonth));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('copies another day\'s entries into the viewed day', (
+    tester,
+  ) async {
+    // Source day (Feb 21) — two entries at different times of day.
+    await db.insertDoseLog(
+      caffeine.id,
+      90,
+      DateTime(2026, 2, 21, 9),
+      name: 'Espresso',
+    );
+    await db.insertDoseLog(caffeine.id, 60, DateTime(2026, 2, 21, 14, 30));
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    // Viewing today (Feb 23) — empty until we copy into it.
+    expect(find.text('No doses logged on this day.'), findsOneWidget);
+
+    await copyFromDay(tester, '21');
+
+    // Times of day are preserved, only the calendar day shifts.
+    final copied = await db.getDosesBetween(
+      caffeine.id,
+      DateTime(2026, 2, 23, 5),
+      DateTime(2026, 2, 24, 5),
+    );
+    expect(copied, hasLength(2));
+    expect(copied[0].amount, 90);
+    expect(copied[0].name, 'Espresso');
+    expect(copied[0].loggedAt, DateTime(2026, 2, 23, 9));
+    expect(copied[0].isPlanned, isFalse);
+    expect(copied[1].amount, 60);
+    expect(copied[1].loggedAt, DateTime(2026, 2, 23, 14, 30));
+
+    // Source day is untouched — this is a copy, not a move.
+    final source = await db.getDosesBetween(
+      caffeine.id,
+      DateTime(2026, 2, 21, 5),
+      DateTime(2026, 2, 22, 5),
+    );
+    expect(source, hasLength(2));
+
+    expect(find.textContaining('Copied 2 entries'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('copying into a future day marks the copies as planned', (
+    tester,
+  ) async {
+    await db.insertDoseLog(caffeine.id, 90, DateTime(2026, 2, 23, 9));
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    // Move to Feb 25 — two days ahead of the fixed "now".
+    await tester.tap(find.byTooltip('Next day'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Next day'));
+    await tester.pumpAndSettle();
+
+    await copyFromDay(tester, '23');
+
+    final copied = await db.getDosesBetween(
+      caffeine.id,
+      DateTime(2026, 2, 25, 5),
+      DateTime(2026, 2, 26, 5),
+    );
+    expect(copied, hasLength(1));
+    expect(copied.first.loggedAt, DateTime(2026, 2, 25, 9));
+    // Future entries are intentions, not consumed doses.
+    expect(copied.first.isPlanned, isTrue);
+
+    expect(find.textContaining('as planned'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('copies are appended to entries the day already has', (
+    tester,
+  ) async {
+    await db.insertDoseLog(caffeine.id, 90, DateTime(2026, 2, 21, 9));
+    await db.insertDoseLog(caffeine.id, 40, DateTime(2026, 2, 23, 8));
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    await copyFromDay(tester, '21');
+
+    final today = await db.getDosesBetween(
+      caffeine.id,
+      DateTime(2026, 2, 23, 5),
+      DateTime(2026, 2, 24, 5),
+    );
+    expect(today, hasLength(2));
+    expect(today.map((d) => d.amount), containsAll([40.0, 90.0]));
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('undo removes only the copied entries', (tester) async {
+    await db.insertDoseLog(caffeine.id, 90, DateTime(2026, 2, 21, 9));
+    await db.insertDoseLog(caffeine.id, 40, DateTime(2026, 2, 23, 8));
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    await copyFromDay(tester, '21');
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+
+    final today = await db.getDosesBetween(
+      caffeine.id,
+      DateTime(2026, 2, 23, 5),
+      DateTime(2026, 2, 24, 5),
+    );
+    // The pre-existing 40 mg entry survives, the copy is gone.
+    expect(today, hasLength(1));
+    expect(today.first.amount, 40);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('copying from an empty day reports there is nothing to copy', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    await copyFromDay(tester, '21');
+
+    expect(find.textContaining('No entries on'), findsOneWidget);
+
+    final today = await db.getDosesBetween(
+      caffeine.id,
+      DateTime(2026, 2, 23, 5),
+      DateTime(2026, 2, 24, 5),
+    );
+    expect(today, isEmpty);
+
+    await cleanUp(tester);
+  });
+
+  testWidgets('copying a day onto itself is refused', (tester) async {
+    await db.insertDoseLog(caffeine.id, 90, DateTime(2026, 2, 23, 9));
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    await copyFromDay(tester, '23');
+
+    expect(
+      find.text("That's the day you're already viewing."),
+      findsOneWidget,
+    );
+
+    final today = await db.getDosesBetween(
+      caffeine.id,
+      DateTime(2026, 2, 23, 5),
+      DateTime(2026, 2, 24, 5),
+    );
+    expect(today, hasLength(1));
+
+    await cleanUp(tester);
+  });
+
   testWidgets('tapping a dose navigates to EditDoseScreen', (tester) async {
     await db.insertDoseLog(caffeine.id, 75, DateTime(2026, 2, 23, 10));
 

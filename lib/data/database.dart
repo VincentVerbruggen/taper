@@ -1193,6 +1193,30 @@ class AppDatabase extends _$AppDatabase {
         .watch();
   }
 
+  /// Get doses for a trackable between [from] and [to) (one-shot, not reactive).
+  ///
+  /// Used by "copy day" style bulk actions that need to READ a day once and
+  /// then write new rows — a stream would be wrong there because the write
+  /// would re-fire the stream mid-copy.
+  /// Like: DoseLog::where('trackable_id', $id)
+  ///           ->whereBetween('logged_at', [$from, $to])
+  ///           ->orderBy('logged_at')->get()
+  Future<List<DoseLog>> getDosesBetween(
+    int trackableId,
+    DateTime from,
+    DateTime to,
+  ) {
+    return (select(doseLogs)
+          ..where(
+            (t) =>
+                t.trackableId.equals(trackableId) &
+                t.loggedAt.isBiggerOrEqualValue(from) &
+                t.loggedAt.isSmallerThanValue(to),
+          )
+          ..orderBy([(t) => OrderingTerm.asc(t.loggedAt)]))
+        .get();
+  }
+
   /// Watch dose logs across ALL trackables between [from] and [to),
   /// joined with trackable rows.
   ///
