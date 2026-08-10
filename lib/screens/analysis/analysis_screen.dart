@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:taper/providers/analysis_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
+import 'package:taper/screens/analysis/trackable_analysis_screen.dart';
 
 /// Analysis tab — range-based summary metrics across trackables.
 ///
@@ -93,7 +94,18 @@ class AnalysisScreen extends ConsumerWidget {
                 ...stats.trackableStats.map(
                   (row) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _TrackableStatsCard(stats: row),
+                    child: _TrackableStatsCard(
+                      stats: row,
+                      // Tapping a card drills into the single-trackable
+                      // deep-dive with period switching + trend chart.
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => TrackableAnalysisScreen(
+                            trackable: row.trackable,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -209,42 +221,55 @@ class AnalysisScreen extends ConsumerWidget {
 class _TrackableStatsCard extends StatelessWidget {
   final TrackableRangeStats stats;
 
-  const _TrackableStatsCard({required this.stats});
+  /// Tap handler that drills into the single-trackable detail screen.
+  final VoidCallback onTap;
+
+  const _TrackableStatsCard({required this.stats, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: Color(stats.trackable.color),
-                    shape: BoxShape.circle,
+      // clipBehavior so the InkWell ripple respects the card's rounded corners.
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Color(stats.trackable.color),
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    stats.trackable.name,
-                    style: Theme.of(context).textTheme.titleMedium,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      stats.trackable.name,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
-                ),
-                Text(
-                  '${stats.doseCount} doses',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  Text(
+                    '${stats.doseCount} doses',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                ],
+              ),
+              const SizedBox(height: 12),
 
             if (!stats.hasDoses)
               Text(
@@ -298,7 +323,8 @@ class _TrackableStatsCard extends StatelessWidget {
                 value: _formatPeakActive(),
               ),
             ],
-          ],
+            ],
+          ),
         ),
       ),
     );

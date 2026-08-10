@@ -147,6 +147,21 @@ class $TrackablesTable extends Trackables
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isArchivedMeta = const VerificationMeta(
+    'isArchived',
+  );
+  @override
+  late final GeneratedColumn<bool> isArchived = GeneratedColumn<bool>(
+    'is_archived',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_archived" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -161,6 +176,7 @@ class $TrackablesTable extends Trackables
     eliminationRate,
     absorptionMinutes,
     sleepThreshold,
+    isArchived,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -259,6 +275,12 @@ class $TrackablesTable extends Trackables
         ),
       );
     }
+    if (data.containsKey('is_archived')) {
+      context.handle(
+        _isArchivedMeta,
+        isArchived.isAcceptableOrUnknown(data['is_archived']!, _isArchivedMeta),
+      );
+    }
     return context;
   }
 
@@ -316,6 +338,10 @@ class $TrackablesTable extends Trackables
         DriftSqlType.double,
         data['${effectivePrefix}sleep_threshold'],
       ),
+      isArchived: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_archived'],
+      )!,
     );
   }
 
@@ -338,6 +364,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
   final double? eliminationRate;
   final double? absorptionMinutes;
   final double? sleepThreshold;
+  final bool isArchived;
   const Trackable({
     required this.id,
     required this.name,
@@ -351,6 +378,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     this.eliminationRate,
     this.absorptionMinutes,
     this.sleepThreshold,
+    required this.isArchived,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -375,6 +403,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     if (!nullToAbsent || sleepThreshold != null) {
       map['sleep_threshold'] = Variable<double>(sleepThreshold);
     }
+    map['is_archived'] = Variable<bool>(isArchived);
     return map;
   }
 
@@ -400,6 +429,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       sleepThreshold: sleepThreshold == null && nullToAbsent
           ? const Value.absent()
           : Value(sleepThreshold),
+      isArchived: Value(isArchived),
     );
   }
 
@@ -423,6 +453,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
         json['absorptionMinutes'],
       ),
       sleepThreshold: serializer.fromJson<double?>(json['sleepThreshold']),
+      isArchived: serializer.fromJson<bool>(json['isArchived']),
     );
   }
   @override
@@ -441,6 +472,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       'eliminationRate': serializer.toJson<double?>(eliminationRate),
       'absorptionMinutes': serializer.toJson<double?>(absorptionMinutes),
       'sleepThreshold': serializer.toJson<double?>(sleepThreshold),
+      'isArchived': serializer.toJson<bool>(isArchived),
     };
   }
 
@@ -457,6 +489,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     Value<double?> eliminationRate = const Value.absent(),
     Value<double?> absorptionMinutes = const Value.absent(),
     Value<double?> sleepThreshold = const Value.absent(),
+    bool? isArchived,
   }) => Trackable(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -478,6 +511,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     sleepThreshold: sleepThreshold.present
         ? sleepThreshold.value
         : this.sleepThreshold,
+    isArchived: isArchived ?? this.isArchived,
   );
   Trackable copyWithCompanion(TrackablesCompanion data) {
     return Trackable(
@@ -503,6 +537,9 @@ class Trackable extends DataClass implements Insertable<Trackable> {
       sleepThreshold: data.sleepThreshold.present
           ? data.sleepThreshold.value
           : this.sleepThreshold,
+      isArchived: data.isArchived.present
+          ? data.isArchived.value
+          : this.isArchived,
     );
   }
 
@@ -520,7 +557,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           ..write('decayModel: $decayModel, ')
           ..write('eliminationRate: $eliminationRate, ')
           ..write('absorptionMinutes: $absorptionMinutes, ')
-          ..write('sleepThreshold: $sleepThreshold')
+          ..write('sleepThreshold: $sleepThreshold, ')
+          ..write('isArchived: $isArchived')
           ..write(')'))
         .toString();
   }
@@ -539,6 +577,7 @@ class Trackable extends DataClass implements Insertable<Trackable> {
     eliminationRate,
     absorptionMinutes,
     sleepThreshold,
+    isArchived,
   );
   @override
   bool operator ==(Object other) =>
@@ -555,7 +594,8 @@ class Trackable extends DataClass implements Insertable<Trackable> {
           other.decayModel == this.decayModel &&
           other.eliminationRate == this.eliminationRate &&
           other.absorptionMinutes == this.absorptionMinutes &&
-          other.sleepThreshold == this.sleepThreshold);
+          other.sleepThreshold == this.sleepThreshold &&
+          other.isArchived == this.isArchived);
 }
 
 class TrackablesCompanion extends UpdateCompanion<Trackable> {
@@ -571,6 +611,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
   final Value<double?> eliminationRate;
   final Value<double?> absorptionMinutes;
   final Value<double?> sleepThreshold;
+  final Value<bool> isArchived;
   const TrackablesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -584,6 +625,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.eliminationRate = const Value.absent(),
     this.absorptionMinutes = const Value.absent(),
     this.sleepThreshold = const Value.absent(),
+    this.isArchived = const Value.absent(),
   });
   TrackablesCompanion.insert({
     this.id = const Value.absent(),
@@ -598,6 +640,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     this.eliminationRate = const Value.absent(),
     this.absorptionMinutes = const Value.absent(),
     this.sleepThreshold = const Value.absent(),
+    this.isArchived = const Value.absent(),
   }) : name = Value(name),
        color = Value(color);
   static Insertable<Trackable> custom({
@@ -613,6 +656,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Expression<double>? eliminationRate,
     Expression<double>? absorptionMinutes,
     Expression<double>? sleepThreshold,
+    Expression<bool>? isArchived,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -627,6 +671,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       if (eliminationRate != null) 'elimination_rate': eliminationRate,
       if (absorptionMinutes != null) 'absorption_minutes': absorptionMinutes,
       if (sleepThreshold != null) 'sleep_threshold': sleepThreshold,
+      if (isArchived != null) 'is_archived': isArchived,
     });
   }
 
@@ -643,6 +688,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     Value<double?>? eliminationRate,
     Value<double?>? absorptionMinutes,
     Value<double?>? sleepThreshold,
+    Value<bool>? isArchived,
   }) {
     return TrackablesCompanion(
       id: id ?? this.id,
@@ -657,6 +703,7 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
       eliminationRate: eliminationRate ?? this.eliminationRate,
       absorptionMinutes: absorptionMinutes ?? this.absorptionMinutes,
       sleepThreshold: sleepThreshold ?? this.sleepThreshold,
+      isArchived: isArchived ?? this.isArchived,
     );
   }
 
@@ -699,6 +746,9 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
     if (sleepThreshold.present) {
       map['sleep_threshold'] = Variable<double>(sleepThreshold.value);
     }
+    if (isArchived.present) {
+      map['is_archived'] = Variable<bool>(isArchived.value);
+    }
     return map;
   }
 
@@ -716,7 +766,8 @@ class TrackablesCompanion extends UpdateCompanion<Trackable> {
           ..write('decayModel: $decayModel, ')
           ..write('eliminationRate: $eliminationRate, ')
           ..write('absorptionMinutes: $absorptionMinutes, ')
-          ..write('sleepThreshold: $sleepThreshold')
+          ..write('sleepThreshold: $sleepThreshold, ')
+          ..write('isArchived: $isArchived')
           ..write(')'))
         .toString();
   }
@@ -3842,6 +3893,7 @@ typedef $$TrackablesTableCreateCompanionBuilder =
       Value<double?> eliminationRate,
       Value<double?> absorptionMinutes,
       Value<double?> sleepThreshold,
+      Value<bool> isArchived,
     });
 typedef $$TrackablesTableUpdateCompanionBuilder =
     TrackablesCompanion Function({
@@ -3857,6 +3909,7 @@ typedef $$TrackablesTableUpdateCompanionBuilder =
       Value<double?> eliminationRate,
       Value<double?> absorptionMinutes,
       Value<double?> sleepThreshold,
+      Value<bool> isArchived,
     });
 
 final class $$TrackablesTableReferences
@@ -4070,6 +4123,11 @@ class $$TrackablesTableFilterComposer
 
   ColumnFilters<double> get sleepThreshold => $composableBuilder(
     column: $table.sleepThreshold,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4317,6 +4375,11 @@ class $$TrackablesTableOrderingComposer
     column: $table.sleepThreshold,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TrackablesTableAnnotationComposer
@@ -4371,6 +4434,11 @@ class $$TrackablesTableAnnotationComposer
 
   GeneratedColumn<double> get sleepThreshold => $composableBuilder(
     column: $table.sleepThreshold,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
     builder: (column) => column,
   );
 
@@ -4598,6 +4666,7 @@ class $$TrackablesTableTableManager
                 Value<double?> eliminationRate = const Value.absent(),
                 Value<double?> absorptionMinutes = const Value.absent(),
                 Value<double?> sleepThreshold = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
               }) => TrackablesCompanion(
                 id: id,
                 name: name,
@@ -4611,6 +4680,7 @@ class $$TrackablesTableTableManager
                 eliminationRate: eliminationRate,
                 absorptionMinutes: absorptionMinutes,
                 sleepThreshold: sleepThreshold,
+                isArchived: isArchived,
               ),
           createCompanionCallback:
               ({
@@ -4626,6 +4696,7 @@ class $$TrackablesTableTableManager
                 Value<double?> eliminationRate = const Value.absent(),
                 Value<double?> absorptionMinutes = const Value.absent(),
                 Value<double?> sleepThreshold = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
               }) => TrackablesCompanion.insert(
                 id: id,
                 name: name,
@@ -4639,6 +4710,7 @@ class $$TrackablesTableTableManager
                 eliminationRate: eliminationRate,
                 absorptionMinutes: absorptionMinutes,
                 sleepThreshold: sleepThreshold,
+                isArchived: isArchived,
               ),
           withReferenceMapper: (p0) => p0
               .map(

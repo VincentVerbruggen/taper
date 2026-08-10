@@ -331,12 +331,19 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
                         reservedSize: 24,
                         interval: 6,
                         getTitlesWidget: (value, meta) {
-                          final hour = value.toInt();
-                          if (hour < 0 || hour > 24) {
+                          final hoursFromBoundary = value.toInt();
+                          if (hoursFromBoundary < 0 || hoursFromBoundary > 24) {
                             return const SizedBox.shrink();
                           }
+                          // x = 0 is the day boundary (e.g. 05:00), not
+                          // midnight — convert the axis value (hours since the
+                          // boundary) into real wall-clock time so the labels
+                          // start at the start-of-day time instead of 00:00.
+                          final labelTime = selectedBoundary.add(
+                            Duration(hours: hoursFromBoundary),
+                          );
                           return Text(
-                            '${hour.toString().padLeft(2, '0')}:00',
+                            '${labelTime.hour.toString().padLeft(2, '0')}:00',
                             style: TextStyle(
                               color: axisColor.withAlpha(160),
                               fontSize: 10,
@@ -370,6 +377,46 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
                     ),
                     rightTitles: const AxisTitles(
                       sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  // Replace fl_chart's default tooltip (which prints raw,
+                  // full-precision numbers) with a clock time + a value rounded
+                  // to 3 significant figures — matching the dashboard card.
+                  lineTouchData: LineTouchData(
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (_) => Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      getTooltipItems: (spots) {
+                        // The projected (dashed) line is the 2nd bar, and only
+                        // present when there are planned doses to project.
+                        final projectedIndex =
+                            (data.hasPlannedDoses && projectedSpots.isNotEmpty)
+                            ? 1
+                            : null;
+                        return spots.map((spot) {
+                          // spot.x is hours since the boundary — same mapping
+                          // as the axis labels above.
+                          final spotTime = selectedBoundary.add(
+                            Duration(minutes: (spot.x * 60).round()),
+                          );
+                          final timeStr =
+                              '${spotTime.hour.toString().padLeft(2, '0')}:${spotTime.minute.toString().padLeft(2, '0')}';
+                          final amount = formatWithSignificantDigits(spot.y);
+                          final isProjected = spot.barIndex == projectedIndex;
+                          final label = isProjected ? 'Projected' : 'Amount';
+                          return LineTooltipItem(
+                            '$timeStr\n$label: $amount ${widget.trackable.unit}',
+                            TextStyle(
+                              color: isProjected
+                                  ? trackableColor.withAlpha(170)
+                                  : trackableColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          );
+                        }).toList();
+                      },
                     ),
                   ),
                 ),

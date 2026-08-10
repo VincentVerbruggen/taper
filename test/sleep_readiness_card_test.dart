@@ -20,6 +20,7 @@ void main() {
       name: name,
       isMain: true,
       isVisible: true,
+      isArchived: false,
       halfLifeHours: halfLifeHours,
       unit: 'mg',
       color: 0,

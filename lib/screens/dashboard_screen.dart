@@ -49,6 +49,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stack) => Center(child: Text('Error: $error')),
           data: (trackables) {
+            // Archived trackables are hidden from the dashboard. We keep their
+            // widgets in the DB (so unarchiving restores them exactly), but we
+            // filter them out of the rendered list here. Widgets with no
+            // trackable (trackableId == null) are always kept.
+            final archivedIds = trackables
+                .where((t) => t.isArchived)
+                .map((t) => t.id)
+                .toSet();
+            final visibleWidgets = widgets
+                .where(
+                  (w) =>
+                      w.trackableId == null ||
+                      !archivedIds.contains(w.trackableId),
+                )
+                .toList(growable: false);
+
             // PopScope intercepts the system back button.
             // Like: $(window).on('popstate', ...) in a SPA.
             return PopScope(
@@ -67,8 +83,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               child: SafeArea(
                 bottom: false,
                 child: _isEditMode
-                    ? _buildEditMode(context, widgets, trackables)
-                    : _buildNormalMode(context, widgets),
+                    ? _buildEditMode(context, visibleWidgets, trackables)
+                    : _buildNormalMode(context, visibleWidgets),
               ),
             );
           },
@@ -299,8 +315,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
     if (type == null || !mounted) return;
 
-    // Step 2: Pick a trackable.
-    final trackables = ref.read(trackablesProvider).value ?? [];
+    // Step 2: Pick a trackable. Only offer active (non-archived) trackables —
+    // you shouldn't be able to add a dashboard widget for a tucked-away one.
+    final trackables = ref.read(activeTrackablesProvider).value ?? [];
     if (trackables.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

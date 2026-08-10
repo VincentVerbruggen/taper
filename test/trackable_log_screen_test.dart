@@ -91,6 +91,25 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('day-graph x-axis labels start at the day boundary, not 00:00', (
+    tester,
+  ) async {
+    // A dose so the chart renders (it hides itself when there are no points).
+    await db.insertDoseLog(caffeine.id, 90, DateTime(2026, 2, 23, 9));
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    // x = 0 is the 05:00 day boundary, so labels every 6h read as real
+    // wall-clock time: 05:00 / 11:00 / 17:00 / 23:00 (05:00 repeats at x=24).
+    expect(find.text('05:00'), findsWidgets);
+    expect(find.text('11:00'), findsWidgets);
+    // The old bug labeled the boundary point "00:00" — it must be gone now.
+    expect(find.text('00:00'), findsNothing);
+
+    await cleanUp(tester);
+  });
+
   testWidgets('previous day navigation switches the one-day list', (
     tester,
   ) async {

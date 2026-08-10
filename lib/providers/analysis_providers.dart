@@ -194,11 +194,16 @@ final analysisStatsProvider = StreamProvider<AnalysisStatsData>((ref) {
         // Show visible trackables by default, plus any hidden trackables that
         // still have doses in the selected range (so historical data is never
         // silently dropped from analysis).
+        //
+        // Archived trackables are excluded outright — archiving means "tucked
+        // away everywhere", so they never appear in analysis even if they have
+        // doses in the range. (Unarchiving brings their stats straight back.)
         final displayTrackables = trackables
             .where(
               (trackable) =>
-                  trackable.isVisible ||
-                  logsByTrackable.containsKey(trackable.id),
+                  !trackable.isArchived &&
+                  (trackable.isVisible ||
+                      logsByTrackable.containsKey(trackable.id)),
             )
             .toList(growable: false);
 
@@ -342,3 +347,199 @@ final analysisStatsProvider = StreamProvider<AnalysisStatsData>((ref) {
     },
   );
 });
+
+// ---------------------------------------------------------------------------
+// Single-trackable deep-dive analysis (the drill-down detail screen)
+// ---------------------------------------------------------------------------
+
+/// One day's consumption total, used to plot the trend chart.
+///
+/// A Dart record (like a lightweight anonymous struct / PHP associative array
+/// with fixed keys). `day` is the day-boundary timestamp, `total` the summed
+/// dose amount for that day.
+typedef DailyTotalPoint = ({DateTime day, double total});
+
+/// Family key for [trackableAnalysisProvider].
+///
+/// Records get value-based `==`/`hashCode` for free, so Riverpod memoizes one
+/// provider instance per unique `(trackableId, start, end)` combination — just
+/// like caching a report query keyed by its filters. `start`/`end` are
+/// date-only (midnight); the provider converts them to day-boundary windows.
+typedef TrackableAnalysisArgs = ({int trackableId, DateTime start, DateTime end});
+
+/// Everything the single-trackable detail screen needs for one period, plus
+/// the immediately-preceding equal-length period for comparison.
+///
+/// "Previous period" = the same number of days directly before the current
+/// window. If you're viewing the last 7 days, the previous period is the 7
+/// days before that — so you can see whether your taper is trending down.
+class TrackableAnalysisData {
+  final int trackableId;
+  final int periodDays;
+
+  /// Current-period daily totals, zero-filled for days with no doses so the
+  /// chart and the low/average reflect the full window (not only logged days).
+  final List<DailyTotalPoint> dailyTotals;
+
+  final double total;
+  final double averagePerDay;
+  final double highestDayTotal;
+  final double lowestDayTotal;
+  final int doseCount;
+
+  // Previous equal-length period (for the comparison card).
+  final double previousTotal;
+  final double previousAveragePerDay;
+  final int previousDoseCount;
+
+  const TrackableAnalysisData({
+    required this.trackableId,
+    required this.periodDays,
+    required this.dailyTotals,
+    required this.total,
+    required this.averagePerDay,
+    required this.highestDayTotal,
+    required this.lowestDayTotal,
+    required this.doseCount,
+    required this.previousTotal,
+    required this.previousAveragePerDay,
+    required this.previousDoseCount,
+  });
+
+  bool get hasDoses => doseCount > 0;
+
+  /// True when the previous window had at least one dose to compare against.
+  bool get hasPreviousData => previousDoseCount > 0;
+
+  /// Percent change of average/day vs the previous period.
+  ///
+  /// Negative = consumption went DOWN (taper working). Returns null when there
+  /// is no prior data, because dividing by a zero baseline is undefined — the
+  /// UI shows "no prior data" instead of a misleading number.
+  double? get averageChangePercent {
+    if (!hasPreviousData || previousAveragePerDay == 0) return null;
+    return (averagePerDay - previousAveragePerDay) / previousAveragePerDay * 100;
+  }
+}
+
+/// Reactive per-trackable analysis for a chosen date window.
+///
+/// Streams doses for the trackable across BOTH the current window and the
+/// equal-length previous window in a single query, then buckets them into
+/// per-day totals (using the configured day-boundary hour). Recomputes
+/// automatically when doses change or the day-boundary setting changes.
+final trackableAnalysisProvider =
+    StreamProvider.family<TrackableAnalysisData, TrackableAnalysisArgs>((
+      ref,
+      args,
+    ) {
+      final db = ref.watch(databaseProvider);
+      final boundaryHour = ref.watch(dayBoundaryHourProvider);
+
+      // Convert the calendar dates into the app's day-boundary window, exactly
+      // like analysisStatsProvider does (start at boundary hour, end exclusive
+      // on the day AFTER the selected end date).
+      final startBoundary = DateTime(
+        args.start.year,
+        args.start.month,
+        args.start.day,
+        boundaryHour,
+      );
+      final endBoundaryExclusive = DateTime(
+        args.end.year,
+        args.end.month,
+        args.end.day + 1,
+        boundaryHour,
+      );
+      final periodDays = math.max(
+        1,
+        endBoundaryExclusive.difference(startBoundary).inDays,
+      );
+
+      // Previous equal-length window sits directly before the current one and
+      // ends exactly where it begins. Using day arithmetic (day - periodDays)
+      // keeps the boundary hour stable across month rollovers.
+      final prevStartBoundary = DateTime(
+        startBoundary.year,
+        startBoundary.month,
+        startBoundary.day - periodDays,
+        boundaryHour,
+      );
+
+      // One stream covering [prevStart, currentEnd) — both periods at once.
+      final stream = db.watchDosesBetween(
+        args.trackableId,
+        prevStartBoundary,
+        endBoundaryExclusive,
+      );
+
+      return stream.map((doses) {
+        // Bucket every dose into its day-boundary day. Like groupBy(day) then
+        // sum(amount) in a collection pipeline.
+        final totalsByDay = <DateTime, double>{};
+        for (final dose in doses) {
+          final bucket = dayBoundary(dose.loggedAt, boundaryHour: boundaryHour);
+          totalsByDay[bucket] = (totalsByDay[bucket] ?? 0) + dose.amount;
+        }
+
+        // Current-period daily totals, zero-filled across the whole window.
+        final dailyTotals = <DailyTotalPoint>[];
+        for (var i = 0; i < periodDays; i++) {
+          final day = DateTime(
+            startBoundary.year,
+            startBoundary.month,
+            startBoundary.day + i,
+            boundaryHour,
+          );
+          dailyTotals.add((day: day, total: totalsByDay[day] ?? 0));
+        }
+
+        final total = dailyTotals.fold<double>(0, (sum, p) => sum + p.total);
+        final highestDayTotal = dailyTotals.fold<double>(
+          0,
+          (maxValue, p) => p.total > maxValue ? p.total : maxValue,
+        );
+        final lowestDayTotal = dailyTotals.fold<double>(
+          dailyTotals.first.total,
+          (minValue, p) => p.total < minValue ? p.total : minValue,
+        );
+
+        // Current-period dose count = doses at/after the current start only.
+        final doseCount = doses
+            .where((d) => !d.loggedAt.isBefore(startBoundary))
+            .length;
+
+        // Previous-period totals: sum the zero-filled days of the prior window.
+        var previousTotal = 0.0;
+        for (var i = 0; i < periodDays; i++) {
+          final day = DateTime(
+            prevStartBoundary.year,
+            prevStartBoundary.month,
+            prevStartBoundary.day + i,
+            boundaryHour,
+          );
+          previousTotal += totalsByDay[day] ?? 0;
+        }
+        final previousDoseCount = doses
+            .where(
+              (d) =>
+                  d.loggedAt.isBefore(startBoundary) &&
+                  !d.loggedAt.isBefore(prevStartBoundary),
+            )
+            .length;
+
+        return TrackableAnalysisData(
+          trackableId: args.trackableId,
+          periodDays: periodDays,
+          dailyTotals: dailyTotals,
+          total: total,
+          averagePerDay: total / periodDays,
+          highestDayTotal: highestDayTotal,
+          lowestDayTotal: lowestDayTotal,
+          doseCount: doseCount,
+          previousTotal: previousTotal,
+          previousAveragePerDay: previousTotal / periodDays,
+          previousDoseCount: previousDoseCount,
+        );
+      });
+    });

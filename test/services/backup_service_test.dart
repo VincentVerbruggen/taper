@@ -133,6 +133,78 @@ void main() {
     });
   });
 
+  group('canWriteToFolder', () {
+    test('returns true for a writable existing folder', () async {
+      // The temp dir exists and is writable → probe write should succeed.
+      expect(
+        await BackupService.instance.canWriteToFolder(tempDir.path),
+        isTrue,
+      );
+    });
+
+    test('leaves no probe file behind', () async {
+      await BackupService.instance.canWriteToFolder(tempDir.path);
+      // The probe file must be cleaned up so we never litter the user's folder.
+      expect(File(p.join(tempDir.path, '.taper_write_test')).existsSync(),
+          isFalse);
+    });
+
+    test('returns false for a non-existent folder', () async {
+      expect(
+        await BackupService.instance
+            .canWriteToFolder(p.join(tempDir.path, 'does-not-exist')),
+        isFalse,
+      );
+    });
+  });
+
+  group('recordBackupError / getLastBackupError', () {
+    test('records and clears an error message', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final backup = BackupService.instance;
+
+      // No error initially.
+      expect(backup.getLastBackupError(prefs), isNull);
+
+      // Recording an error persists it.
+      backup.recordBackupError(prefs, 'External backup failed: boom');
+      expect(backup.getLastBackupError(prefs), 'External backup failed: boom');
+
+      // Passing null clears it again (backup succeeded).
+      backup.recordBackupError(prefs, null);
+      expect(backup.getLastBackupError(prefs), isNull);
+    });
+
+    test('treats an empty string as clearing the error', () async {
+      SharedPreferences.setMockInitialValues({
+        BackupService.lastBackupErrorKey: 'stale',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      BackupService.instance.recordBackupError(prefs, '');
+      expect(BackupService.instance.getLastBackupError(prefs), isNull);
+    });
+  });
+
+  group('recordExternalBackupTime / getLastExternalBackupTime', () {
+    test('roundtrips an external mirror time through SharedPreferences',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final backup = BackupService.instance;
+
+      // Initially null — never mirrored externally.
+      expect(backup.getLastExternalBackupTime(prefs), isNull);
+
+      backup.recordExternalBackupTime(prefs);
+
+      final lastTime = backup.getLastExternalBackupTime(prefs);
+      expect(lastTime, isNotNull);
+      expect(DateTime.now().difference(lastTime!).inSeconds.abs(), lessThan(2));
+    });
+  });
+
   group('enforceRetention', () {
     // We can't easily test enforceRetention directly because it calls
     // getBackupsDirectory() which uses path_provider. Instead, we test

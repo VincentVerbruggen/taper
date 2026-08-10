@@ -90,6 +90,16 @@ class Trackables extends Table {
   // E.g., 50mg for caffeine. Nullable: null means no predictor.
   // Laravel equivalent: $table->double('sleep_threshold')->nullable()
   RealColumn get sleepThreshold => real().nullable()();
+
+  // Whether this trackable is archived. Archived = "tucked away everywhere":
+  // it disappears from the log form dropdown, the dashboard cards, AND the
+  // analysis screen, but all its dose history is kept. This is stronger than
+  // isVisible (which only hides it from the log dropdown). Archived trackables
+  // live in a dedicated "Archived" section in Settings where they can be
+  // restored (unarchived) via the edit screen.
+  // Defaults to false so existing trackables stay active after the migration.
+  // Laravel equivalent: $table->boolean('is_archived')->default(false)
+  BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
 }
 
 /// Presets table — named dose shortcuts per trackable.
@@ -397,7 +407,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -700,6 +710,11 @@ class AppDatabase extends _$AppDatabase {
         // Existing rows default to false (actual consumed doses).
         await m.addColumn(doseLogs, doseLogs.isPlanned);
       }
+      if (from < 19) {
+        // v18 -> v19: add archive support to trackables.
+        // Existing rows default to false (not archived / still active).
+        await m.addColumn(trackables, trackables.isArchived);
+      }
     },
   );
 
@@ -880,6 +895,8 @@ class AppDatabase extends _$AppDatabase {
   // --- Trackable queries ---
 
   /// Watch all trackables sorted by user-controlled sortOrder (reactive stream).
+  /// Includes archived trackables — used by surfaces that need every trackable
+  /// (dashboard card lookup, duplicate-name checks) and filter locally.
   /// Like: Trackable::orderBy('sort_order')->get()
   Stream<List<Trackable>> watchAllTrackables() {
     return (select(
@@ -887,12 +904,34 @@ class AppDatabase extends _$AppDatabase {
     )..orderBy([(t) => OrderingTerm.asc(t.sortOrder)])).watch();
   }
 
-  /// Watch only visible trackables, sorted by sortOrder.
-  /// Used by the dashboard cards and Log form dropdown.
-  /// Like: Trackable::where('is_visible', true)->orderBy('sort_order')->get()
+  /// Watch only NON-archived (active) trackables, sorted by sortOrder.
+  /// Used by the Settings "Trackables" section and the dashboard add-widget
+  /// dialog — archived trackables are hidden from these management surfaces.
+  /// Like: Trackable::where('is_archived', false)->orderBy('sort_order')->get()
+  Stream<List<Trackable>> watchActiveTrackables() {
+    return (select(trackables)
+          ..where((t) => t.isArchived.equals(false))
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .watch();
+  }
+
+  /// Watch only ARCHIVED trackables, sorted by sortOrder.
+  /// Used by the Settings "Archived" section so users can restore them.
+  /// Like: Trackable::where('is_archived', true)->orderBy('sort_order')->get()
+  Stream<List<Trackable>> watchArchivedTrackables() {
+    return (select(trackables)
+          ..where((t) => t.isArchived.equals(true))
+          ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
+        .watch();
+  }
+
+  /// Watch only visible, non-archived trackables, sorted by sortOrder.
+  /// Used by the Log form dropdown — hidden AND archived trackables are excluded.
+  /// Like: Trackable::where('is_visible', true)->where('is_archived', false)
+  ///        ->orderBy('sort_order')->get()
   Stream<List<Trackable>> watchVisibleTrackables() {
     return (select(trackables)
-          ..where((t) => t.isVisible.equals(true))
+          ..where((t) => t.isVisible.equals(true) & t.isArchived.equals(false))
           ..orderBy([(t) => OrderingTerm.asc(t.sortOrder)]))
         .watch();
   }
@@ -965,6 +1004,9 @@ class AppDatabase extends _$AppDatabase {
     Value<double?> absorptionMinutes = const Value.absent(),
     Value<double?> sleepThreshold = const Value.absent(),
     Value<bool> isVisible = const Value.absent(),
+    // Archive flag uses the same Value pattern: absent = don't change,
+    // Value(true) = archive, Value(false) = restore.
+    Value<bool> isArchived = const Value.absent(),
     // Color uses the same Value pattern: absent = don't change, Value(0xFF...) = set.
     Value<int> color = const Value.absent(),
   }) {
@@ -977,9 +1019,34 @@ class AppDatabase extends _$AppDatabase {
       absorptionMinutes: absorptionMinutes,
       sleepThreshold: sleepThreshold,
       isVisible: isVisible,
+      isArchived: isArchived,
       color: color,
     );
     return (update(trackables)..where((t) => t.id.equals(id))).write(companion);
+  }
+
+  /// Archive or unarchive a trackable, keeping notifications consistent.
+  ///
+  /// Archiving = "tuck away everywhere": besides flipping the flag (which hides
+  /// it from the log dropdown, dashboard, and analysis), we also cancel the
+  /// OS-level notifications for all of its reminders. The reminders themselves
+  /// stay in the DB with their enabled flag intact, so unarchiving can restore
+  /// them exactly. Unarchiving reschedules the trackable's enabled reminders.
+  ///
+  /// The pinned "tracking" notification is handled by the UI layer (it owns the
+  /// pinned-state provider), so it's not touched here.
+  ///
+  /// Mirrors how insertDoseLog() calls into ReminderScheduler — the DB layer is
+  /// the single choke point where trackable state changes fan out to the
+  /// notification scheduler, like an Eloquent model observer.
+  Future<void> setTrackableArchived(int id, bool archived) async {
+    await updateTrackable(id, isArchived: Value(archived));
+
+    if (archived) {
+      await ReminderScheduler.instance.cancelTrackableReminders(this, id);
+    } else {
+      await ReminderScheduler.instance.scheduleTrackableReminders(this, id);
+    }
   }
 
   Future<int> deleteTrackable(int id) {

@@ -114,6 +114,30 @@ final trackablesProvider = StreamProvider<List<Trackable>>((ref) {
   return db.watchAllTrackables();
 });
 
+/// activeTrackablesProvider = reactive stream of NON-archived trackables.
+///
+/// Used by the Settings "Trackables" management list and the dashboard
+/// add-widget dialog. Archived trackables are tucked away, so they don't
+/// appear here — they live in [archivedTrackablesProvider] instead.
+///
+/// Like a Livewire computed property with a scope:
+///   Trackable::where('is_archived', false)->orderBy('sort_order')->get()
+final activeTrackablesProvider = StreamProvider<List<Trackable>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchActiveTrackables();
+});
+
+/// archivedTrackablesProvider = reactive stream of ARCHIVED trackables only.
+///
+/// Used by the Settings "Archived" section so users can find and restore
+/// (unarchive) trackables they previously tucked away.
+///
+/// Like: Trackable::where('is_archived', true)->orderBy('sort_order')->get()
+final archivedTrackablesProvider = StreamProvider<List<Trackable>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchArchivedTrackables();
+});
+
 /// visibleTrackablesProvider = reactive stream of visible-only trackables.
 ///
 /// Used by the Log form dropdown — hidden trackables don't appear.

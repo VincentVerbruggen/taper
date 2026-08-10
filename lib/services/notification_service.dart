@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -368,6 +369,18 @@ class NotificationService {
       DateTime.now(),
       name: lastDose.name,
     );
+
+    // Buzz the phone as tactile confirmation that the dose was logged.
+    // The notification refreshes only after the DB query + decay math finishes,
+    // and the app may still be backgrounded, so the visual update isn't a
+    // reliable "it worked" signal. A haptic tap fires instantly and works even
+    // with the screen off. HapticFeedback uses Flutter's built-in platform
+    // channel (SystemChannels.platform) — no extra package or Android
+    // VIBRATE permission needed. It runs here because showsUserInterface=true
+    // routes the action through the main isolate where platform channels live.
+    // heavyImpact = the strongest of the impact presets, so it's noticeable
+    // even in a noisy party-mode context. Like navigator.vibrate() on the web.
+    await HapticFeedback.heavyImpact();
 
     // Refresh the notification immediately so the new dose shows up.
     await _update();

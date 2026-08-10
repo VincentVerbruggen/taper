@@ -231,7 +231,13 @@ void main() {
 
       await scrollToDataSection(tester);
 
-      final switchFinder = find.byType(Switch);
+      // Scope to the auto-backup switch specifically — there are now two
+      // SwitchListTiles in this section (Performance overlay + Daily auto-backup),
+      // so a bare find.byType(Switch) would match both.
+      final switchFinder = find.descendant(
+        of: find.widgetWithText(SwitchListTile, 'Daily auto-backup'),
+        matching: find.byType(Switch),
+      );
       expect(switchFinder, findsOneWidget);
 
       final switchWidget = tester.widget<Switch>(switchFinder);
@@ -245,17 +251,20 @@ void main() {
       await tester.pumpWidget(widget);
       await pumpAndWait(tester);
 
-      // Scroll the switch into view (it's below the trackable list + theme dropdown).
-      await tester.scrollUntilVisible(
-        find.byType(SwitchListTile),
-        200,
-        scrollable: settingsScrollable(),
-      );
+      // Scroll the Data section into view. (Can't scrollUntilVisible on the
+      // first SwitchListTile — that's now the Performance overlay toggle, which
+      // sits above Daily auto-backup and would leave the latter off-screen.)
+      await scrollToDataSection(tester);
 
       await tester.tap(find.text('Daily auto-backup'));
       await tester.pump();
 
-      final switchWidget = tester.widget<Switch>(find.byType(Switch));
+      final switchWidget = tester.widget<Switch>(
+        find.descendant(
+          of: find.widgetWithText(SwitchListTile, 'Daily auto-backup'),
+          matching: find.byType(Switch),
+        ),
+      );
       expect(switchWidget.value, isFalse);
 
       final prefs = await SharedPreferences.getInstance();
@@ -309,7 +318,12 @@ void main() {
 
       await scrollToDataSection(tester);
 
-      final switchWidget = tester.widget<Switch>(find.byType(Switch));
+      final switchWidget = tester.widget<Switch>(
+        find.descendant(
+          of: find.widgetWithText(SwitchListTile, 'Daily auto-backup'),
+          matching: find.byType(Switch),
+        ),
+      );
       expect(switchWidget.value, isFalse);
 
       await cleanUp(tester);

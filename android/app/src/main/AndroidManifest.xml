@@ -9,6 +9,18 @@
          USE_EXACT_ALARM is for apps where alarms are core functionality. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Required so auto-backups can be mirrored into a user-chosen folder on
+         shared storage (e.g. /storage/emulated/0/Download).
+         On Android 11+ (API 30), writing raw files anywhere on shared storage
+         needs MANAGE_EXTERNAL_STORAGE ("All files access"), granted by the user
+         via a system settings toggle. On Android 10 and below, the legacy
+         WRITE_EXTERNAL_STORAGE runtime permission covers it instead.
+         Like granting a Laravel filesystem disk write access outside storage/app.
+         NOTE: MANAGE_EXTERNAL_STORAGE is disallowed by Google Play for most apps
+         — fine here because this build is sideloaded, not published. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"

@@ -557,13 +557,47 @@ class ReminderScheduler {
   /// Schedule all enabled reminders. Called on app start.
   ///
   /// Queries all enabled reminders and their trackables, then schedules each.
-  /// Like a boot() method that loads all cron jobs from the database.
+  /// Archived trackables are skipped — archiving silences a trackable's
+  /// reminders without touching their enabled state, so unarchiving restores
+  /// them exactly. Like a boot() method that loads all cron jobs from the
+  /// database, but skipping jobs whose owner is archived.
   Future<void> scheduleAllReminders(AppDatabase db) async {
     final enabledReminders = await db.getAllEnabledReminders();
 
     for (final reminder in enabledReminders) {
       final trackable = await db.getTrackable(reminder.trackableId);
-      if (trackable != null) {
+      if (trackable != null && !trackable.isArchived) {
+        await scheduleReminder(reminder, trackable, db: db);
+      }
+    }
+  }
+
+  /// Cancel the OS notifications for every reminder belonging to a trackable.
+  ///
+  /// Called when a trackable is archived. The reminders stay in the DB and
+  /// keep their enabled flag; we only tear down the scheduled OS notifications
+  /// so nothing fires while the trackable is tucked away.
+  Future<void> cancelTrackableReminders(AppDatabase db, int trackableId) async {
+    final trackableReminders = await db.getReminders(trackableId);
+    for (final reminder in trackableReminders) {
+      await cancelReminder(reminder.id);
+    }
+  }
+
+  /// (Re)schedule all enabled reminders for a single trackable.
+  ///
+  /// Called when a trackable is unarchived, to bring its reminder
+  /// notifications back. No-op if the trackable is still archived or missing.
+  Future<void> scheduleTrackableReminders(
+    AppDatabase db,
+    int trackableId,
+  ) async {
+    final trackable = await db.getTrackable(trackableId);
+    if (trackable == null || trackable.isArchived) return;
+
+    final trackableReminders = await db.getReminders(trackableId);
+    for (final reminder in trackableReminders) {
+      if (reminder.isEnabled) {
         await scheduleReminder(reminder, trackable, db: db);
       }
     }
@@ -584,7 +618,8 @@ class ReminderScheduler {
   ) async {
     final trackableReminders = await db.getReminders(trackableId);
     final trackable = await db.getTrackable(trackableId);
-    if (trackable == null) return;
+    // Archived trackables are silenced — don't (re)schedule anything for them.
+    if (trackable == null || trackable.isArchived) return;
 
     for (final reminder in trackableReminders) {
       if (!reminder.isEnabled) continue;

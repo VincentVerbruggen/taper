@@ -32,6 +32,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // we don't need the result. Like a Laravel observer that fires on boot().
     ref.watch(autoBackupStartupProvider);
 
+    // Start the rolling backup listener — watches for any DB write and
+    // (debounced) refreshes today's backup file. Also just watched for its
+    // side effect; see autoBackupOnChangeProvider's doc comment.
+    ref.watch(autoBackupOnChangeProvider);
+
     return Scaffold(
       // IndexedStack keeps all tab screens alive (preserves scroll position,
       // form state, etc. when switching tabs). Like Vue's <keep-alive>.

@@ -22,6 +22,16 @@ class BackupService {
   /// SharedPreferences key for the last backup timestamp (epoch millis).
   static const lastBackupTimeKey = 'lastBackupTime';
 
+  /// SharedPreferences key for the last *external* mirror timestamp (epoch
+  /// millis). Distinct from [lastBackupTimeKey] because the internal backup can
+  /// succeed while the external mirror fails — we want to show each separately.
+  static const lastExternalBackupTimeKey = 'lastExternalBackupTime';
+
+  /// SharedPreferences key for the last backup error message, or absent if the
+  /// most recent backup attempt fully succeeded. Lets Settings surface *why* a
+  /// backup didn't land instead of failing silently.
+  static const lastBackupErrorKey = 'lastBackupError';
+
   /// SharedPreferences key for an optional external folder path.
   /// When set, each auto-backup is also mirrored to this folder.
   /// Null/empty = mirror disabled (internal backup only).
@@ -210,6 +220,54 @@ class BackupService {
   DateTime? getLastBackupTime(SharedPreferences prefs) {
     final ms = prefs.getInt(lastBackupTimeKey);
     return ms != null ? DateTime.fromMillisecondsSinceEpoch(ms) : null;
+  }
+
+  /// Record the current time as the last successful external mirror time.
+  void recordExternalBackupTime(SharedPreferences prefs) {
+    prefs.setInt(lastExternalBackupTimeKey, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  /// Get the last successful external mirror time, or null if never mirrored.
+  DateTime? getLastExternalBackupTime(SharedPreferences prefs) {
+    final ms = prefs.getInt(lastExternalBackupTimeKey);
+    return ms != null ? DateTime.fromMillisecondsSinceEpoch(ms) : null;
+  }
+
+  /// Record (or clear) the last backup error so the UI can surface it.
+  ///
+  /// Pass null after a fully-successful backup to clear a stale error.
+  /// Like writing/clearing a `last_error` column on a scheduled-job row.
+  void recordBackupError(SharedPreferences prefs, String? message) {
+    if (message == null || message.isEmpty) {
+      prefs.remove(lastBackupErrorKey);
+    } else {
+      prefs.setString(lastBackupErrorKey, message);
+    }
+  }
+
+  /// Get the last backup error message, or null if the last attempt succeeded.
+  String? getLastBackupError(SharedPreferences prefs) {
+    return prefs.getString(lastBackupErrorKey);
+  }
+
+  /// Verify we can actually create a file in [folderPath] right now.
+  ///
+  /// Used at folder-pick time so the user gets immediate feedback ("can't write
+  /// here") instead of discovering silently-failed backups days later. Writes a
+  /// tiny probe file and deletes it. Returns false on any I/O/permission error.
+  /// Like doing a test `Storage::disk('external')->put('.probe', '')` before
+  /// trusting a newly-configured disk.
+  Future<bool> canWriteToFolder(String folderPath) async {
+    try {
+      final dir = Directory(folderPath);
+      if (!await dir.exists()) return false;
+      final probe = File(p.join(folderPath, '.taper_write_test'));
+      await probe.writeAsString('ok', flush: true);
+      await probe.delete();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// List all backup files in the backups directory, sorted newest first.

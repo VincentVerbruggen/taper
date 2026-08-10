@@ -148,6 +148,26 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('tapping a trackable card drills into the detail screen', (
+    tester,
+  ) async {
+    await db.insertDoseLog(1, 100, DateTime(2026, 2, 20, 9));
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    // Tap the Caffeine card — should push TrackableAnalysisScreen.
+    await tester.tap(find.text('Caffeine'));
+    await tester.pumpAndSettle();
+
+    // Detail screen shows the period switcher segments.
+    expect(find.text('7 days'), findsOneWidget);
+    expect(find.text('30 days'), findsOneWidget);
+    expect(find.text('Daily consumption'), findsOneWidget);
+
+    await cleanUp(tester);
+  });
+
   testWidgets('shows N/A concentration for no-decay trackables', (
     tester,
   ) async {

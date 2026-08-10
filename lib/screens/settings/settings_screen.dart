@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:taper/data/database.dart';
@@ -11,6 +12,7 @@ import 'package:taper/screens/trackables/add_trackable_screen.dart';
 import 'package:taper/screens/trackables/edit_trackable_screen.dart';
 import 'package:taper/services/backup_service.dart';
 import 'package:taper/services/notification_service.dart';
+import 'package:taper/services/storage_permission.dart';
 
 /// Settings screen — the 3rd tab in the bottom nav.
 ///
@@ -32,12 +34,17 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
-    final trackablesAsync = ref.watch(trackablesProvider);
+    // Active (non-archived) trackables for the main list, and archived ones
+    // for the collapsible "Archived" section below it.
+    final trackablesAsync = ref.watch(activeTrackablesProvider);
+    final archivedTrackablesAsync = ref.watch(archivedTrackablesProvider);
     final boundaryHour = ref.watch(dayBoundaryHourProvider);
     final themeMode = ref.watch(themeModeProvider);
     final autoBackupEnabled = ref.watch(autoBackupEnabledProvider);
     final lastBackupTime = ref.watch(lastBackupTimeProvider);
     final externalBackupFolder = ref.watch(externalBackupFolderProvider);
+    final lastExternalBackupTime = ref.watch(lastExternalBackupTimeProvider);
+    final lastBackupError = ref.watch(lastBackupErrorProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -78,6 +85,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               leading: const Icon(Icons.add),
               title: const Text('Add trackable'),
               onTap: _addTrackable,
+            ),
+
+            // --- Archived trackables section ---
+            // Only shown when there's at least one archived trackable. Collapsed
+            // by default (ExpansionTile) so it stays out of the way. Tapping a
+            // row opens the edit screen where the trackable can be unarchived.
+            archivedTrackablesAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
+              data: (archived) => _buildArchivedSection(archived),
             ),
 
             const Divider(height: 32),
@@ -194,9 +211,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ListTile(
               leading: const Icon(Icons.folder_outlined),
               title: const Text('External backup folder'),
-              subtitle: Text(
-                externalBackupFolder ??
-                    'Not set — backups are stored in app storage only',
+              // Show the path plus a status line so a failed mirror is visible
+              // (this is what was silently broken before). Column instead of a
+              // plain string because we colour the error line red.
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    externalBackupFolder ??
+                        'Not set — backups are stored in app storage only',
+                  ),
+                  if (externalBackupFolder != null && lastBackupError != null)
+                    Text(
+                      lastBackupError,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    )
+                  else if (externalBackupFolder != null)
+                    Text(
+                      lastExternalBackupTime != null
+                          ? 'Last mirrored: ${_formatDateTime(lastExternalBackupTime)}'
+                          : 'Not mirrored yet — happens on the next data change',
+                    ),
+                ],
               ),
               enabled: autoBackupEnabled,
               trailing: externalBackupFolder != null
@@ -210,6 +249,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   : null,
               onTap: autoBackupEnabled ? _pickExternalBackupFolder : null,
             ),
+
+            // --- All-files-access grant prompt ---
+            // Only shown when a folder is configured but we lack the special
+            // "All files access" grant (e.g. the folder pref was restored from
+            // Android's auto-backup after a reinstall, but the grant wasn't).
+            // Without it, mirror writes fail with a cryptic OS "operation not
+            // permitted" error. This gives the user a one-tap way to fix it.
+            if (autoBackupEnabled && externalBackupFolder != null)
+              _buildStorageAccessTile(),
 
             // --- Export button ---
             ListTile(
@@ -263,6 +311,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       },
     );
+  }
+
+  /// Builds the collapsible "Archived" section listing archived trackables.
+  ///
+  /// Returns an empty widget when nothing is archived, so the section only
+  /// appears once the user has archived at least one trackable. Uses an
+  /// ExpansionTile (collapsed by default) — like an HTML `details`/`summary`
+  /// element that keeps rarely-used items tucked away but reachable.
+  Widget _buildArchivedSection(List<Trackable> archived) {
+    if (archived.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Theme(
+        // Remove the default ExpansionTile dividers so it blends with the list.
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: const Icon(Icons.archive_outlined),
+          title: Text('Archived (${archived.length})'),
+          childrenPadding: const EdgeInsets.only(bottom: 8),
+          children: archived
+              .map(
+                (trackable) => _ArchivedTrackableListItem(
+                  key: ValueKey('archived_${trackable.id}'),
+                  trackable: trackable,
+                  onTap: () => _editTrackable(trackable),
+                  onUnarchive: () => _unarchive(trackable),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  /// Restore an archived trackable so it reappears everywhere (log dropdown,
+  /// dashboard, analysis). Shows a confirmation snackbar afterwards.
+  Future<void> _unarchive(Trackable trackable) async {
+    await ref
+        .read(databaseProvider)
+        .setTrackableArchived(trackable.id, false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          showCloseIcon: true,
+          content: Text('Restored "${trackable.name}"'),
+        ),
+      );
+    }
   }
 
   // ===========================================================================
@@ -319,18 +416,103 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   // DATA MANAGEMENT ACTIONS
   // ===========================================================================
 
+  /// A warning tile prompting the user to grant "All files access", shown only
+  /// when we've confirmed we DON'T have it. While the async check is still
+  /// loading we assume granted (?? true) so we don't flash a warning that
+  /// immediately disappears.
+  Widget _buildStorageAccessTile() {
+    // asData is non-null only once the check has produced a value; treat the
+    // still-loading state as "granted" so no warning flashes prematurely.
+    final granted =
+        ref.watch(storagePermissionGrantedProvider).asData?.value ?? true;
+    if (granted) return const SizedBox.shrink();
+
+    final errorColor = Theme.of(context).colorScheme.error;
+    return ListTile(
+      leading: Icon(Icons.warning_amber, color: errorColor),
+      title: const Text("Grant 'All files access'"),
+      subtitle: const Text(
+        'Required to write backups to your folder. Tap to grant.',
+      ),
+      onTap: _grantStorageAccess,
+    );
+  }
+
+  /// Request the "All files access" grant, then re-check so the UI updates.
+  Future<void> _grantStorageAccess() async {
+    final granted = await StoragePermission.request();
+    // Force the status provider to re-run its check so the warning tile
+    // disappears (or stays) based on the new state.
+    ref.invalidate(storagePermissionGrantedProvider);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        showCloseIcon: true,
+        content: Text(
+          granted
+              ? 'Storage access granted — backups will mirror to your folder.'
+              : "Still not granted. Enable 'All files access' for Taper in "
+                  'system settings (Special app access → All files access).',
+        ),
+        action: granted
+            ? null
+            : SnackBarAction(label: 'Settings', onPressed: openAppSettings),
+      ),
+    );
+  }
+
   /// Open the system folder picker and save the chosen path as the
   /// external backup mirror destination. A null result = user cancelled.
   ///
-  /// Note: on Android the picker uses Storage Access Framework. Whether the
-  /// returned path is writable via dart:io depends on the OS version and
-  /// folder choice — we save what we get and surface failures only at
-  /// backup time (best-effort, like a Laravel filesystem disk).
+  /// Writing raw files into a shared-storage folder needs the "All files
+  /// access" grant on Android 11+, so we (1) ensure that permission, then
+  /// (2) do a real test write before saving. That way the user finds out
+  /// immediately if the folder won't work, instead of discovering days later
+  /// that nothing was ever mirrored — which is exactly what was happening.
   Future<void> _pickExternalBackupFolder() async {
     final picked = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Choose external backup folder',
     );
     if (picked == null) return; // User cancelled.
+
+    // 1. Make sure we can write to shared storage at all.
+    if (!await StoragePermission.isGranted()) {
+      final granted = await StoragePermission.request();
+      if (!granted) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            showCloseIcon: true,
+            content: const Text(
+              'Storage permission denied. Enable "All files access" for Taper '
+              'in system settings, then pick the folder again.',
+            ),
+            action: SnackBarAction(
+              label: 'Settings',
+              onPressed: openAppSettings,
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    // 2. Prove we can actually create a file there before trusting it.
+    final writable = await BackupService.instance.canWriteToFolder(picked);
+    if (!writable) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          showCloseIcon: true,
+          content: Text(
+            "Can't write to that folder ($picked). Pick a different one, e.g. "
+            'a folder under Documents or Download.',
+          ),
+        ),
+      );
+      return;
+    }
 
     await ref.read(externalBackupFolderProvider.notifier).setFolder(picked);
 
@@ -583,6 +765,53 @@ class _TrackableListItem extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A single archived trackable row in the Settings "Archived" section.
+///
+/// Tapping the row opens the edit screen (where it can also be unarchived);
+/// the trailing "unarchive" icon is a one-tap shortcut to restore it directly.
+/// Rendered dimmed to signal its inactive state.
+class _ArchivedTrackableListItem extends StatelessWidget {
+  final Trackable trackable;
+  final VoidCallback onTap;
+  final VoidCallback onUnarchive;
+
+  const _ArchivedTrackableListItem({
+    super.key,
+    required this.trackable,
+    required this.onTap,
+    required this.onUnarchive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      // Dimmed color dot to match the "inactive" feel of the section.
+      leading: Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          color: Color(trackable.color).withAlpha(102),
+          shape: BoxShape.circle,
+        ),
+      ),
+      title: Text(
+        trackable.name,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface.withAlpha(153),
+        ),
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.unarchive_outlined, size: 20),
+        tooltip: 'Restore',
+        onPressed: onUnarchive,
+        visualDensity: VisualDensity.compact,
+      ),
+      onTap: onTap,
     );
   }
 }

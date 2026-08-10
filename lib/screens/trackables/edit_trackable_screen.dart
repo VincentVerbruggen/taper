@@ -12,6 +12,7 @@ import 'package:taper/screens/trackables/taper_plans_screen.dart';
 import 'package:taper/screens/trackables/targets_screen.dart';
 import 'package:taper/screens/trackables/thresholds_screen.dart';
 import 'package:taper/screens/trackables/widgets/color_palette_selector.dart';
+import 'package:taper/services/notification_service.dart';
 import 'package:taper/utils/validation.dart';
 
 /// EditTrackableScreen = the form for editing an existing trackable.
@@ -333,8 +334,29 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
             ),
 
             const SizedBox(height: 24),
-            
+
             // Note: Save button moved to AppBar actions.
+
+            // --- Archive / Unarchive button ---
+            // Archiving tucks the trackable away everywhere (log dropdown,
+            // dashboard, analysis) and silences its reminders, while keeping all
+            // its data. Unarchiving restores it. This is a separate action from
+            // the Save checkmark, so it takes effect immediately and pops.
+            OutlinedButton.icon(
+              onPressed: _toggleArchive,
+              icon: Icon(
+                widget.trackable.isArchived
+                    ? Icons.unarchive_outlined
+                    : Icons.archive_outlined,
+              ),
+              label: Text(
+                widget.trackable.isArchived
+                    ? 'Unarchive Trackable'
+                    : 'Archive Trackable',
+              ),
+            ),
+
+            const SizedBox(height: 12),
 
             // --- Duplicate button ---
             OutlinedButton.icon(
@@ -488,6 +510,41 @@ class _EditTrackableScreenState extends ConsumerState<EditTrackableScreen> {
         );
       },
     );
+  }
+
+  /// Archive or unarchive this trackable, then pop back to the list.
+  ///
+  /// Archiving hides it everywhere and silences its reminders (handled in
+  /// setTrackableArchived). Here we additionally stop + unpin the persistent
+  /// tracking notification if THIS trackable happens to be the pinned one,
+  /// since that notification lives outside the reminder system.
+  void _toggleArchive() async {
+    final db = ref.read(databaseProvider);
+    final willArchive = !widget.trackable.isArchived;
+
+    // If we're archiving the currently-pinned trackable, tear down its ongoing
+    // tracking notification too — an archived trackable shouldn't stay pinned.
+    if (willArchive &&
+        ref.read(pinnedTrackableIdProvider) == widget.trackable.id) {
+      await NotificationService.instance.stopTracking();
+      ref.read(pinnedTrackableIdProvider.notifier).unpin();
+    }
+
+    await db.setTrackableArchived(widget.trackable.id, willArchive);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          showCloseIcon: true,
+          content: Text(
+            willArchive
+                ? 'Archived "${widget.trackable.name}"'
+                : 'Restored "${widget.trackable.name}"',
+          ),
+        ),
+      );
+      Navigator.pop(context);
+    }
   }
 
   /// Duplicate this trackable: creates "Copy of X" with the same settings.
