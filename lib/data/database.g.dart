@@ -3850,6 +3850,710 @@ class TargetsCompanion extends UpdateCompanion<Target> {
   }
 }
 
+class $DayTemplatesTable extends DayTemplates
+    with TableInfo<$DayTemplatesTable, DayTemplate> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DayTemplatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _trackableIdMeta = const VerificationMeta(
+    'trackableId',
+  );
+  @override
+  late final GeneratedColumn<int> trackableId = GeneratedColumn<int>(
+    'trackable_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES trackables (id)',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: DateTime.now,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, trackableId, name, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'day_templates';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DayTemplate> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('trackable_id')) {
+      context.handle(
+        _trackableIdMeta,
+        trackableId.isAcceptableOrUnknown(
+          data['trackable_id']!,
+          _trackableIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_trackableIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DayTemplate map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DayTemplate(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      trackableId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}trackable_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DayTemplatesTable createAlias(String alias) {
+    return $DayTemplatesTable(attachedDatabase, alias);
+  }
+}
+
+class DayTemplate extends DataClass implements Insertable<DayTemplate> {
+  final int id;
+  final int trackableId;
+  final String name;
+  final DateTime createdAt;
+  const DayTemplate({
+    required this.id,
+    required this.trackableId,
+    required this.name,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['trackable_id'] = Variable<int>(trackableId);
+    map['name'] = Variable<String>(name);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DayTemplatesCompanion toCompanion(bool nullToAbsent) {
+    return DayTemplatesCompanion(
+      id: Value(id),
+      trackableId: Value(trackableId),
+      name: Value(name),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DayTemplate.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DayTemplate(
+      id: serializer.fromJson<int>(json['id']),
+      trackableId: serializer.fromJson<int>(json['trackableId']),
+      name: serializer.fromJson<String>(json['name']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'trackableId': serializer.toJson<int>(trackableId),
+      'name': serializer.toJson<String>(name),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DayTemplate copyWith({
+    int? id,
+    int? trackableId,
+    String? name,
+    DateTime? createdAt,
+  }) => DayTemplate(
+    id: id ?? this.id,
+    trackableId: trackableId ?? this.trackableId,
+    name: name ?? this.name,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DayTemplate copyWithCompanion(DayTemplatesCompanion data) {
+    return DayTemplate(
+      id: data.id.present ? data.id.value : this.id,
+      trackableId: data.trackableId.present
+          ? data.trackableId.value
+          : this.trackableId,
+      name: data.name.present ? data.name.value : this.name,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayTemplate(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, trackableId, name, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DayTemplate &&
+          other.id == this.id &&
+          other.trackableId == this.trackableId &&
+          other.name == this.name &&
+          other.createdAt == this.createdAt);
+}
+
+class DayTemplatesCompanion extends UpdateCompanion<DayTemplate> {
+  final Value<int> id;
+  final Value<int> trackableId;
+  final Value<String> name;
+  final Value<DateTime> createdAt;
+  const DayTemplatesCompanion({
+    this.id = const Value.absent(),
+    this.trackableId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  DayTemplatesCompanion.insert({
+    this.id = const Value.absent(),
+    required int trackableId,
+    required String name,
+    this.createdAt = const Value.absent(),
+  }) : trackableId = Value(trackableId),
+       name = Value(name);
+  static Insertable<DayTemplate> custom({
+    Expression<int>? id,
+    Expression<int>? trackableId,
+    Expression<String>? name,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (trackableId != null) 'trackable_id': trackableId,
+      if (name != null) 'name': name,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  DayTemplatesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? trackableId,
+    Value<String>? name,
+    Value<DateTime>? createdAt,
+  }) {
+    return DayTemplatesCompanion(
+      id: id ?? this.id,
+      trackableId: trackableId ?? this.trackableId,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (trackableId.present) {
+      map['trackable_id'] = Variable<int>(trackableId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayTemplatesCompanion(')
+          ..write('id: $id, ')
+          ..write('trackableId: $trackableId, ')
+          ..write('name: $name, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DayTemplateEntriesTable extends DayTemplateEntries
+    with TableInfo<$DayTemplateEntriesTable, DayTemplateEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DayTemplateEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _templateIdMeta = const VerificationMeta(
+    'templateId',
+  );
+  @override
+  late final GeneratedColumn<int> templateId = GeneratedColumn<int>(
+    'template_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES day_templates (id)',
+    ),
+  );
+  static const VerificationMeta _timeMeta = const VerificationMeta('time');
+  @override
+  late final GeneratedColumn<String> time = GeneratedColumn<String>(
+    'time',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isPlannedMeta = const VerificationMeta(
+    'isPlanned',
+  );
+  @override
+  late final GeneratedColumn<bool> isPlanned = GeneratedColumn<bool>(
+    'is_planned',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_planned" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    templateId,
+    time,
+    amount,
+    name,
+    isPlanned,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'day_template_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DayTemplateEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('template_id')) {
+      context.handle(
+        _templateIdMeta,
+        templateId.isAcceptableOrUnknown(data['template_id']!, _templateIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_templateIdMeta);
+    }
+    if (data.containsKey('time')) {
+      context.handle(
+        _timeMeta,
+        time.isAcceptableOrUnknown(data['time']!, _timeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_timeMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('is_planned')) {
+      context.handle(
+        _isPlannedMeta,
+        isPlanned.isAcceptableOrUnknown(data['is_planned']!, _isPlannedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DayTemplateEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DayTemplateEntry(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      templateId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}template_id'],
+      )!,
+      time: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}time'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}amount'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      ),
+      isPlanned: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_planned'],
+      )!,
+    );
+  }
+
+  @override
+  $DayTemplateEntriesTable createAlias(String alias) {
+    return $DayTemplateEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class DayTemplateEntry extends DataClass
+    implements Insertable<DayTemplateEntry> {
+  final int id;
+  final int templateId;
+  final String time;
+  final double amount;
+  final String? name;
+  final bool isPlanned;
+  const DayTemplateEntry({
+    required this.id,
+    required this.templateId,
+    required this.time,
+    required this.amount,
+    this.name,
+    required this.isPlanned,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['template_id'] = Variable<int>(templateId);
+    map['time'] = Variable<String>(time);
+    map['amount'] = Variable<double>(amount);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    map['is_planned'] = Variable<bool>(isPlanned);
+    return map;
+  }
+
+  DayTemplateEntriesCompanion toCompanion(bool nullToAbsent) {
+    return DayTemplateEntriesCompanion(
+      id: Value(id),
+      templateId: Value(templateId),
+      time: Value(time),
+      amount: Value(amount),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      isPlanned: Value(isPlanned),
+    );
+  }
+
+  factory DayTemplateEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DayTemplateEntry(
+      id: serializer.fromJson<int>(json['id']),
+      templateId: serializer.fromJson<int>(json['templateId']),
+      time: serializer.fromJson<String>(json['time']),
+      amount: serializer.fromJson<double>(json['amount']),
+      name: serializer.fromJson<String?>(json['name']),
+      isPlanned: serializer.fromJson<bool>(json['isPlanned']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'templateId': serializer.toJson<int>(templateId),
+      'time': serializer.toJson<String>(time),
+      'amount': serializer.toJson<double>(amount),
+      'name': serializer.toJson<String?>(name),
+      'isPlanned': serializer.toJson<bool>(isPlanned),
+    };
+  }
+
+  DayTemplateEntry copyWith({
+    int? id,
+    int? templateId,
+    String? time,
+    double? amount,
+    Value<String?> name = const Value.absent(),
+    bool? isPlanned,
+  }) => DayTemplateEntry(
+    id: id ?? this.id,
+    templateId: templateId ?? this.templateId,
+    time: time ?? this.time,
+    amount: amount ?? this.amount,
+    name: name.present ? name.value : this.name,
+    isPlanned: isPlanned ?? this.isPlanned,
+  );
+  DayTemplateEntry copyWithCompanion(DayTemplateEntriesCompanion data) {
+    return DayTemplateEntry(
+      id: data.id.present ? data.id.value : this.id,
+      templateId: data.templateId.present
+          ? data.templateId.value
+          : this.templateId,
+      time: data.time.present ? data.time.value : this.time,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      name: data.name.present ? data.name.value : this.name,
+      isPlanned: data.isPlanned.present ? data.isPlanned.value : this.isPlanned,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayTemplateEntry(')
+          ..write('id: $id, ')
+          ..write('templateId: $templateId, ')
+          ..write('time: $time, ')
+          ..write('amount: $amount, ')
+          ..write('name: $name, ')
+          ..write('isPlanned: $isPlanned')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, templateId, time, amount, name, isPlanned);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DayTemplateEntry &&
+          other.id == this.id &&
+          other.templateId == this.templateId &&
+          other.time == this.time &&
+          other.amount == this.amount &&
+          other.name == this.name &&
+          other.isPlanned == this.isPlanned);
+}
+
+class DayTemplateEntriesCompanion extends UpdateCompanion<DayTemplateEntry> {
+  final Value<int> id;
+  final Value<int> templateId;
+  final Value<String> time;
+  final Value<double> amount;
+  final Value<String?> name;
+  final Value<bool> isPlanned;
+  const DayTemplateEntriesCompanion({
+    this.id = const Value.absent(),
+    this.templateId = const Value.absent(),
+    this.time = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.name = const Value.absent(),
+    this.isPlanned = const Value.absent(),
+  });
+  DayTemplateEntriesCompanion.insert({
+    this.id = const Value.absent(),
+    required int templateId,
+    required String time,
+    required double amount,
+    this.name = const Value.absent(),
+    this.isPlanned = const Value.absent(),
+  }) : templateId = Value(templateId),
+       time = Value(time),
+       amount = Value(amount);
+  static Insertable<DayTemplateEntry> custom({
+    Expression<int>? id,
+    Expression<int>? templateId,
+    Expression<String>? time,
+    Expression<double>? amount,
+    Expression<String>? name,
+    Expression<bool>? isPlanned,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (templateId != null) 'template_id': templateId,
+      if (time != null) 'time': time,
+      if (amount != null) 'amount': amount,
+      if (name != null) 'name': name,
+      if (isPlanned != null) 'is_planned': isPlanned,
+    });
+  }
+
+  DayTemplateEntriesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? templateId,
+    Value<String>? time,
+    Value<double>? amount,
+    Value<String?>? name,
+    Value<bool>? isPlanned,
+  }) {
+    return DayTemplateEntriesCompanion(
+      id: id ?? this.id,
+      templateId: templateId ?? this.templateId,
+      time: time ?? this.time,
+      amount: amount ?? this.amount,
+      name: name ?? this.name,
+      isPlanned: isPlanned ?? this.isPlanned,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (templateId.present) {
+      map['template_id'] = Variable<int>(templateId.value);
+    }
+    if (time.present) {
+      map['time'] = Variable<String>(time.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (isPlanned.present) {
+      map['is_planned'] = Variable<bool>(isPlanned.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayTemplateEntriesCompanion(')
+          ..write('id: $id, ')
+          ..write('templateId: $templateId, ')
+          ..write('time: $time, ')
+          ..write('amount: $amount, ')
+          ..write('name: $name, ')
+          ..write('isPlanned: $isPlanned')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3863,6 +4567,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $RemindersTable reminders = $RemindersTable(this);
   late final $TargetsTable targets = $TargetsTable(this);
+  late final $DayTemplatesTable dayTemplates = $DayTemplatesTable(this);
+  late final $DayTemplateEntriesTable dayTemplateEntries =
+      $DayTemplateEntriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3876,6 +4583,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     dashboardWidgets,
     reminders,
     targets,
+    dayTemplates,
+    dayTemplateEntries,
   ];
 }
 
@@ -4051,6 +4760,27 @@ final class $$TrackablesTableReferences
     ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_targetsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$DayTemplatesTable, List<DayTemplate>>
+  _dayTemplatesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.dayTemplates,
+    aliasName: $_aliasNameGenerator(
+      db.trackables.id,
+      db.dayTemplates.trackableId,
+    ),
+  );
+
+  $$DayTemplatesTableProcessedTableManager get dayTemplatesRefs {
+    final manager = $$DayTemplatesTableTableManager(
+      $_db,
+      $_db.dayTemplates,
+    ).filter((f) => f.trackableId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_dayTemplatesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -4297,6 +5027,31 @@ class $$TrackablesTableFilterComposer
           }) => $$TargetsTableFilterComposer(
             $db: $db,
             $table: $db.targets,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> dayTemplatesRefs(
+    Expression<bool> Function($$DayTemplatesTableFilterComposer f) f,
+  ) {
+    final $$DayTemplatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dayTemplates,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayTemplatesTableFilterComposer(
+            $db: $db,
+            $table: $db.dayTemplates,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4616,6 +5371,31 @@ class $$TrackablesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> dayTemplatesRefs<T extends Object>(
+    Expression<T> Function($$DayTemplatesTableAnnotationComposer a) f,
+  ) {
+    final $$DayTemplatesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dayTemplates,
+      getReferencedColumn: (t) => t.trackableId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayTemplatesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.dayTemplates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$TrackablesTableTableManager
@@ -4639,6 +5419,7 @@ class $$TrackablesTableTableManager
             bool dashboardWidgetsRefs,
             bool remindersRefs,
             bool targetsRefs,
+            bool dayTemplatesRefs,
           })
         > {
   $$TrackablesTableTableManager(_$AppDatabase db, $TrackablesTable table)
@@ -4729,6 +5510,7 @@ class $$TrackablesTableTableManager
                 dashboardWidgetsRefs = false,
                 remindersRefs = false,
                 targetsRefs = false,
+                dayTemplatesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -4740,6 +5522,7 @@ class $$TrackablesTableTableManager
                     if (dashboardWidgetsRefs) db.dashboardWidgets,
                     if (remindersRefs) db.reminders,
                     if (targetsRefs) db.targets,
+                    if (dayTemplatesRefs) db.dayTemplates,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -4891,6 +5674,27 @@ class $$TrackablesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (dayTemplatesRefs)
+                        await $_getPrefetchedData<
+                          Trackable,
+                          $TrackablesTable,
+                          DayTemplate
+                        >(
+                          currentTable: table,
+                          referencedTable: $$TrackablesTableReferences
+                              ._dayTemplatesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$TrackablesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).dayTemplatesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.trackableId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4919,6 +5723,7 @@ typedef $$TrackablesTableProcessedTableManager =
         bool dashboardWidgetsRefs,
         bool remindersRefs,
         bool targetsRefs,
+        bool dayTemplatesRefs,
       })
     >;
 typedef $$DoseLogsTableCreateCompanionBuilder =
@@ -7350,6 +8155,756 @@ typedef $$TargetsTableProcessedTableManager =
       Target,
       PrefetchHooks Function({bool trackableId})
     >;
+typedef $$DayTemplatesTableCreateCompanionBuilder =
+    DayTemplatesCompanion Function({
+      Value<int> id,
+      required int trackableId,
+      required String name,
+      Value<DateTime> createdAt,
+    });
+typedef $$DayTemplatesTableUpdateCompanionBuilder =
+    DayTemplatesCompanion Function({
+      Value<int> id,
+      Value<int> trackableId,
+      Value<String> name,
+      Value<DateTime> createdAt,
+    });
+
+final class $$DayTemplatesTableReferences
+    extends BaseReferences<_$AppDatabase, $DayTemplatesTable, DayTemplate> {
+  $$DayTemplatesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $TrackablesTable _trackableIdTable(_$AppDatabase db) =>
+      db.trackables.createAlias(
+        $_aliasNameGenerator(db.dayTemplates.trackableId, db.trackables.id),
+      );
+
+  $$TrackablesTableProcessedTableManager get trackableId {
+    final $_column = $_itemColumn<int>('trackable_id')!;
+
+    final manager = $$TrackablesTableTableManager(
+      $_db,
+      $_db.trackables,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_trackableIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$DayTemplateEntriesTable, List<DayTemplateEntry>>
+  _dayTemplateEntriesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.dayTemplateEntries,
+        aliasName: $_aliasNameGenerator(
+          db.dayTemplates.id,
+          db.dayTemplateEntries.templateId,
+        ),
+      );
+
+  $$DayTemplateEntriesTableProcessedTableManager get dayTemplateEntriesRefs {
+    final manager = $$DayTemplateEntriesTableTableManager(
+      $_db,
+      $_db.dayTemplateEntries,
+    ).filter((f) => f.templateId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _dayTemplateEntriesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$DayTemplatesTableFilterComposer
+    extends Composer<_$AppDatabase, $DayTemplatesTable> {
+  $$DayTemplatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$TrackablesTableFilterComposer get trackableId {
+    final $$TrackablesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableFilterComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> dayTemplateEntriesRefs(
+    Expression<bool> Function($$DayTemplateEntriesTableFilterComposer f) f,
+  ) {
+    final $$DayTemplateEntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dayTemplateEntries,
+      getReferencedColumn: (t) => t.templateId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayTemplateEntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.dayTemplateEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$DayTemplatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DayTemplatesTable> {
+  $$DayTemplatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$TrackablesTableOrderingComposer get trackableId {
+    final $$TrackablesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableOrderingComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayTemplatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DayTemplatesTable> {
+  $$DayTemplatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$TrackablesTableAnnotationComposer get trackableId {
+    final $$TrackablesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.trackableId,
+      referencedTable: $db.trackables,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TrackablesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.trackables,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> dayTemplateEntriesRefs<T extends Object>(
+    Expression<T> Function($$DayTemplateEntriesTableAnnotationComposer a) f,
+  ) {
+    final $$DayTemplateEntriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.dayTemplateEntries,
+          getReferencedColumn: (t) => t.templateId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$DayTemplateEntriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.dayTemplateEntries,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$DayTemplatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DayTemplatesTable,
+          DayTemplate,
+          $$DayTemplatesTableFilterComposer,
+          $$DayTemplatesTableOrderingComposer,
+          $$DayTemplatesTableAnnotationComposer,
+          $$DayTemplatesTableCreateCompanionBuilder,
+          $$DayTemplatesTableUpdateCompanionBuilder,
+          (DayTemplate, $$DayTemplatesTableReferences),
+          DayTemplate,
+          PrefetchHooks Function({
+            bool trackableId,
+            bool dayTemplateEntriesRefs,
+          })
+        > {
+  $$DayTemplatesTableTableManager(_$AppDatabase db, $DayTemplatesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DayTemplatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DayTemplatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DayTemplatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> trackableId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => DayTemplatesCompanion(
+                id: id,
+                trackableId: trackableId,
+                name: name,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int trackableId,
+                required String name,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => DayTemplatesCompanion.insert(
+                id: id,
+                trackableId: trackableId,
+                name: name,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DayTemplatesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({trackableId = false, dayTemplateEntriesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (dayTemplateEntriesRefs) db.dayTemplateEntries,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (trackableId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.trackableId,
+                                    referencedTable:
+                                        $$DayTemplatesTableReferences
+                                            ._trackableIdTable(db),
+                                    referencedColumn:
+                                        $$DayTemplatesTableReferences
+                                            ._trackableIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (dayTemplateEntriesRefs)
+                        await $_getPrefetchedData<
+                          DayTemplate,
+                          $DayTemplatesTable,
+                          DayTemplateEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$DayTemplatesTableReferences
+                              ._dayTemplateEntriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$DayTemplatesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).dayTemplateEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.templateId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$DayTemplatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DayTemplatesTable,
+      DayTemplate,
+      $$DayTemplatesTableFilterComposer,
+      $$DayTemplatesTableOrderingComposer,
+      $$DayTemplatesTableAnnotationComposer,
+      $$DayTemplatesTableCreateCompanionBuilder,
+      $$DayTemplatesTableUpdateCompanionBuilder,
+      (DayTemplate, $$DayTemplatesTableReferences),
+      DayTemplate,
+      PrefetchHooks Function({bool trackableId, bool dayTemplateEntriesRefs})
+    >;
+typedef $$DayTemplateEntriesTableCreateCompanionBuilder =
+    DayTemplateEntriesCompanion Function({
+      Value<int> id,
+      required int templateId,
+      required String time,
+      required double amount,
+      Value<String?> name,
+      Value<bool> isPlanned,
+    });
+typedef $$DayTemplateEntriesTableUpdateCompanionBuilder =
+    DayTemplateEntriesCompanion Function({
+      Value<int> id,
+      Value<int> templateId,
+      Value<String> time,
+      Value<double> amount,
+      Value<String?> name,
+      Value<bool> isPlanned,
+    });
+
+final class $$DayTemplateEntriesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $DayTemplateEntriesTable,
+          DayTemplateEntry
+        > {
+  $$DayTemplateEntriesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $DayTemplatesTable _templateIdTable(_$AppDatabase db) =>
+      db.dayTemplates.createAlias(
+        $_aliasNameGenerator(
+          db.dayTemplateEntries.templateId,
+          db.dayTemplates.id,
+        ),
+      );
+
+  $$DayTemplatesTableProcessedTableManager get templateId {
+    final $_column = $_itemColumn<int>('template_id')!;
+
+    final manager = $$DayTemplatesTableTableManager(
+      $_db,
+      $_db.dayTemplates,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_templateIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DayTemplateEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $DayTemplateEntriesTable> {
+  $$DayTemplateEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get time => $composableBuilder(
+    column: $table.time,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isPlanned => $composableBuilder(
+    column: $table.isPlanned,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$DayTemplatesTableFilterComposer get templateId {
+    final $$DayTemplatesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.templateId,
+      referencedTable: $db.dayTemplates,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayTemplatesTableFilterComposer(
+            $db: $db,
+            $table: $db.dayTemplates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayTemplateEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DayTemplateEntriesTable> {
+  $$DayTemplateEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get time => $composableBuilder(
+    column: $table.time,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isPlanned => $composableBuilder(
+    column: $table.isPlanned,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$DayTemplatesTableOrderingComposer get templateId {
+    final $$DayTemplatesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.templateId,
+      referencedTable: $db.dayTemplates,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayTemplatesTableOrderingComposer(
+            $db: $db,
+            $table: $db.dayTemplates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayTemplateEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DayTemplateEntriesTable> {
+  $$DayTemplateEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get time =>
+      $composableBuilder(column: $table.time, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isPlanned =>
+      $composableBuilder(column: $table.isPlanned, builder: (column) => column);
+
+  $$DayTemplatesTableAnnotationComposer get templateId {
+    final $$DayTemplatesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.templateId,
+      referencedTable: $db.dayTemplates,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayTemplatesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.dayTemplates,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayTemplateEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DayTemplateEntriesTable,
+          DayTemplateEntry,
+          $$DayTemplateEntriesTableFilterComposer,
+          $$DayTemplateEntriesTableOrderingComposer,
+          $$DayTemplateEntriesTableAnnotationComposer,
+          $$DayTemplateEntriesTableCreateCompanionBuilder,
+          $$DayTemplateEntriesTableUpdateCompanionBuilder,
+          (DayTemplateEntry, $$DayTemplateEntriesTableReferences),
+          DayTemplateEntry,
+          PrefetchHooks Function({bool templateId})
+        > {
+  $$DayTemplateEntriesTableTableManager(
+    _$AppDatabase db,
+    $DayTemplateEntriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DayTemplateEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DayTemplateEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DayTemplateEntriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> templateId = const Value.absent(),
+                Value<String> time = const Value.absent(),
+                Value<double> amount = const Value.absent(),
+                Value<String?> name = const Value.absent(),
+                Value<bool> isPlanned = const Value.absent(),
+              }) => DayTemplateEntriesCompanion(
+                id: id,
+                templateId: templateId,
+                time: time,
+                amount: amount,
+                name: name,
+                isPlanned: isPlanned,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int templateId,
+                required String time,
+                required double amount,
+                Value<String?> name = const Value.absent(),
+                Value<bool> isPlanned = const Value.absent(),
+              }) => DayTemplateEntriesCompanion.insert(
+                id: id,
+                templateId: templateId,
+                time: time,
+                amount: amount,
+                name: name,
+                isPlanned: isPlanned,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DayTemplateEntriesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({templateId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (templateId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.templateId,
+                                referencedTable:
+                                    $$DayTemplateEntriesTableReferences
+                                        ._templateIdTable(db),
+                                referencedColumn:
+                                    $$DayTemplateEntriesTableReferences
+                                        ._templateIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DayTemplateEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DayTemplateEntriesTable,
+      DayTemplateEntry,
+      $$DayTemplateEntriesTableFilterComposer,
+      $$DayTemplateEntriesTableOrderingComposer,
+      $$DayTemplateEntriesTableAnnotationComposer,
+      $$DayTemplateEntriesTableCreateCompanionBuilder,
+      $$DayTemplateEntriesTableUpdateCompanionBuilder,
+      (DayTemplateEntry, $$DayTemplateEntriesTableReferences),
+      DayTemplateEntry,
+      PrefetchHooks Function({bool templateId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7370,4 +8925,8 @@ class $AppDatabaseManager {
       $$RemindersTableTableManager(_db, _db.reminders);
   $$TargetsTableTableManager get targets =>
       $$TargetsTableTableManager(_db, _db.targets);
+  $$DayTemplatesTableTableManager get dayTemplates =>
+      $$DayTemplatesTableTableManager(_db, _db.dayTemplates);
+  $$DayTemplateEntriesTableTableManager get dayTemplateEntries =>
+      $$DayTemplateEntriesTableTableManager(_db, _db.dayTemplateEntries);
 }

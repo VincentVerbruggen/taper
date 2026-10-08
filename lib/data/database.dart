@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import 'package:taper/services/reminder_scheduler.dart';
+import 'package:taper/utils/template_time.dart';
 
 // Code generator output — run: dart run build_runner build --delete-conflicting-outputs
 part 'database.g.dart';
@@ -266,6 +267,65 @@ class Targets extends Table {
   TextColumn get time => text()(); // "HH:MM", e.g., "22:00"
 }
 
+/// Day templates — a named snapshot of one day's entries for a trackable.
+///
+/// E.g., "Workday" = espresso at 08:00, 90 mg at 13:00. Saved from the
+/// trackable's day overview and applied onto other days later.
+///
+/// Laravel equivalent:
+///   Schema::create('day_templates', function (Blueprint $table) {
+///       $table->id();
+///       $table->foreignId('trackable_id')->constrained();
+///       $table->string('name');
+///       $table->dateTime('created_at');
+///   });
+class DayTemplates extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  // FK to trackables. SQLite doesn't enforce FKs in this app (no PRAGMA
+  // foreign_keys), so deleteTrackable() removes templates explicitly.
+  IntColumn get trackableId => integer().references(Trackables, #id)();
+
+  // Unique per trackable (case-insensitive) — enforced in the UI, like the
+  // other name fields, rather than with a DB constraint.
+  TextColumn get name => text()();
+
+  // clientDefault = Dart fills this in on insert when the caller doesn't,
+  // like Eloquent setting created_at automatically.
+  DateTimeColumn get createdAt => dateTime().clientDefault(DateTime.now)();
+}
+
+/// Entries of a day template — one row per dose in the saved day.
+///
+/// Only the clock time is stored ("08:30"); the date is chosen when the
+/// template is applied (see utils/template_time.dart).
+///
+/// Laravel equivalent:
+///   Schema::create('day_template_entries', function (Blueprint $table) {
+///       $table->id();
+///       $table->foreignId('template_id')->constrained('day_templates');
+///       $table->string('time');            // "HH:MM"
+///       $table->double('amount');
+///       $table->string('name')->nullable();
+///       $table->boolean('is_planned')->default(false);
+///   });
+class DayTemplateEntries extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get templateId => integer().references(DayTemplates, #id)();
+
+  // 24h "HH:MM", same format as Targets.time.
+  TextColumn get time => text()();
+
+  RealColumn get amount => real()();
+
+  // Preset name copied from the dose (e.g., "Espresso"), null for plain amounts.
+  TextColumn get name => text().nullable()();
+
+  // Planned flag copied from the dose. On apply it's kept as-is, except on a
+  // future day where every entry becomes planned.
+  BoolColumn get isPlanned => boolean().withDefault(const Constant(false))();
+}
+
 /// Reminders table — scheduled notifications per trackable.
 ///
 /// Each trackable can have multiple reminders (e.g., "Morning dose" at 8 AM,
@@ -396,6 +456,8 @@ class DashboardWidgets extends Table {
     DashboardWidgets,
     Reminders,
     Targets,
+    DayTemplates,
+    DayTemplateEntries,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -407,7 +469,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -714,6 +776,12 @@ class AppDatabase extends _$AppDatabase {
         // v18 -> v19: add archive support to trackables.
         // Existing rows default to false (not archived / still active).
         await m.addColumn(trackables, trackables.isArchived);
+      }
+      if (from < 20) {
+        // v19 -> v20: day templates (named, reusable day plans per trackable).
+        // New tables only — no existing data to backfill.
+        await m.createTable(dayTemplates);
+        await m.createTable(dayTemplateEntries);
       }
     },
   );
@@ -1049,8 +1117,26 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Deletes a trackable together with its day templates.
+  ///
+  /// SQLite FK cascades aren't enabled in this app, so child rows are removed
+  /// by hand — children first, inside one transaction so a failure leaves
+  /// nothing half-deleted. Like DB::transaction() around manual deletes.
   Future<int> deleteTrackable(int id) {
-    return (delete(trackables)..where((t) => t.id.equals(id))).go();
+    return transaction(() async {
+      // Subquery: SELECT id FROM day_templates WHERE trackable_id = ?
+      // isInQuery needs a single-column select, hence selectOnly + addColumns
+      // (a plain select() would return every column and throw).
+      final templateIds = selectOnly(dayTemplates)
+        ..addColumns([dayTemplates.id])
+        ..where(dayTemplates.trackableId.equals(id));
+      await (delete(dayTemplateEntries)
+            ..where((e) => e.templateId.isInQuery(templateIds)))
+          .go();
+      await (delete(dayTemplates)..where((t) => t.trackableId.equals(id))).go();
+
+      return (delete(trackables)..where((t) => t.id.equals(id))).go();
+    });
   }
 
   /// Reorder trackables by writing sortOrder = index for each ID.
@@ -1756,6 +1842,118 @@ class AppDatabase extends _$AppDatabase {
     return (delete(targets)..where((t) => t.id.equals(id))).go();
   }
 
+  // --- Day template queries ---
+
+  /// Watch a trackable's templates with their entry counts, sorted by name.
+  ///
+  /// Like: DayTemplate::where('trackable_id', $id)->withCount('entries')
+  ///           ->orderBy('name')->get()
+  ///
+  /// LEFT JOIN + GROUP BY + COUNT is how withCount() works under the hood.
+  /// useColumns: false = join only to count, don't select the entry columns.
+  Stream<List<DayTemplateWithCount>> watchDayTemplates(int trackableId) {
+    final entryCount = dayTemplateEntries.id.count();
+    final query =
+        select(dayTemplates).join([
+            leftOuterJoin(
+              dayTemplateEntries,
+              dayTemplateEntries.templateId.equalsExp(dayTemplates.id),
+              useColumns: false,
+            ),
+          ])
+          ..addColumns([entryCount])
+          ..where(dayTemplates.trackableId.equals(trackableId))
+          ..groupBy([dayTemplates.id])
+          // NOCASE so "apple" and "Banana" sort alphabetically, matching the
+          // case-insensitive name uniqueness.
+          ..orderBy([OrderingTerm.asc(dayTemplates.name.collate(Collate.noCase))]);
+
+    return query.watch().map((rows) {
+      return rows.map((row) {
+        return DayTemplateWithCount(
+          template: row.readTable(dayTemplates),
+          entryCount: row.read(entryCount) ?? 0,
+        );
+      }).toList();
+    });
+  }
+
+  /// Get a trackable's templates (one-shot), sorted by name.
+  /// Used before opening the save dialog to detect "overwrite existing name".
+  Future<List<DayTemplate>> getDayTemplates(int trackableId) {
+    return (select(dayTemplates)
+          ..where((t) => t.trackableId.equals(trackableId))
+          ..orderBy([(t) => OrderingTerm.asc(t.name.collate(Collate.noCase))]))
+        .get();
+  }
+
+  /// Get a template's entries (one-shot), in clock-time order.
+  Future<List<DayTemplateEntry>> getDayTemplateEntries(int templateId) {
+    return (select(dayTemplateEntries)
+          ..where((e) => e.templateId.equals(templateId))
+          ..orderBy([(e) => OrderingTerm.asc(e.time)]))
+        .get();
+  }
+
+  /// Save [doses] as a template named [name] and return the template's id.
+  ///
+  /// With [overwriteTemplateId], that template keeps its id and name but its
+  /// entries are replaced. The UI decides about overwriting (it already asked
+  /// the user), so this method never matches names itself.
+  ///
+  /// Wrapped in a transaction so a crash mid-save can't leave a template with
+  /// half its entries — like DB::transaction() in Laravel.
+  Future<int> saveDayTemplate({
+    required int trackableId,
+    required String name,
+    required List<DoseLog> doses,
+    int? overwriteTemplateId,
+  }) {
+    return transaction(() async {
+      final int templateId;
+      if (overwriteTemplateId != null) {
+        templateId = overwriteTemplateId;
+        await (delete(
+          dayTemplateEntries,
+        )..where((e) => e.templateId.equals(templateId))).go();
+      } else {
+        templateId = await into(dayTemplates).insert(
+          DayTemplatesCompanion.insert(trackableId: trackableId, name: name),
+        );
+      }
+
+      for (final dose in doses) {
+        await into(dayTemplateEntries).insert(
+          DayTemplateEntriesCompanion.insert(
+            templateId: templateId,
+            time: toTemplateTime(dose.loggedAt),
+            amount: dose.amount,
+            name: Value(dose.name),
+            isPlanned: Value(dose.isPlanned),
+          ),
+        );
+      }
+      return templateId;
+    });
+  }
+
+  /// Rename a template. Like: DayTemplate::find($id)->update(['name' => $name])
+  Future<int> renameDayTemplate(int id, String name) {
+    return (update(dayTemplates)..where((t) => t.id.equals(id))).write(
+      DayTemplatesCompanion(name: Value(name)),
+    );
+  }
+
+  /// Delete a template and its entries (entries first, no FK cascade here).
+  Future<void> deleteDayTemplate(int id) {
+    return transaction(() async {
+      await (delete(
+        dayTemplateEntries,
+      )..where((e) => e.templateId.equals(id))).go();
+      await (delete(dayTemplates)..where((t) => t.id.equals(id))).go();
+    });
+  }
+
   /// Watch recent dose logs (last 50), newest first, with trackable name.
   /// Returns a stream of (DoseLog, Trackable) pairs — like an Eloquent eager load:
   ///   DoseLog::with('trackable')->latest('logged_at')->limit(50)->get()
@@ -1793,4 +1991,13 @@ class DoseLogWithTrackable {
   final Trackable trackable;
 
   DoseLogWithTrackable({required this.doseLog, required this.trackable});
+}
+
+/// A day template plus how many entries it holds — the result of a
+/// withCount()-style query, used by the "Apply template" list.
+class DayTemplateWithCount {
+  final DayTemplate template;
+  final int entryCount;
+
+  DayTemplateWithCount({required this.template, required this.entryCount});
 }

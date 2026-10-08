@@ -6,6 +6,7 @@ import 'package:taper/data/database.dart';
 import 'package:taper/data/decay_model.dart';
 import 'package:taper/providers/database_providers.dart';
 import 'package:taper/providers/settings_providers.dart';
+import 'package:taper/screens/dashboard/widgets/day_template_dialogs.dart';
 import 'package:taper/screens/log/add_dose_screen.dart';
 import 'package:taper/screens/log/edit_dose_screen.dart';
 import 'package:taper/screens/shared/quick_add_dose_dialog.dart';
@@ -13,6 +14,19 @@ import 'package:taper/utils/day_boundary.dart';
 import 'package:taper/utils/decay_calculator.dart';
 import 'package:taper/utils/significant_digits_formatter.dart';
 import 'package:taper/utils/taper_calculator.dart';
+import 'package:taper/utils/template_time.dart';
+
+/// One dose to insert in a bulk action (copy day / apply template).
+///
+/// A Dart 3 record: a lightweight, typed bundle of named fields with no class
+/// boilerplate — like a typed PHP array shape `['amount' => float, ...]`.
+/// The leading underscore keeps it private to this file.
+typedef _NewDose = ({
+  double amount,
+  DateTime loggedAt,
+  String? name,
+  bool isPlanned,
+});
 
 /// Per-trackable daily log view.
 ///
@@ -85,12 +99,25 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
           PopupMenuButton<String>(
             tooltip: 'More actions',
             onSelected: (value) {
-              if (value == 'copyFromDay') {
-                _copyFromAnotherDay(
-                  boundaryHour: boundaryHour,
-                  selectedBoundary: selectedBoundary,
-                  todayBoundary: todayBoundary,
-                );
+              // Dart 3 switch: no `break` needed, each case ends on its own.
+              switch (value) {
+                case 'copyFromDay':
+                  _copyFromAnotherDay(
+                    boundaryHour: boundaryHour,
+                    selectedBoundary: selectedBoundary,
+                    todayBoundary: todayBoundary,
+                  );
+                case 'saveTemplate':
+                  _saveDayAsTemplate(
+                    selectedBoundary: selectedBoundary,
+                    endBoundary: endBoundary,
+                  );
+                case 'applyTemplate':
+                  _applyTemplate(
+                    boundaryHour: boundaryHour,
+                    selectedBoundary: selectedBoundary,
+                    todayBoundary: todayBoundary,
+                  );
               }
             },
             itemBuilder: (context) => const [
@@ -100,6 +127,22 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.copy_all),
                   title: Text('Copy from another day…'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'saveTemplate',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.bookmark_add_outlined),
+                  title: Text('Save day as template…'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'applyTemplate',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.bookmarks_outlined),
+                  title: Text('Apply template…'),
                 ),
               ),
             ],
@@ -776,8 +819,7 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
     // so it becomes a planned dose. Today/past keeps whatever the source was.
     final targetIsFuture = selectedBoundary.isAfter(todayBoundary);
 
-    final insertedIds = <int>[];
-    for (final dose in sourceDoses) {
+    final newDoses = sourceDoses.map((dose) {
       final src = dose.loggedAt;
       // DateTime() normalises day overflow (Feb 28 + 2 → Mar 2) and DST, so we
       // rebuild the timestamp instead of adding a Duration.
@@ -789,30 +831,168 @@ class _TrackableLogScreenState extends ConsumerState<TrackableLogScreen> {
         src.minute,
         src.second,
       );
+      return (
+        amount: dose.amount,
+        loggedAt: newLoggedAt,
+        name: dose.name,
+        isPlanned: targetIsFuture ? true : dose.isPlanned,
+      );
+    }).toList();
 
+    final count = newDoses.length;
+    await _insertBatchWithUndo(
+      db: db,
+      messenger: messenger,
+      doses: newDoses,
+      message:
+          'Copied $count ${count == 1 ? 'entry' : 'entries'} from $sourceLabel'
+          '${targetIsFuture ? ' as planned' : ''}',
+    );
+  }
+
+  /// Saves the viewed day's entries as a named template.
+  ///
+  /// Skipped entries (amount 0) are left out: a template is a plan of doses,
+  /// and a skip only records that a dose didn't happen.
+  Future<void> _saveDayAsTemplate({
+    required DateTime selectedBoundary,
+    required DateTime endBoundary,
+  }) async {
+    final db = ref.read(databaseProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final doses = (await db.getDosesBetween(
+      widget.trackable.id,
+      selectedBoundary,
+      endBoundary,
+    )).where((d) => d.amount > 0).toList();
+    if (!mounted) return;
+
+    if (doses.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('No entries to save.')),
+      );
+      return;
+    }
+
+    // Load existing names up front so the dialog can spot an overwrite.
+    final existing = await db.getDayTemplates(widget.trackable.id);
+    if (!mounted) return;
+
+    final choice = await showSaveTemplateDialog(
+      context: context,
+      existing: existing,
+    );
+    if (choice == null) return;
+
+    await db.saveDayTemplate(
+      trackableId: widget.trackable.id,
+      name: choice.name,
+      doses: doses,
+      overwriteTemplateId: choice.overwriteTemplateId,
+    );
+    if (!mounted) return;
+
+    final count = doses.length;
+    messenger.showSnackBar(
+      SnackBar(
+        showCloseIcon: true,
+        content: Text(
+          "Saved template '${choice.name}' "
+          "($count ${count == 1 ? 'entry' : 'entries'})",
+        ),
+      ),
+    );
+  }
+
+  /// Adds a picked template's entries to the viewed day.
+  ///
+  /// Same planned rule as copying a day: on a future day every entry becomes
+  /// planned, otherwise each entry keeps the flag it was saved with.
+  Future<void> _applyTemplate({
+    required int boundaryHour,
+    required DateTime selectedBoundary,
+    required DateTime todayBoundary,
+  }) async {
+    final db = ref.read(databaseProvider);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final template = await showApplyTemplateDialog(
+      context: context,
+      trackableId: widget.trackable.id,
+    );
+    if (template == null) return;
+
+    final entries = await db.getDayTemplateEntries(template.id);
+    if (!mounted) return;
+
+    final targetIsFuture = selectedBoundary.isAfter(todayBoundary);
+    final newDoses = entries
+        .map(
+          (e) => (
+            amount: e.amount,
+            // Entries before the boundary hour (e.g. 02:00) land on the next
+            // calendar date, so they still fall inside the viewed day.
+            loggedAt: placeOnDay(e.time, selectedBoundary, boundaryHour),
+            name: e.name,
+            isPlanned: targetIsFuture || e.isPlanned,
+          ),
+        )
+        .toList();
+
+    final count = newDoses.length;
+    await _insertBatchWithUndo(
+      db: db,
+      messenger: messenger,
+      doses: newDoses,
+      message:
+          "Applied '${template.name}' "
+          "($count ${count == 1 ? 'entry' : 'entries'})"
+          '${targetIsFuture ? ' as planned' : ''}',
+    );
+  }
+
+  /// Inserts [doses] for this trackable, then shows [message] with an Undo
+  /// action that deletes exactly the rows created here.
+  ///
+  /// Shared by "Copy from another day" and "Apply template" — both end in the
+  /// same "bulk insert + undoable snackbar" step.
+  ///
+  /// [db] and [messenger] are passed in instead of looked up here because
+  /// callers must grab them BEFORE their first `await`: after an await the
+  /// screen may be gone, and Riverpod throws if `ref` is used after unmount.
+  Future<void> _insertBatchWithUndo({
+    required AppDatabase db,
+    required ScaffoldMessengerState messenger,
+    required List<_NewDose> doses,
+    required String message,
+  }) async {
+    // One insertDoseLog per row (not a single transaction): insertDoseLog
+    // fires the reminder scheduler in the background, and that work would run
+    // against an already-closed transaction if we wrapped the loop in one.
+    final insertedIds = <int>[];
+    for (final dose in doses) {
       insertedIds.add(
         await db.insertDoseLog(
-          dose.trackableId,
+          widget.trackable.id,
           dose.amount,
-          newLoggedAt,
+          dose.loggedAt,
           name: dose.name,
-          isPlanned: targetIsFuture ? true : dose.isPlanned,
+          isPlanned: dose.isPlanned,
         ),
       );
     }
 
     if (!mounted) return;
 
-    final count = insertedIds.length;
     messenger.showSnackBar(
       SnackBar(
         showCloseIcon: true,
+        // A snackbar with an action stays up until dismissed unless persist
+        // is false — we want it to time out like the other snackbars.
         persist: false,
         duration: const Duration(seconds: 6),
-        content: Text(
-          'Copied $count ${count == 1 ? 'entry' : 'entries'} from $sourceLabel'
-          '${targetIsFuture ? ' as planned' : ''}',
-        ),
+        content: Text(message),
         action: SnackBarAction(
           label: 'Undo',
           // Undo only removes the rows we just created, so pre-existing

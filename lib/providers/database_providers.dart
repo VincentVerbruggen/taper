@@ -195,6 +195,18 @@ final presetsProvider = StreamProvider.family<List<Preset>, int>((
   return db.watchPresets(trackableId);
 });
 
+/// Reactive stream of a trackable's day templates (with entry counts),
+/// keyed by trackable ID.
+///
+/// Used by the "Apply template" dialog, which watches it so renames and
+/// deletes made inside the dialog show up immediately — like a Livewire
+/// list that re-renders when its query result changes.
+final dayTemplatesProvider =
+    StreamProvider.family<List<DayTemplateWithCount>, int>((ref, trackableId) {
+      final db = ref.watch(databaseProvider);
+      return db.watchDayTemplates(trackableId);
+    });
+
 /// Reactive stream of thresholds for a specific trackable, keyed by trackable ID.
 ///
 /// StreamProvider.family creates a separate provider per trackable ID.
